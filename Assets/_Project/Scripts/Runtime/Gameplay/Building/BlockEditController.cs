@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Emberhold.Gameplay.Lighting;
 using Emberhold.World;
 using Emberhold.World.Editing;
 using Emberhold.World.Voxels;
@@ -20,6 +21,7 @@ namespace Emberhold.Gameplay.Building
     /// а когда ХП кончились, блок исчезает целиком;
     /// 2 — «Убрать» сразу. Камера занимает ПКМ, СКМ и колесо,
     /// поэтому здесь только ЛКМ и цифры. Ввод берётся из карты «Building» в EmberholdControls.
+    /// Править можно только внутри света (BuildZone); снаружи рамка другого цвета и клик даёт подсказку.
     /// </summary>
     public sealed class BlockEditController : MonoBehaviour
     {
@@ -35,6 +37,8 @@ namespace Emberhold.Gameplay.Building
         [SerializeField] private InputActionAsset actions;
         [Tooltip("Материал рамки подсветки (Unlit, цвет задаётся из настроек).")]
         [SerializeField] private Material outlineMaterial;
+        [Tooltip("Зона застройки из источников света. Если пусто — править можно везде (песочницы).")]
+        [SerializeField] private BuildZone buildZone;
 
         private InputActionMap map;
         private InputAction point;
@@ -60,6 +64,7 @@ namespace Emberhold.Gameplay.Building
         private MeshRenderer cracksRenderer;
         private Mesh cracksMesh;
         private int cracksVersion = -1;
+        private float blockedMessageUntil = float.NegativeInfinity;
 
         public BlockTool Tool { get; private set; } = BlockTool.Dig;
 
@@ -144,6 +149,8 @@ namespace Emberhold.Gameplay.Building
             Hovered = Pick(point.ReadValue<Vector2>());
             if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging())
             {
+                if (!CanEdit(hit.Block))
+                    blockedMessageUntil = Time.unscaledTime + settings.BlockedMessageSeconds;
                 Apply(hit);
                 // Блок мог исчезнуть: рамка должна сразу показать новое состояние.
                 Hovered = worldView.World.GetBlock(hit.Block).IsAir ? null : hit;
@@ -158,13 +165,17 @@ namespace Emberhold.Gameplay.Building
         private bool IsCameraDragging() =>
             (cameraOrbitHold != null && cameraOrbitHold.IsPressed()) || (cameraPanHold != null && cameraPanHold.IsPressed());
 
-        /// <summary>Применить текущий инструмент к блоку. Возвращает true, если блок убран. Меш перестроит VoxelWorldView в LateUpdate этого кадра.</summary>
-        public bool Apply(BlockHit hit) => Tool switch
+        /// <summary>Применить текущий инструмент к блоку; вне света ничего не делает. Возвращает true, если блок убран. Меш перестроит VoxelWorldView в LateUpdate этого кадра.</summary>
+        public bool Apply(BlockHit hit) => CanEdit(hit.Block) && Tool switch
         {
             BlockTool.Dig => Damage.Hit(worldView.World, hit.Block, settings.HitDamage),
             BlockTool.Remove => BlockEdits.Remove(worldView.World, hit.Block),
             _ => false,
         };
+
+        /// <summary>Блок освещён (центр блока внутри света) или зона застройки не задана.</summary>
+        public bool CanEdit(Vector3Int block) =>
+            buildZone == null || buildZone.Contains(worldView.transform.TransformPoint(block + new Vector3(0.5f, 0.5f, 0.5f)));
 
         private BlockHit? Pick(Vector2 screenPosition)
         {
@@ -229,7 +240,8 @@ namespace Emberhold.Gameplay.Building
             }
 
             PlaceInWorld(outline.transform, hit.Block);
-            outlineProperties.SetColor(BaseColorId, Tool == BlockTool.Dig ? settings.DigColor : settings.RemoveColor);
+            var color = !CanEdit(hit.Block) ? settings.BlockedColor : Tool == BlockTool.Dig ? settings.DigColor : settings.RemoveColor;
+            outlineProperties.SetColor(BaseColorId, color);
             outlineRenderer.SetPropertyBlock(outlineProperties);
             outline.SetActive(true);
         }
@@ -267,6 +279,13 @@ namespace Emberhold.Gameplay.Building
                 return;
             var name = Tool == BlockTool.Dig ? "Копать" : "Убрать";
             GUI.Label(new Rect(10, 10, 400, 22), $"Инструмент: {name}   (1 — копать, 2 — убрать сразу, ЛКМ — применить)");
+            if (Time.unscaledTime < blockedMessageUntil)
+            {
+                // Подсказка у курсора: GUI считает y сверху, экран — снизу.
+                var mouse = point.ReadValue<Vector2>();
+                var rect = new Rect(mouse.x + 16f, Screen.height - mouse.y - 8f, 360f, 24f);
+                GUI.Label(rect, "Вне света костра: строить и копать нельзя");
+            }
         }
     }
 }
