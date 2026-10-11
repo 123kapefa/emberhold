@@ -73,21 +73,54 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
-        public void DigBlockUnderItem_ItemSettlesOnNextBlock()
+        public void DigBlockUnderItem_ItemSettlesAndStacksWithNextDrop()
         {
             var world = ColumnWorld(BlockMaterials.Stone);
             var (damage, items) = Digging(world);
             damage.Hit(world, Column + new Vector3Int(0, 3, 0), 100f);
-            var item = items.Items[0];
 
             damage.Hit(world, Column + new Vector3Int(0, 2, 0), 100f);
             Assert.That(items.Settle(world), Is.True);
 
-            // Первый камень опустился на блок y = 1 и не провалился сквозь него; второй лежит там же.
-            Assert.That(item.Position, Is.EqualTo(new Vector3(3.5f, 2f, 2.5f)));
-            Assert.That(items.Items, Has.Count.EqualTo(2));
-            Assert.That(items.Items[1].Position.y, Is.EqualTo(2f));
+            // Первый камень опустился на блок y = 1, не провалился и сложился в одну кучку со вторым.
+            Assert.That(items.Items, Has.Count.EqualTo(1));
+            Assert.That(items.Items[0].Position, Is.EqualTo(new Vector3(3.5f, 2f, 2.5f)));
+            Assert.That(items.Items[0].Drop, Is.EqualTo(new ItemDrop("stone", 2)));
             Assert.That(items.Settle(world), Is.False, "Лежащие предметы больше не двигаются");
+        }
+
+        [Test]
+        public void TwoDropsInSameCell_StackIntoOnePile()
+        {
+            var world = ColumnWorld(BlockMaterials.Stone);
+            var (damage, items) = Digging(world);
+            var top = Column + new Vector3Int(0, 3, 0);
+            damage.Hit(world, top, 100f);
+
+            // Блок снова поставили и снова разбили: второй камень падает в ту же клетку.
+            world.SetBlock(top, Block.Full(BlockMaterials.Stone));
+            items.Settle(world);
+            damage.Hit(world, top, 100f);
+            items.Settle(world);
+
+            Assert.That(items.Items, Has.Count.EqualTo(1));
+            Assert.That(items.Items[0].Drop.Count, Is.EqualTo(2));
+            Assert.That(items.Items[0].Position.y, Is.EqualTo(3f));
+        }
+
+        [Test]
+        public void DropsInNeighbourCells_StaySeparate()
+        {
+            var world = ColumnWorld(BlockMaterials.Stone);
+            var neighbour = Column + Vector3Int.right;
+            for (var y = 0; y < 4; y++)
+                world.SetBlock(neighbour + new Vector3Int(0, y, 0), Block.Full(BlockMaterials.Stone));
+            var (damage, items) = Digging(world);
+
+            damage.Hit(world, Column + new Vector3Int(0, 3, 0), 100f);
+            damage.Hit(world, neighbour + new Vector3Int(0, 3, 0), 100f);
+
+            Assert.That(items.Items, Has.Count.EqualTo(2));
         }
 
         [Test]
@@ -112,9 +145,9 @@ namespace Emberhold.Tests.EditMode.World
                 damage.Hit(world, Column + new Vector3Int(0, y, 0), 100f);
             items.Settle(world);
 
-            Assert.That(items.Items, Has.Count.EqualTo(4));
-            foreach (var item in items.Items)
-                Assert.That(item.Position.y, Is.EqualTo(0f));
+            Assert.That(items.Items, Has.Count.EqualTo(1));
+            Assert.That(items.Items[0].Drop.Count, Is.EqualTo(4));
+            Assert.That(items.Items[0].Position.y, Is.EqualTo(0f));
         }
 
         [Test]

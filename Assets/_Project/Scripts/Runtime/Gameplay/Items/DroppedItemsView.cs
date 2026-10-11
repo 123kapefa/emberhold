@@ -10,7 +10,7 @@ namespace Emberhold.Gameplay.Items
 {
     /// <summary>
     /// Ресурсы на земле: слушает разрушение блоков копанием (<see cref="BlockDamage.Destroyed"/>),
-    /// по таблице BlockDrops кладёт выпавший ресурс на место блока и показывает его кубиком.
+    /// по таблице BlockDrops кладёт выпавший ресурс на место блока и показывает кучку стопкой кубиков.
     /// Каждый кадр кладёт предметы на опору заново, чтобы они не висели в воздухе, когда блок под ними выкопали.
     /// </summary>
     public sealed class DroppedItemsView : MonoBehaviour
@@ -23,6 +23,9 @@ namespace Emberhold.Gameplay.Items
         [Tooltip("Размер кубика ресурса в блоках.")]
         [Range(0.05f, 1f)]
         [SerializeField] private float itemSize = 0.35f;
+        [Tooltip("Сколько кубиков в стопке показывать у одной кучки, не больше.")]
+        [Min(1)]
+        [SerializeField] private int maxStack = 5;
 
         private readonly List<GameObject> visuals = new();
         private int shownVersion = -1;
@@ -78,19 +81,25 @@ namespace Emberhold.Gameplay.Items
                 return;
             shownVersion = Items.Version;
 
-            while (visuals.Count < Items.Items.Count)
-                visuals.Add(CreateVisual());
-            for (var i = 0; i < visuals.Count; i++)
+            // Кучка — стопка кубиков, по одному на единицу ресурса (не выше maxStack).
+            var shown = 0;
+            var space = worldView.transform;
+            foreach (var item in Items.Items)
             {
-                var active = i < Items.Items.Count;
-                visuals[i].SetActive(active);
-                if (!active)
-                    continue;
-                var space = worldView.transform;
-                var local = Items.Items[i].Position + Vector3.up * (itemSize * 0.5f);
-                visuals[i].transform.SetPositionAndRotation(space.TransformPoint(local), space.rotation);
-                visuals[i].transform.localScale = space.lossyScale * itemSize;
+                var count = Mathf.Min(item.Drop.Count, maxStack);
+                for (var k = 0; k < count; k++, shown++)
+                {
+                    if (shown == visuals.Count)
+                        visuals.Add(CreateVisual());
+                    var visual = visuals[shown];
+                    var local = item.Position + Vector3.up * (itemSize * (k + 0.5f));
+                    visual.transform.SetPositionAndRotation(space.TransformPoint(local), space.rotation);
+                    visual.transform.localScale = space.lossyScale * itemSize;
+                    visual.SetActive(true);
+                }
             }
+            for (var i = shown; i < visuals.Count; i++)
+                visuals[i].SetActive(false);
         }
 
         private GameObject CreateVisual()
