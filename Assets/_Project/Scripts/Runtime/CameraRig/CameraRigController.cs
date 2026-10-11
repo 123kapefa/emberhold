@@ -11,6 +11,8 @@ namespace Emberhold.CameraRig
     public sealed class CameraRigController : MonoBehaviour
     {
         private const string ActionMapName = "Camera";
+        // После подвисания (загрузка, брейкпоинт) удержанная клавиша не должна унести камеру далеко.
+        private const float MaxDeltaTime = 0.1f;
 
         [SerializeField] private CameraRigSettings settings;
         [Tooltip("Камера, которой управляет риг. Если пусто — Camera.main.")]
@@ -35,6 +37,8 @@ namespace Emberhold.CameraRig
         /// <summary>Мгновенно навести камеру на точку, например на костёр в начале партии.</summary>
         public void SnapTo(Vector3 focus)
         {
+            if (settings == null)
+                return;
             target.Focus = ClampFocus(focus);
             target.Focus.y = SampleGroundHeight(target.Focus);
             current = target;
@@ -61,6 +65,12 @@ namespace Emberhold.CameraRig
 
         private void OnEnable()
         {
+            if (settings == null)
+            {
+                enabled = false;
+                return;
+            }
+
             var asset = actions != null ? actions : InputSystem.actions;
             map = asset != null ? asset.FindActionMap(ActionMapName) : null;
             if (map == null)
@@ -92,7 +102,7 @@ namespace Emberhold.CameraRig
                 return;
 
             // Камера должна работать и на паузе, поэтому время без масштаба.
-            var dt = Time.unscaledDeltaTime;
+            var dt = Mathf.Min(Time.unscaledDeltaTime, MaxDeltaTime);
             ReadInput(dt);
 
             target.Focus = ClampFocus(target.Focus);
@@ -104,20 +114,21 @@ namespace Emberhold.CameraRig
 
         private void ReadInput(float dt)
         {
+            // Направление и масштаб панорамы берём из того, что игрок видит сейчас, а не из цели сглаживания.
             var delta = pointerDelta.ReadValue<Vector2>();
 
             var keyPan = pan.ReadValue<Vector2>();
             if (keyPan != Vector2.zero)
             {
-                var speed = CameraRigMath.ScaledPanSpeed(settings.PanSpeed, target.Distance, settings.PanReferenceDistance);
-                target.Focus += CameraRigMath.PanOffset(Vector2.ClampMagnitude(keyPan, 1f), target.Yaw, speed * dt);
+                var speed = CameraRigMath.ScaledPanSpeed(settings.PanSpeed, current.Distance, settings.PanReferenceDistance);
+                target.Focus += CameraRigMath.PanOffset(Vector2.ClampMagnitude(keyPan, 1f), current.Yaw, speed * dt);
             }
 
             if (panHold.IsPressed())
             {
                 // Перетаскивание «держит» землю: курсор вправо — мир едет вправо, фокус влево.
-                var unitsPerPixel = CameraRigMath.WorldUnitsPerPixel(target.Distance, targetCamera.fieldOfView, Screen.height);
-                target.Focus -= CameraRigMath.PanOffset(delta, target.Yaw, unitsPerPixel);
+                var unitsPerPixel = CameraRigMath.WorldUnitsPerPixel(current.Distance, targetCamera.fieldOfView, Screen.height);
+                target.Focus -= CameraRigMath.DragPanOffset(delta, current.Yaw, current.Pitch, unitsPerPixel);
             }
 
             target.Yaw += rotate.ReadValue<float>() * settings.RotateSpeed * dt;

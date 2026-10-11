@@ -19,6 +19,16 @@ namespace Emberhold.CameraRig
         }
 
         /// <summary>
+        /// Сдвиг фокуса при перетаскивании мышью на delta пикселей. Земля видна под углом, поэтому
+        /// вертикальный пиксель покрывает 1/sin(pitch) единиц по земле, а горизонтальный — одну.
+        /// </summary>
+        public static Vector3 DragPanOffset(Vector2 pixelDelta, float yaw, float pitch, float unitsPerPixel)
+        {
+            var sinPitch = Mathf.Max(Mathf.Sin(pitch * Mathf.Deg2Rad), 0.1f);
+            return PanOffset(new Vector2(pixelDelta.x, pixelDelta.y / sinPitch), yaw, unitsPerPixel);
+        }
+
+        /// <summary>
         /// Скорость панорамирования растёт с отдалением, чтобы на любом зуме экран проезжал за одинаковое время.
         /// </summary>
         public static float ScaledPanSpeed(float baseSpeed, float distance, float referenceDistance)

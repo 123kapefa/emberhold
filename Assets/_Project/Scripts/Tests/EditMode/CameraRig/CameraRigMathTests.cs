@@ -42,6 +42,24 @@ namespace Emberhold.Tests.EditMode.CameraRig
         }
 
         [Test]
+        public void WorldUnitsPerPixel_MatchesVisibleHeight()
+        {
+            // При FOV 90° видимая высота на дистанции 10 равна 20.
+            Assert.That(CameraRigMath.WorldUnitsPerPixel(10f, 90f, 1000f), Is.EqualTo(0.02f).Within(Eps));
+            Assert.That(CameraRigMath.WorldUnitsPerPixel(10f, 60f, 0f), Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void DragPanOffset_StretchesVerticalByPitch()
+        {
+            var sideways = CameraRigMath.DragPanOffset(new Vector2(10f, 0f), 0f, 30f, 1f);
+            var forward = CameraRigMath.DragPanOffset(new Vector2(0f, 10f), 0f, 30f, 1f);
+
+            Assert.That(sideways.x, Is.EqualTo(10f).Within(Eps));
+            Assert.That(forward.z, Is.EqualTo(20f).Within(Eps));
+        }
+
+        [Test]
         public void ScaledPanSpeed_GrowsWithDistance()
         {
             Assert.That(CameraRigMath.ScaledPanSpeed(10f, 60f, 30f), Is.EqualTo(20f).Within(Eps));
