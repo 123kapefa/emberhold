@@ -105,6 +105,20 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void Fill_OverExistingWorld_ClearsBlocksAboveSurface()
+        {
+            var p = SmallValley();
+            var world = new VoxelWorld(p.SizeInChunks);
+            var top = new Vector3Int(3, world.SizeInBlocks.y - 1, 3);
+            world.SetBlock(top, Block.Full(BlockMaterials.Stone));
+
+            ValleyGenerator.Fill(world, p);
+
+            Assert.That(world.GetBlock(top).IsAir, Is.True);
+            Assert.That(ColumnHeight(world, 3, 3), Is.EqualTo(ColumnHeight(ValleyGenerator.Generate(p), 3, 3)));
+        }
+
+        [Test]
         public void Generate_MarksChunksForMeshing()
         {
             var world = ValleyGenerator.Generate(SmallValley());

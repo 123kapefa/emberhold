@@ -45,7 +45,8 @@ namespace Emberhold.World.Generation
             var distance = Mathf.Abs(u - center);
             var slope = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(p.FloorHalfWidth, 0.5f, distance));
 
-            var noise = Mathf.PerlinNoise(noiseOffset.x + x / p.NoiseScale, noiseOffset.y + z / p.NoiseScale) * 2f - 1f;
+            var noiseScale = Mathf.Max(p.NoiseScale, 1f);
+            var noise = Mathf.PerlinNoise(noiseOffset.x + x / noiseScale, noiseOffset.y + z / noiseScale) * 2f - 1f;
             var blocks = Mathf.Lerp(p.FloorHeight, p.RimHeight, slope) + noise * p.NoiseAmplitude;
 
             var step = Mathf.Clamp(p.HeightStep, 1, BlockShape.MaxHeight);
@@ -70,6 +71,10 @@ namespace Emberhold.World.Generation
                 var block = y < fullBlocks ? Block.Full(material) : Block.Flat(material, remainder);
                 world.SetBlock(new Vector3Int(x, y, z), block);
             }
+
+            // Мир мог быть заполнен раньше: всё выше поверхности — воздух.
+            for (var y = surfaceY + 1; y < world.SizeInBlocks.y; y++)
+                world.SetBlock(new Vector3Int(x, y, z), Block.Air);
         }
     }
 }

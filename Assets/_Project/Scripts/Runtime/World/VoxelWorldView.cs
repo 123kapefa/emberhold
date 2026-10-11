@@ -24,6 +24,7 @@ namespace Emberhold.World
         private readonly List<Vector3Int> dirtyBuffer = new();
         private readonly List<Material> materialBuffer = new();
         private ChunkMeshData meshData;
+        private bool missingMaterialReported;
 
         public VoxelWorld World { get; private set; }
 
@@ -144,7 +145,11 @@ namespace Emberhold.World
         {
             if (blockMaterials != null && material < blockMaterials.Length && blockMaterials[material] != null)
                 return blockMaterials[material];
-            Debug.LogWarning($"[VoxelWorld] Нет материала для блока {material}.", this);
+            if (!missingMaterialReported)
+            {
+                missingMaterialReported = true;
+                Debug.LogWarning($"[VoxelWorld] Нет материала для блока {material}.", this);
+            }
             return null;
         }
 
