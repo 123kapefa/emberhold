@@ -5,20 +5,22 @@ using Emberhold.World.Meshing;
 using Emberhold.World.Voxels;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Serialization;
 
 namespace Emberhold.World
 {
     /// <summary>
     /// Показывает воксельный мир в сцене: на каждый чанк один GameObject с мешем и коллайдером на слое Ground.
-    /// В Awake генерирует долину; каждый кадр перестраивает только изменённые чанки.
+    /// В Awake генерирует рельеф по настройкам; каждый кадр перестраивает только изменённые чанки.
     /// </summary>
     public sealed class VoxelWorldView : MonoBehaviour
     {
-        [Tooltip("Долина, которую сгенерировать при старте. Пусто — мир передаст другой компонент через Show (например, песочница).")]
-        [SerializeField] private ValleySettings valley;
+        [Tooltip("Рельеф, который сгенерировать при старте. Пусто — мир передаст другой компонент через Show (например, песочница).")]
+        [FormerlySerializedAs("valley")]
+        [SerializeField] private TerrainSettings terrain;
         [Tooltip("Материал для каждого номера материала блока: 0 — воздух (не используется), 1 — трава, 2 — земля, 3 — камень.")]
         [SerializeField] private Material[] blockMaterials;
-        [Tooltip("Сдвинуть мир так, чтобы центр долины оказался в начале координат сцены.")]
+        [Tooltip("Сдвинуть мир так, чтобы центр мира оказался в начале координат сцены.")]
         [SerializeField] private bool centerOnOrigin = true;
         [Tooltip("Сглаженное освещение склонов: нормали верха блоков усредняются по соседям.")]
         [SerializeField] private bool smoothShading;
@@ -48,8 +50,8 @@ namespace Emberhold.World
 
         private void Awake()
         {
-            if (valley != null)
-                Show(ValleyGenerator.Generate(valley.Parameters));
+            if (terrain != null)
+                Show(terrain.Generate());
         }
 
         /// <summary>Показать мир: старые чанки убираются, все чанки нового мира строятся сразу.</summary>
