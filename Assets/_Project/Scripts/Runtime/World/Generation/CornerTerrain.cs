@@ -29,6 +29,16 @@ namespace Emberhold.World.Generation
         /// <param name="footRounding">На сколько шестнадцатых поднять землю у подножия обрыва.</param>
         public static void Fill(VoxelWorld world, int[,] corners, int dirtDepth, int edgeRounding = 0, int footRounding = 0)
         {
+            var materials = TerrainMaterials.Default;
+            materials.SubsurfaceDepth = dirtDepth;
+            Fill(world, corners, materials, edgeRounding, footRounding);
+        }
+
+        /// <summary>То же с материалами столбца из профиля местности.</summary>
+        /// <param name="bedLevel">Столбцы с поверхностью ниже этой высоты (в шестнадцатых) получают материал дна.</param>
+        public static void Fill(VoxelWorld world, int[,] corners, TerrainMaterials materials, int edgeRounding = 0,
+            int footRounding = 0, int bedLevel = 0)
+        {
             var size = world.SizeInBlocks;
             if (corners.GetLength(0) != size.x + 1 || corners.GetLength(1) != size.z + 1)
                 throw new ArgumentException($"Нужна сетка углов {size.x + 1}×{size.z + 1}", nameof(corners));
@@ -46,7 +56,7 @@ namespace Emberhold.World.Generation
 
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
-                WriteColumn(world, dirtDepth, x, z, topY[x, z], columns);
+                WriteColumn(world, materials, bedLevel, x, z, topY[x, z], columns);
         }
 
         // Углы столбца в массиве: 0 — C00, 1 — C10, 2 — C01, 3 — C11.
@@ -371,7 +381,8 @@ namespace Emberhold.World.Generation
         }
 
         /// <summary>Записать столбец: углы обрезаются до блока поверхности (если углы вышли за слой — уступ).</summary>
-        private static void WriteColumn(VoxelWorld world, int dirtDepth, int x, int z, int topY, int[,,] columns)
+        private static void WriteColumn(VoxelWorld world, TerrainMaterials materials, int bedLevel, int x, int z, int topY,
+            int[,,] columns)
         {
             // Скругления сдвигают углы, поэтому слой поверхности берём заново по средней высоте.
             var average = (columns[x, z, 0] + columns[x, z, 1] + columns[x, z, 2] + columns[x, z, 3]) / 4f;
@@ -381,14 +392,11 @@ namespace Emberhold.World.Generation
                 columns[x, z, 2] - floor, columns[x, z, 3] - floor);
 
             for (var y = 0; y < topY; y++)
-            {
-                var depth = topY - y;
-                var material = depth <= dirtDepth ? BlockMaterials.Dirt : BlockMaterials.Stone;
-                world.SetBlock(new Vector3Int(x, y, z), Block.Full(material));
-            }
+                world.SetBlock(new Vector3Int(x, y, z), Block.Full(materials.Below(topY - y)));
             // Скругление может опустить углы до пола слоя; совсем пустым блок поверхности не оставляем.
+            var surfaceMaterial = average < bedLevel ? materials.Bed : materials.Surface;
             world.SetBlock(new Vector3Int(x, topY, z),
-                new Block(BlockMaterials.Grass, surface.IsEmpty ? BlockShape.Flat(1) : surface));
+                new Block(surfaceMaterial, surface.IsEmpty ? BlockShape.Flat(1) : surface));
 
             // Мир мог быть заполнен раньше: всё выше поверхности — воздух.
             for (var y = topY + 1; y < world.SizeInBlocks.y; y++)

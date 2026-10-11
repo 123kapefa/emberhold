@@ -9,15 +9,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b5d7e5ef3a464f5fbd646e074b97c223, type: 3}
-  m_Name: ValleySettings
-  m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.ValleySettings
+  m_Script: {fileID: 11500000, guid: 29ce1b5e2b244deaa8cdda52241b05d6, type: 3}
+  m_Name: Valley
+  m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.TerrainProfile
   parameters:
-    Seed: 12345
-    SizeInChunks: {x: 8, y: 3, z: 8}
-    FloorHeight: 8
-    RimHeight: 26
-    FloorHalfWidth: 0.2
+    Shape: 1
+    BaseHeight: 8
+    ShapeHeight: 18
+    ShapeWidth: 0.2
     MeanderAmplitude: 0.12
     MeanderWaves: 1.2
     NoiseScale: 28
@@ -31,4 +30,10 @@ MonoBehaviour:
     CliffFootRounding: 4
     CapDepth: 2
     CapWidth: 6
-    DirtDepth: 1
+    Materials:
+      Surface: 1
+      Subsurface: 2
+      SubsurfaceDepth: 1
+      Deep: 3
+      Bed: 2
+    WaterLevel: 0
