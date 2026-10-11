@@ -1,24 +1,39 @@
 using Emberhold.World.Generation;
 using Emberhold.World.Voxels;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace Emberhold.Tests.EditMode.World
 {
-    public sealed class ValleyGeneratorTests
+    public sealed class TerrainGeneratorTests
     {
-        private static ValleyParameters SmallValley(int seed = 7)
+        private const int DefaultSeed = 12345;
+        private static readonly Vector3Int DefaultSize = new(8, 3, 8);
+        private static readonly Vector3Int SmallSize = new(2, 2, 2);
+
+        /// <summary>
+        /// Отпечаток всех блоков мира: материал и углы формы. Обновлён в #20: под внешним углом ската
+        /// блок ниже теперь из материала поверхности (его верх виден в открытой половине).
+        /// </summary>
+        private const int DefaultValleyHash = -2000301201;
+
+        /// <summary>Маленькая долина 2×2×2 чанка: дно на 4 блоках, борта на 20.</summary>
+        private static TerrainProfileParameters SmallValley()
         {
-            var p = ValleyParameters.Default;
-            p.Seed = seed;
-            p.SizeInChunks = new Vector3Int(2, 2, 2);
-            p.FloorHeight = 4f;
-            p.RimHeight = 20f;
+            var p = TerrainProfileParameters.Valley;
+            p.BaseHeight = 4f;
+            p.ShapeHeight = 16f;
             return p;
         }
 
+        private static VoxelWorld Small(TerrainProfileParameters p, int seed = 7) => TerrainGenerator.Generate(p, seed, SmallSize);
+
+        private static VoxelWorld Full(TerrainProfileParameters p, int seed = DefaultSeed) =>
+            TerrainGenerator.Generate(p, seed, DefaultSize);
+
         /// <summary>Долина без террас и скал — проверяем форму рельефа и гладкость склонов.</summary>
-        private static ValleyParameters PlainValley(ValleyParameters p)
+        private static TerrainProfileParameters PlainValley(TerrainProfileParameters p)
         {
             p.TerraceHeight = 0f;
             p.CliffAmount = 0f;
@@ -40,8 +55,8 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void SameSeed_GivesSameWorld()
         {
-            var a = ValleyGenerator.Generate(SmallValley());
-            var b = ValleyGenerator.Generate(SmallValley());
+            var a = Small(SmallValley());
+            var b = Small(SmallValley());
 
             for (var z = 0; z < a.SizeInBlocks.z; z++)
             for (var x = 0; x < a.SizeInBlocks.x; x++)
@@ -51,8 +66,8 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void DifferentSeeds_GiveDifferentWorlds()
         {
-            var a = ValleyGenerator.Generate(SmallValley(1));
-            var b = ValleyGenerator.Generate(SmallValley(2));
+            var a = Small(SmallValley(), 1);
+            var b = Small(SmallValley(), 2);
 
             var differ = 0;
             for (var z = 0; z < a.SizeInBlocks.z; z++)
@@ -78,7 +93,7 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void Columns_AreFullUnderOneGrassSurfaceBlock()
         {
-            var world = ValleyGenerator.Generate(SmallValley());
+            var world = Small(SmallValley());
 
             for (var z = 0; z < world.SizeInBlocks.z; z++)
             for (var x = 0; x < world.SizeInBlocks.x; x++)
@@ -104,10 +119,10 @@ namespace Emberhold.Tests.EditMode.World
         {
             // Пологая долина: склон не круче шага высоты на блок, уступов быть не должно.
             var p = PlainValley(SmallValley());
-            p.RimHeight = p.FloorHeight + 1f;
+            p.ShapeHeight = 1f;
             p.NoiseAmplitude = 0f;
             p.MeanderAmplitude = 0f;
-            var world = ValleyGenerator.Generate(p);
+            var world = Small(p);
             var size = world.SizeInBlocks;
 
             for (var z = 0; z < size.z; z++)
@@ -130,11 +145,11 @@ namespace Emberhold.Tests.EditMode.World
             // Без террас склоны не круче блока на блок укладываются в один слой без уступов.
             // Долина как в сцене Prototype: в маленькой тестовой склоны круче блока на блок.
             // Мягкий рельеф: прежние значения шума и ширины дна, без террас.
-            var p = PlainValley(ValleyParameters.Default);
+            var p = PlainValley(TerrainProfileParameters.Valley);
             p.NoiseAmplitude = 2.5f;
             p.NoiseScale = 24f;
-            p.FloorHalfWidth = 0.12f;
-            var world = ValleyGenerator.Generate(p);
+            p.ShapeWidth = 0.12f;
+            var world = Full(p);
             var (ledges, edges) = CountLedges(world);
 
             TestContext.WriteLine($"Уступов: {ledges} из {edges}");
@@ -144,7 +159,7 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void TerracedValley_HasFlatLevelsSlopesAndCleanCliffs()
         {
-            var world = ValleyGenerator.Generate(ValleyParameters.Default);
+            var world = Full(TerrainProfileParameters.Valley);
             var size = world.SizeInBlocks;
 
             // «Ровная» — пригодная для стройки: перепад углов не больше четверти блока
@@ -172,13 +187,13 @@ namespace Emberhold.Tests.EditMode.World
         public void Terrace_FlatsThenSmoothSlope_AndCliffIsAStep()
         {
             // Уровни через 3 блока, склон занимает верхнюю половину перепада.
-            Assert.That(ValleyGenerator.Terrace(3.2f, 3f, 0.5f, cliff: false), Is.EqualTo(3f).Within(1e-4f), "Ровная площадка");
-            Assert.That(ValleyGenerator.Terrace(4.4f, 3f, 0.5f, cliff: false), Is.EqualTo(3f).Within(1e-4f), "Ещё ровная");
-            Assert.That(ValleyGenerator.Terrace(5.25f, 3f, 0.5f, cliff: false), Is.EqualTo(4.5f).Within(1e-4f), "Середина склона");
-            Assert.That(ValleyGenerator.Terrace(5.999f, 3f, 0.5f, cliff: false), Is.EqualTo(6f).Within(1e-2f), "Склон выходит на уровень");
-            Assert.That(ValleyGenerator.Terrace(4.4f, 3f, 0.5f, cliff: true), Is.EqualTo(3f).Within(1e-4f), "Скала: нижний уровень");
-            Assert.That(ValleyGenerator.Terrace(4.6f, 3f, 0.5f, cliff: true), Is.EqualTo(6f).Within(1e-4f), "Скала: сразу верхний");
-            Assert.That(ValleyGenerator.Terrace(4.6f, 0f, 0.5f, cliff: true), Is.EqualTo(4.6f), "Без террас");
+            Assert.That(TerrainGenerator.Terrace(3.2f, 3f, 0.5f, cliff: false), Is.EqualTo(3f).Within(1e-4f), "Ровная площадка");
+            Assert.That(TerrainGenerator.Terrace(4.4f, 3f, 0.5f, cliff: false), Is.EqualTo(3f).Within(1e-4f), "Ещё ровная");
+            Assert.That(TerrainGenerator.Terrace(5.25f, 3f, 0.5f, cliff: false), Is.EqualTo(4.5f).Within(1e-4f), "Середина склона");
+            Assert.That(TerrainGenerator.Terrace(5.999f, 3f, 0.5f, cliff: false), Is.EqualTo(6f).Within(1e-2f), "Склон выходит на уровень");
+            Assert.That(TerrainGenerator.Terrace(4.4f, 3f, 0.5f, cliff: true), Is.EqualTo(3f).Within(1e-4f), "Скала: нижний уровень");
+            Assert.That(TerrainGenerator.Terrace(4.6f, 3f, 0.5f, cliff: true), Is.EqualTo(6f).Within(1e-4f), "Скала: сразу верхний");
+            Assert.That(TerrainGenerator.Terrace(4.6f, 0f, 0.5f, cliff: true), Is.EqualTo(4.6f), "Без террас");
         }
 
         [Test]
@@ -270,7 +285,7 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void ValleySides_AreMadeOfSlopes()
         {
-            var world = ValleyGenerator.Generate(PlainValley(SmallValley()));
+            var world = Small(PlainValley(SmallValley()));
 
             var slopes = 0;
             for (var y = 0; y < world.SizeInBlocks.y; y++)
@@ -287,7 +302,7 @@ namespace Emberhold.Tests.EditMode.World
         {
             var p = SmallValley();
             p.HeightStep = 4;
-            var world = ValleyGenerator.Generate(p);
+            var world = Small(p);
 
             for (var z = 0; z < world.SizeInBlocks.z; z++)
             for (var x = 0; x < world.SizeInBlocks.x; x++)
@@ -300,7 +315,7 @@ namespace Emberhold.Tests.EditMode.World
             var p = PlainValley(SmallValley());
             p.MeanderAmplitude = 0f;
             p.NoiseAmplitude = 0f;
-            var world = ValleyGenerator.Generate(p);
+            var world = Small(p);
             var size = world.SizeInBlocks;
 
             var middle = ColumnHeight(world, size.x / 2, size.z / 2);
@@ -315,22 +330,170 @@ namespace Emberhold.Tests.EditMode.World
         public void Fill_OverExistingWorld_ClearsBlocksAboveSurface()
         {
             var p = SmallValley();
-            var world = new VoxelWorld(p.SizeInChunks);
+            var world = new VoxelWorld(SmallSize);
             var top = new Vector3Int(3, world.SizeInBlocks.y - 1, 3);
             world.SetBlock(top, Block.Full(BlockMaterials.Stone));
 
-            ValleyGenerator.Fill(world, p);
+            TerrainGenerator.Fill(world, p, 7);
 
             Assert.That(world.GetBlock(top).IsAir, Is.True);
-            Assert.That(ColumnHeight(world, 3, 3), Is.EqualTo(ColumnHeight(ValleyGenerator.Generate(p), 3, 3)));
+            Assert.That(ColumnHeight(world, 3, 3), Is.EqualTo(ColumnHeight(Small(p), 3, 3)));
         }
 
         [Test]
         public void Generate_MarksChunksForMeshing()
         {
-            var world = ValleyGenerator.Generate(SmallValley());
+            var world = Small(SmallValley());
 
             Assert.That(world.DirtyCount, Is.GreaterThan(0));
+        }
+
+        /// <summary>Отпечаток всех блоков: материал и четыре угла формы каждого блока.</summary>
+        private static int WorldHash(VoxelWorld world)
+        {
+            var size = world.SizeInBlocks;
+            unchecked
+            {
+                var hash = 17;
+                for (var y = 0; y < size.y; y++)
+                for (var z = 0; z < size.z; z++)
+                for (var x = 0; x < size.x; x++)
+                {
+                    var block = world.GetBlock(new Vector3Int(x, y, z));
+                    hash = hash * 31 + block.Material;
+                    hash = hash * 31 + block.Shape.C00;
+                    hash = hash * 31 + block.Shape.C10;
+                    hash = hash * 31 + block.Shape.C01;
+                    hash = hash * 31 + block.Shape.C11;
+                }
+                return hash;
+            }
+        }
+
+        [Test]
+        public void DefaultValleyProfile_GivesTheSameWorldAsBeforeProfiles()
+        {
+            // Отпечаток долины из сцены Prototype до перехода на профили (seed 12345, 8×3×8 чанков).
+            Assert.That(WorldHash(Full(TerrainProfileParameters.Valley)), Is.EqualTo(DefaultValleyHash));
+        }
+
+        [Test]
+        public void TerrainSettingsAsset_GeneratesTheDefaultValley()
+        {
+            var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>("Assets/_Project/Data/World/TerrainSettings.asset");
+            Assert.That(settings, Is.Not.Null);
+            Assert.That(WorldHash(settings.Generate()), Is.EqualTo(DefaultValleyHash));
+        }
+
+        private const string ProfilesFolder = "Assets/_Project/Data/World/TerrainProfiles";
+        private static readonly string[] SampleProfiles = { "Valley", "Plain", "Hills", "Mountain", "Lake" };
+
+        private static TerrainProfileParameters LoadProfile(string name)
+        {
+            var profile = AssetDatabase.LoadAssetAtPath<TerrainProfile>($"{ProfilesFolder}/{name}.asset");
+            Assert.That(profile, Is.Not.Null, name);
+            return profile.Parameters;
+        }
+
+        [Test]
+        public void SampleProfiles_SameSeed_GiveSameWorld([ValueSource(nameof(SampleProfiles))] string name)
+        {
+            var p = LoadProfile(name);
+            Assert.That(WorldHash(Small(p, 3)), Is.EqualTo(WorldHash(Small(p, 3))));
+            Assert.That(WorldHash(Small(p, 3)), Is.Not.EqualTo(WorldHash(Small(p, 4))), "Другой seed — другой мир");
+        }
+
+        private static float AverageHeight(VoxelWorld world)
+        {
+            var total = 0L;
+            var size = world.SizeInBlocks;
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+                total += ColumnHeight(world, x, z);
+            return total / (float)(size.x * size.z) / BlockShape.MaxHeight;
+        }
+
+        [Test]
+        public void SampleProfiles_GiveDifferentHeights()
+        {
+            var plain = Full(LoadProfile("Plain"));
+            var hills = Full(LoadProfile("Hills"));
+            var mountain = Full(LoadProfile("Mountain"));
+            var lake = Full(LoadProfile("Lake"));
+            var size = plain.SizeInBlocks;
+            var (cx, cz) = (size.x / 2, size.z / 2);
+            TestContext.WriteLine($"Средняя высота: равнина {AverageHeight(plain):F1}, холмы {AverageHeight(hills):F1}, " +
+                                  $"гора {AverageHeight(mountain):F1}, озеро {AverageHeight(lake):F1}");
+
+            // Гора в центре выше всех, дно озера ниже равнины, холмы в среднем выше равнины.
+            Assert.That(ColumnHeight(mountain, cx, cz), Is.GreaterThan(ColumnHeight(hills, cx, cz) + 8 * BlockShape.MaxHeight));
+            Assert.That(ColumnHeight(lake, cx, cz), Is.LessThan(ColumnHeight(lake, 0, 0)));
+            Assert.That(AverageHeight(hills), Is.GreaterThan(AverageHeight(plain) + 1f));
+            Assert.That(HeightRange(plain), Is.LessThan(HeightRange(hills)), "Равнина ровнее холмов");
+        }
+
+        private static int HeightRange(VoxelWorld world)
+        {
+            int min = int.MaxValue, max = int.MinValue;
+            var size = world.SizeInBlocks;
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+            {
+                var h = ColumnHeight(world, x, z);
+                min = Mathf.Min(min, h);
+                max = Mathf.Max(max, h);
+            }
+            return max - min;
+        }
+
+        [Test]
+        public void Lake_BedBelowWaterLevelUsesBedMaterial()
+        {
+            var p = LoadProfile("Lake");
+            var world = Full(p);
+            var size = world.SizeInBlocks;
+            var (cx, cz) = (size.x / 2, size.z / 2);
+            var bottom = ColumnHeight(world, cx, cz);
+
+            Assert.That(bottom, Is.LessThan(p.WaterLevel * BlockShape.MaxHeight), "Дно ниже уровня воды");
+            Assert.That(world.GetBlock(new Vector3Int(cx, (bottom - 1) / BlockShape.MaxHeight, cz)).Material, Is.EqualTo(p.Materials.Bed));
+            Assert.That(world.GetBlock(new Vector3Int(0, (ColumnHeight(world, 0, 0) - 1) / BlockShape.MaxHeight, 0)).Material,
+                Is.EqualTo(p.Materials.Surface), "Берег выше воды");
+        }
+
+        [Test]
+        public void ProfileMaterials_GoToSurfaceAndBelow()
+        {
+            var p = SmallValley();
+            p.Materials = new TerrainMaterials
+            {
+                Surface = BlockMaterials.Stone, Subsurface = BlockMaterials.Grass, SubsurfaceDepth = 2,
+                Deep = BlockMaterials.Dirt, Bed = BlockMaterials.Dirt,
+            };
+            var world = Small(p);
+
+            for (var z = 0; z < world.SizeInBlocks.z; z++)
+            for (var x = 0; x < world.SizeInBlocks.x; x++)
+            {
+                var topY = (ColumnHeight(world, x, z) - 1) / BlockShape.MaxHeight;
+                var surface = world.GetBlock(new Vector3Int(x, topY, z));
+                Assert.That(surface.Material, Is.EqualTo(BlockMaterials.Stone));
+                // Под внешним углом ската ещё один блок из материала поверхности.
+                var surfaceBelow = surface.Shape.CoversFloor ? 0 : 1;
+                for (var y = 0; y < topY; y++)
+                {
+                    var depth = topY - y;
+                    var expected = depth <= surfaceBelow ? BlockMaterials.Stone
+                        : depth - surfaceBelow <= 2 ? BlockMaterials.Grass : BlockMaterials.Dirt;
+                    Assert.That(world.GetBlock(new Vector3Int(x, y, z)).Material, Is.EqualTo(expected), $"{x},{y},{z}");
+                }
+            }
+        }
+
+        [Test]
+        public void SampleValleyAsset_MatchesDefaultValley()
+        {
+            Assert.That(WorldHash(Full(LoadProfile("Valley"))), Is.EqualTo(DefaultValleyHash));
         }
     }
 }

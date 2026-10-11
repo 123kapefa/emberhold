@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Emberhold.Gameplay.Lighting;
 using Emberhold.World;
 using Emberhold.World.Editing;
 using Emberhold.World.Voxels;
@@ -24,6 +25,7 @@ namespace Emberhold.Gameplay.Building
     /// ПКМ с перетаскиванием по-прежнему вращает камеру: поворот блока срабатывает, только если мышь
     /// между нажатием и отпусканием почти не сдвинулась. Камера занимает ПКМ (удержание), СКМ, колесо
     /// и WASD/QE/RF. Ввод берётся из карты «Building» в EmberholdControls.
+    /// Править можно только внутри света (BuildZone); снаружи рамка другого цвета и клик даёт подсказку.
     /// </summary>
     public sealed class BlockEditController : MonoBehaviour
     {
@@ -39,6 +41,8 @@ namespace Emberhold.Gameplay.Building
         [SerializeField] private InputActionAsset actions;
         [Tooltip("Материал рамки подсветки (Unlit, цвет задаётся из настроек).")]
         [SerializeField] private Material outlineMaterial;
+        [Tooltip("Зона застройки из источников света. Если пусто — править можно везде (песочницы).")]
+        [SerializeField] private BuildZone buildZone;
 
         private InputActionMap map;
         private InputAction point;
@@ -70,6 +74,7 @@ namespace Emberhold.Gameplay.Building
         private MeshRenderer cracksRenderer;
         private Mesh cracksMesh;
         private int cracksVersion = -1;
+        private float blockedMessageUntil = float.NegativeInfinity;
 
         private BlockGhost ghost;
         private Vector2 rotatePressPosition;
@@ -179,6 +184,8 @@ namespace Emberhold.Gameplay.Building
             UpdatePlan();
             if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging())
             {
+                if (!CanEdit(TargetCell(hit)))
+                    blockedMessageUntil = Time.unscaledTime + settings.BlockedMessageSeconds;
                 Apply(hit);
                 // Блок мог исчезнуть или появиться: рамка и предпросмотр должны сразу показать новое состояние.
                 Hovered = worldView.World.GetBlock(hit.Block).IsAir ? null : hit;
@@ -223,11 +230,13 @@ namespace Emberhold.Gameplay.Building
             (cameraOrbitHold != null && cameraOrbitHold.IsPressed()) || (cameraPanHold != null && cameraPanHold.IsPressed());
 
         /// <summary>
-        /// Применить текущий инструмент к блоку. Возвращает true, если мир изменился (блок убран или поставлен).
-        /// Меш перестроит VoxelWorldView в LateUpdate этого кадра.
+        /// Применить текущий инструмент к блоку; вне света ничего не делает. Возвращает true, если мир изменился
+        /// (блок убран или поставлен). Меш перестроит VoxelWorldView в LateUpdate этого кадра.
         /// </summary>
         public bool Apply(BlockHit hit)
         {
+            if (!CanEdit(TargetCell(hit)))
+                return false;
             switch (Tool)
             {
                 case BlockTool.Dig:
@@ -245,6 +254,14 @@ namespace Emberhold.Gameplay.Building
                     return false;
             }
         }
+
+        /// <summary>Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, иначе — блок под курсором.</summary>
+        private Vector3Int TargetCell(BlockHit hit) =>
+            Tool == BlockTool.Build && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p) ? p.Cell : hit.Block;
+
+        /// <summary>Блок освещён (центр блока внутри света) или зона застройки не задана.</summary>
+        public bool CanEdit(Vector3Int block) =>
+            buildZone == null || buildZone.Contains(worldView.transform.TransformPoint(block + new Vector3(0.5f, 0.5f, 0.5f)));
 
         private BlockHit? Pick(Vector2 screenPosition)
         {
@@ -312,20 +329,21 @@ namespace Emberhold.Gameplay.Building
             }
 
             PlaceInWorld(outline.transform, cell);
-            outlineProperties.SetColor(BaseColorId, Tool switch
+            var color = !CanEdit(cell) ? settings.BlockedColor : Tool switch
             {
                 BlockTool.Dig => settings.DigColor,
                 BlockTool.Build => settings.BuildColor,
                 _ => settings.RemoveColor,
-            });
+            };
+            outlineProperties.SetColor(BaseColorId, color);
             outlineRenderer.SetPropertyBlock(outlineProperties);
             outline.SetActive(true);
         }
 
         private void UpdateGhost()
         {
-            // Досыпание видно по рамке, отдельный предпросмотр поверх блока не нужен.
-            if (plan is not { FillsExisting: false } p)
+            // Досыпание видно по рамке, отдельный предпросмотр поверх блока не нужен; вне света тоже не показываем.
+            if (plan is not { FillsExisting: false } p || !CanEdit(p.Cell))
             {
                 ghost.Hide();
                 return;
@@ -375,6 +393,13 @@ namespace Emberhold.Gameplay.Building
             GUI.Label(new Rect(10, 30, 700, 22),
                 $"{form}, {BuildSelection.MaterialName(Selection.Material)}, поворот {Selection.Rotation * 90}°   " +
                 "(G — форма, T — материал, щелчок ПКМ — повернуть, [ ] — высота полублока)");
+            if (Time.unscaledTime < blockedMessageUntil)
+            {
+                // Подсказка у курсора: GUI считает y сверху, экран — снизу.
+                var mouse = point.ReadValue<Vector2>();
+                var rect = new Rect(mouse.x + 16f, Screen.height - mouse.y - 8f, 360f, 24f);
+                GUI.Label(rect, "Вне света костра: строить и копать нельзя");
+            }
         }
     }
 }
