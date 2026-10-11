@@ -7,9 +7,12 @@ namespace Emberhold.Gameplay.Building
     public sealed class BlockEditSettings : ScriptableObject
     {
         [Header("Копание")]
-        [Tooltip("За сколько кликов инструментом «Копать» блок разрушается целиком, независимо от заполнения.")]
-        [Range(1, BlockCrackMesh.MaxStages + 1)]
-        [SerializeField] private int hitsToBreak = 4;
+        [Tooltip("Сколько ХП снимает один клик инструментом «Копать». Прочность блоков — в BlockDurability.")]
+        [Min(0.01f)]
+        [SerializeField] private float hitDamage = 25f;
+        [Tooltip("Сколько этапов трещин показывать до разрушения.")]
+        [Range(1, BlockCrackMesh.MaxStages)]
+        [SerializeField] private int crackStages = 3;
 
         [Header("Луч")]
         [Range(10f, 1000f)]
@@ -25,9 +28,8 @@ namespace Emberhold.Gameplay.Building
         [Tooltip("Цвет трещин на повреждённом блоке.")]
         [SerializeField] private Color crackColor = new(0.08f, 0.06f, 0.05f);
 
-        public int HitsToBreak => hitsToBreak;
-        /// <summary>Сколько этапов трещин видно до разрушения: последний клик уже убирает блок.</summary>
-        public int CrackStages => Mathf.Min(hitsToBreak - 1, BlockCrackMesh.MaxStages);
+        public float HitDamage => hitDamage;
+        public int CrackStages => crackStages;
         public float MaxRayDistance => maxRayDistance;
         public LayerMask GroundMask => groundMask;
         public Color DigColor => digColor;

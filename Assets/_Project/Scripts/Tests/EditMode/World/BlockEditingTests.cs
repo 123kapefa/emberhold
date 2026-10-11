@@ -69,82 +69,104 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(hit.Block, Is.EqualTo(Cell));
         }
 
+        private static BlockDamage NewDamage() => new(new UniformBlockDurability(100f));
+
         [Test]
-        public void Damage_PartialBlock_BreaksWholeBlockAfterSameHitsAsFull()
+        public void Hit_PartialBlock_BreaksWholeBlockAfterSameHitsAsFull()
         {
             var world = new VoxelWorld(Vector3Int.one);
             var partial = Cell + Vector3Int.right;
             world.SetBlock(Cell, Block.Full(BlockMaterials.Dirt));
             world.SetBlock(partial, Block.Flat(BlockMaterials.Grass, 12));
-            var damage = new BlockDamage();
+            var damage = NewDamage();
 
             for (var hit = 0; hit < 3; hit++)
             {
-                Assert.That(damage.Add(world, Cell, 0.25f), Is.False);
-                Assert.That(damage.Add(world, partial, 0.25f), Is.False);
+                Assert.That(damage.Hit(world, Cell, 25f), Is.False);
+                Assert.That(damage.Hit(world, partial, 25f), Is.False);
             }
             // До последнего удара блок не меняется: урон не снимает слои.
             Assert.That(world.GetBlock(Cell), Is.EqualTo(Block.Full(BlockMaterials.Dirt)));
             Assert.That(world.GetBlock(partial), Is.EqualTo(Block.Flat(BlockMaterials.Grass, 12)));
-            Assert.That(damage.Get(Cell), Is.EqualTo(0.75f).Within(1e-5f));
+            Assert.That(damage.Remaining(world, Cell), Is.EqualTo(25f).Within(1e-4f));
 
-            Assert.That(damage.Add(world, Cell, 0.25f), Is.True);
-            Assert.That(damage.Add(world, partial, 0.25f), Is.True);
+            Assert.That(damage.Hit(world, Cell, 25f), Is.True);
+            Assert.That(damage.Hit(world, partial, 25f), Is.True);
             Assert.That(world.GetBlock(Cell).IsAir, Is.True);
             Assert.That(world.GetBlock(partial).IsAir, Is.True);
             Assert.That(damage.Count, Is.Zero);
         }
 
         [Test]
-        public void Damage_SmallTimeSteps_AccumulateToBreak()
+        public void Hit_TwoHitsThenLeave_BlockKeepsHalfHitPoints()
         {
-            // Так будут копать рабочие: урон dt / секунд на блок каждый кадр.
+            // Рабочий ударил дважды и ушёл: блок остаётся с половиной ХП, и следующий добивает его за два удара.
             var world = new VoxelWorld(Vector3Int.one);
             world.SetBlock(Cell, Block.Full(BlockMaterials.Stone));
-            var damage = new BlockDamage();
-            const float secondsPerBlock = 2f, dt = 1f / 60f;
+            var damage = NewDamage();
 
-            var frames = 0;
-            while (!damage.Add(world, Cell, dt / secondsPerBlock))
-                frames++;
+            damage.Hit(world, Cell, 25f);
+            damage.Hit(world, Cell, 25f);
 
-            Assert.That(frames + 1, Is.EqualTo(120).Within(1));
+            Assert.That(damage.Remaining(world, Cell), Is.EqualTo(50f).Within(1e-4f));
+            Assert.That(damage.Fraction(world, Cell), Is.EqualTo(0.5f).Within(1e-4f));
+            Assert.That(damage.Hit(world, Cell, 25f), Is.False);
+            Assert.That(damage.Hit(world, Cell, 25f), Is.True);
         }
 
         [Test]
-        public void Damage_AirOrOutside_DoesNothing()
+        public void Hit_UsesDurabilityOfBlockMaterial()
+        {
+            var table = ScriptableObject.CreateInstance<BlockDurabilityTable>();
+            try
+            {
+                var world = new VoxelWorld(Vector3Int.one);
+                world.SetBlock(Cell, Block.Full(BlockMaterials.Dirt));
+                var damage = new BlockDamage(table);
+
+                Assert.That(table.HitPoints(BlockMaterials.Dirt), Is.EqualTo(100f));
+                Assert.That(table.HitPoints(BlockMaterials.Max), Is.EqualTo(100f), "Запасная прочность");
+                Assert.That(damage.Remaining(world, Cell), Is.EqualTo(100f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(table);
+            }
+        }
+
+        [Test]
+        public void Hit_AirOrOutside_DoesNothing()
         {
             var world = new VoxelWorld(Vector3Int.one);
-            var damage = new BlockDamage();
+            var damage = NewDamage();
 
-            Assert.That(damage.Add(world, Cell, 0.5f), Is.False);
-            Assert.That(damage.Add(world, new Vector3Int(-1, 0, 0), 0.5f), Is.False);
+            Assert.That(damage.Hit(world, Cell, 50f), Is.False);
+            Assert.That(damage.Hit(world, new Vector3Int(-1, 0, 0), 50f), Is.False);
             Assert.That(damage.Count, Is.Zero);
             Assert.That(world.DirtyCount, Is.Zero);
         }
 
         [Test]
-        public void Damage_BreakOnChunkBorder_MarksNeighbourChunk()
+        public void Hit_BreakOnChunkBorder_MarksNeighbourChunk()
         {
             var world = new VoxelWorld(new Vector3Int(2, 1, 1));
             var border = new Vector3Int(15, 3, 3);
             world.SetBlock(border, Block.Full(BlockMaterials.Dirt));
             world.TakeDirtyChunks(new List<Vector3Int>());
-            var damage = new BlockDamage();
 
-            damage.Add(world, border, 1f);
+            NewDamage().Hit(world, border, 100f);
 
             Assert.That(world.IsDirty(Vector3Int.zero), Is.True);
             Assert.That(world.IsDirty(Vector3Int.right), Is.True);
         }
 
         [Test]
-        public void Damage_ForgetMissing_DropsRemovedBlocks()
+        public void ForgetMissing_DropsRemovedBlocks()
         {
             var world = new VoxelWorld(Vector3Int.one);
             world.SetBlock(Cell, Block.Full(BlockMaterials.Dirt));
-            var damage = new BlockDamage();
-            damage.Add(world, Cell, 0.5f);
+            var damage = NewDamage();
+            damage.Hit(world, Cell, 50f);
             var version = damage.Version;
 
             BlockEdits.Remove(world, Cell);
@@ -159,7 +181,7 @@ namespace Emberhold.Tests.EditMode.World
         [TestCase(0.5f, 2)]
         [TestCase(0.75f, 3)]
         [TestCase(0.99f, 3)]
-        public void Stage_FourHits_ShowsOneStagePerHit(float value, int expected)
+        public void Stage_ThreeStages_GrowWithEachQuarter(float value, int expected)
         {
             Assert.That(BlockDamage.Stage(value, 3), Is.EqualTo(expected));
         }

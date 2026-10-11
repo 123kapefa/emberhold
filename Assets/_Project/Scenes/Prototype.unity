@@ -562,6 +562,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Building.BlockEditController
   settings: {fileID: 11400000, guid: 1f2b1b40125ef4cd3817e9f715d449f0, type: 2}
   worldView: {fileID: 520718230}
+  durability: {fileID: 11400000, guid: 52456b82d489f4d0da49530afa3aeae7, type: 2}
   targetCamera: {fileID: 0}
   actions: {fileID: 0}
   outlineMaterial: {fileID: 2100000, guid: 23c00fcf84bdd4e26b0b5cba1c16e61c, type: 2}

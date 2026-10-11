@@ -16,7 +16,8 @@ namespace Emberhold.Gameplay.Building
 
     /// <summary>
     /// Правка мира мышью: подсвечивает блок под курсором, ЛКМ применяет текущий инструмент.
-    /// 1 — «Копать»: каждый клик добавляет блоку урон и трещины, после нескольких кликов блок исчезает целиком;
+    /// 1 — «Копать»: каждый клик снимает с блока ХП (прочность — в BlockDurability), появляются трещины,
+    /// а когда ХП кончились, блок исчезает целиком;
     /// 2 — «Убрать» сразу. Камера занимает ПКМ, СКМ и колесо,
     /// поэтому здесь только ЛКМ и цифры. Ввод берётся из карты «Building» в EmberholdControls.
     /// </summary>
@@ -27,6 +28,7 @@ namespace Emberhold.Gameplay.Building
 
         [SerializeField] private BlockEditSettings settings;
         [SerializeField] private VoxelWorldView worldView;
+        [SerializeField] private BlockDurabilityTable durability;
         [Tooltip("Камера, из которой пускаем луч. Если пусто — Camera.main.")]
         [SerializeField] private UnityEngine.Camera targetCamera;
         [Tooltip("Если пусто — проектные действия (InputSystem.actions).")]
@@ -65,16 +67,18 @@ namespace Emberhold.Gameplay.Building
         public BlockHit? Hovered { get; private set; }
 
         /// <summary>Урон начатых блоков. Рабочие потом будут копать через него же.</summary>
-        public BlockDamage Damage { get; } = new();
+        public BlockDamage Damage { get; private set; }
 
         private void Awake()
         {
-            if (settings == null || worldView == null)
+            if (settings == null || worldView == null || durability == null)
             {
-                Debug.LogError("[BlockEdit] Не назначены BlockEditSettings или VoxelWorldView.", this);
+                Debug.LogError("[BlockEdit] Не назначены BlockEditSettings, VoxelWorldView или BlockDurability.", this);
                 enabled = false;
                 return;
             }
+
+            Damage = new BlockDamage(durability);
 
             if (targetCamera == null)
                 targetCamera = UnityEngine.Camera.main;
@@ -86,7 +90,7 @@ namespace Emberhold.Gameplay.Building
 
         private void OnEnable()
         {
-            if (settings == null || worldView == null)
+            if (Damage == null)
             {
                 enabled = false;
                 return;
@@ -157,7 +161,7 @@ namespace Emberhold.Gameplay.Building
         /// <summary>Применить текущий инструмент к блоку. Возвращает true, если блок убран. Меш перестроит VoxelWorldView в LateUpdate этого кадра.</summary>
         public bool Apply(BlockHit hit) => Tool switch
         {
-            BlockTool.Dig => Damage.Add(worldView.World, hit.Block, 1f / settings.HitsToBreak),
+            BlockTool.Dig => Damage.Hit(worldView.World, hit.Block, settings.HitDamage),
             BlockTool.Remove => BlockEdits.Remove(worldView.World, hit.Block),
             _ => false,
         };
@@ -235,10 +239,10 @@ namespace Emberhold.Gameplay.Building
 
             crackVertices.Clear();
             crackIndices.Clear();
-            foreach (var (block, value) in Damage.Entries)
+            foreach (var (block, _) in Damage.Entries)
             {
                 var height = (float)worldView.World.GetBlock(block).Shape.Top / BlockShape.MaxHeight;
-                var stage = BlockDamage.Stage(value, settings.CrackStages);
+                var stage = BlockDamage.Stage(Damage.Fraction(worldView.World, block), settings.CrackStages);
                 BlockCrackMesh.Append(block, height, stage, block.GetHashCode(), settings.OutlinePadding * 0.5f,
                     crackVertices, crackIndices);
             }

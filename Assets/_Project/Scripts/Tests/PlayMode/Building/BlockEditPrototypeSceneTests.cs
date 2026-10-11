@@ -33,7 +33,7 @@ namespace Emberhold.Tests.PlayMode.Building
             // Копание: блок держится до последнего удара и исчезает целиком, меш перестроен в том же кадре.
             Assert.That(editor.Apply(hit), Is.False, "Первый удар");
             Assert.That(view.World.GetBlock(hit.Block), Is.EqualTo(before));
-            Assert.That(editor.Damage.Get(hit.Block), Is.GreaterThan(0f));
+            Assert.That(editor.Damage.Taken(hit.Block), Is.GreaterThan(0f));
             var hits = 1;
             while (!editor.Apply(hit))
             {

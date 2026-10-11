@@ -5,54 +5,80 @@ using UnityEngine;
 namespace Emberhold.World.Editing
 {
     /// <summary>
-    /// Накопленное разрушение блоков: доля 0..1 на блок. Когда доля доходит до 1, блок исчезает целиком,
-    /// сколько бы он ни был заполнен. Игрок добавляет долю кликами, рабочие потом будут добавлять её
-    /// по времени (dt / секунд на блок). Хранятся только начатые блоки.
+    /// Снятая прочность блоков. Удар снимает ХП; когда снято не меньше прочности материала
+    /// (<see cref="IBlockDurability"/>), блок исчезает целиком, сколько бы он ни был заполнен.
+    /// Начатый блок помнит урон: если рабочий ударил дважды и ушёл, следующий продолжит с того же места.
+    /// Хранятся только начатые блоки.
     /// </summary>
     public sealed class BlockDamage
     {
-        private readonly Dictionary<Vector3Int, float> progress = new();
+        private readonly Dictionary<Vector3Int, float> taken = new();
+        private readonly IBlockDurability durability;
+
+        public BlockDamage(IBlockDurability durability)
+        {
+            this.durability = durability;
+        }
 
         /// <summary>Сколько блоков сейчас повреждено.</summary>
-        public int Count => progress.Count;
+        public int Count => taken.Count;
 
         /// <summary>Номер изменения: растёт при каждом изменении урона, чтобы вид перестраивался только тогда.</summary>
         public int Version { get; private set; }
 
-        public IEnumerable<KeyValuePair<Vector3Int, float>> Entries => progress;
+        /// <summary>Повреждённые блоки и снятые с них ХП.</summary>
+        public IEnumerable<KeyValuePair<Vector3Int, float>> Entries => taken;
 
-        public float Get(Vector3Int block) => progress.TryGetValue(block, out var value) ? value : 0f;
+        /// <summary>Сколько ХП уже снято с блока.</summary>
+        public float Taken(Vector3Int block) => taken.TryGetValue(block, out var value) ? value : 0f;
+
+        /// <summary>Сколько ХП у блока осталось; у воздуха — 0.</summary>
+        public float Remaining(VoxelWorld world, Vector3Int block)
+        {
+            var current = world.GetBlock(block);
+            return current.IsAir ? 0f : Mathf.Max(0f, durability.HitPoints(current.Material) - Taken(block));
+        }
+
+        /// <summary>Доля разрушения 0..1 — для показа трещин.</summary>
+        public float Fraction(VoxelWorld world, Vector3Int block)
+        {
+            var current = world.GetBlock(block);
+            return current.IsAir ? 0f : Mathf.Clamp01(Taken(block) / durability.HitPoints(current.Material));
+        }
 
         /// <summary>
-        /// Добавить урон блоку. Возвращает true, если блок разрушен и убран из мира.
-        /// Урон воздуху и блокам вне мира ничего не делает.
+        /// Ударить блок на damage ХП. Возвращает true, если блок разрушен и убран из мира.
+        /// Удар по воздуху и блокам вне мира ничего не делает.
         /// </summary>
-        public bool Add(VoxelWorld world, Vector3Int block, float amount)
+        public bool Hit(VoxelWorld world, Vector3Int block, float damage)
         {
-            if (amount <= 0f || !world.IsInsideBlocks(block) || world.GetBlock(block).IsAir)
+            if (damage <= 0f || !world.IsInsideBlocks(block))
+                return false;
+            var current = world.GetBlock(block);
+            if (current.IsAir)
             {
                 Forget(block);
                 return false;
             }
 
-            var value = Get(block) + amount;
+            var value = Taken(block) + damage;
             Version++;
-            // Небольшой допуск: четыре удара по 0.25 во float должны давать ровно разрушение.
-            if (value >= 1f - 1e-4f)
+            // Небольшой допуск, чтобы 4 удара по 25 при прочности 100 ломали блок и при ошибках округления.
+            if (value >= durability.HitPoints(current.Material) - 1e-3f)
             {
-                progress.Remove(block);
+                taken.Remove(block);
                 world.SetBlock(block, Block.Air);
                 return true;
             }
 
-            progress[block] = value;
+            taken[block] = value;
             return false;
         }
 
         /// <summary>Забыть урон блока, например когда его убрали другим способом.</summary>
         public void Forget(Vector3Int block)
         {
-            if (progress.Remove(block))
+            if (taken.Remove(block))
                 Version++;
         }
 
@@ -60,7 +86,7 @@ namespace Emberhold.World.Editing
         public void ForgetMissing(VoxelWorld world)
         {
             List<Vector3Int> missing = null;
-            foreach (var pair in progress)
+            foreach (var pair in taken)
             {
                 if (world.GetBlock(pair.Key).IsAir)
                     (missing ??= new List<Vector3Int>()).Add(pair.Key);
@@ -68,12 +94,12 @@ namespace Emberhold.World.Editing
             if (missing == null)
                 return;
             foreach (var block in missing)
-                progress.Remove(block);
+                taken.Remove(block);
             Version++;
         }
 
-        /// <summary>Этап разрушения для показа: 0 — целый, stages — почти разрушен.</summary>
-        public static int Stage(float value, int stages) =>
-            Mathf.Clamp(Mathf.FloorToInt(value * (stages + 1) + 1e-4f), 0, stages);
+        /// <summary>Этап трещин для доли разрушения: 0 — целый, stages — почти разрушен.</summary>
+        public static int Stage(float fraction, int stages) =>
+            Mathf.Clamp(Mathf.FloorToInt(fraction * (stages + 1) + 1e-4f), 0, stages);
     }
 }

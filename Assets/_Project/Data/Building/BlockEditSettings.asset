@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8755434ba47fc47eeac59fbd9bc003c9, type: 3}
   m_Name: BlockEditSettings
   m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Building.BlockEditSettings
-  hitsToBreak: 4
+  hitDamage: 25
+  crackStages: 3
   maxRayDistance: 500
   groundMask:
     serializedVersion: 2
