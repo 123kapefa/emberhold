@@ -4,7 +4,10 @@ using UnityEngine;
 
 namespace Emberhold.World.Items
 {
-    /// <summary>Ресурс, лежащий на земле. Position — точка опоры в координатах мира блоков (низ предмета).</summary>
+    /// <summary>
+    /// Кучка ресурса на земле: один вид ресурса в одной клетке. Position — точка опоры
+    /// в координатах мира блоков (низ кучки), Drop.Count — сколько в ней единиц.
+    /// </summary>
     public sealed class DroppedItem
     {
         public DroppedItem(ItemDrop drop, Vector3 position)
@@ -13,14 +16,18 @@ namespace Emberhold.World.Items
             Position = position;
         }
 
-        public ItemDrop Drop { get; }
+        public ItemDrop Drop { get; internal set; }
         public Vector3 Position { get; internal set; }
+
+        /// <summary>Клетка мира, в которой лежит кучка.</summary>
+        public Vector3Int Cell => new(Mathf.FloorToInt(Position.x), Mathf.FloorToInt(Position.y), Mathf.FloorToInt(Position.z));
     }
 
     /// <summary>
     /// Ресурсы, выпавшие из разрушенных блоков. Предмет появляется в центре клетки разрушенного блока
     /// и лежит на верхе ближайшего блока под ним. Если опору выкопали, <see cref="Settle"/> опускает его
     /// на следующий блок, а если на его месте поставили блок — поднимает на верх этого блока.
+    /// Ресурсы одного вида в одной клетке складываются в одну кучку.
     /// Только данные: показывает их вид, позже их заберут рабочие.
     /// </summary>
     public sealed class DroppedItems
@@ -47,8 +54,10 @@ namespace Emberhold.World.Items
             if (destroyed.IsAir || !drops.TryGetDrop(destroyed.Material, out var drop))
                 return null;
             var item = new DroppedItem(drop, new Vector3(position.x + 0.5f, RestHeight(world, position), position.z + 0.5f));
-            items.Add(item);
             Version++;
+            if (TryMerge(item, out var pile))
+                return pile;
+            items.Add(item);
             return item;
         }
 
@@ -61,23 +70,47 @@ namespace Emberhold.World.Items
             return true;
         }
 
-        /// <summary>Положить все предметы на опору заново, если мир под ними изменился. Возвращает true, если что-то сдвинулось.</summary>
+        /// <summary>
+        /// Положить все предметы на опору заново, если мир под ними изменился; упавшая кучка сливается
+        /// с кучкой того же ресурса, на которую упала. Возвращает true, если что-то сдвинулось.
+        /// </summary>
         public bool Settle(VoxelWorld world)
         {
             var moved = false;
-            foreach (var item in items)
+            for (var i = 0; i < items.Count; i++)
             {
+                var item = items[i];
                 var p = item.Position;
-                var cell = new Vector3Int(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.y), Mathf.FloorToInt(p.z));
-                var height = RestHeight(world, cell);
+                var height = RestHeight(world, item.Cell);
                 if (Mathf.Approximately(height, p.y))
                     continue;
                 item.Position = new Vector3(p.x, height, p.z);
                 moved = true;
+                items.RemoveAt(i);
+                if (!TryMerge(item, out _))
+                    items.Insert(i, item);
+                else
+                    i--;
             }
             if (moved)
                 Version++;
             return moved;
+        }
+
+        /// <summary>Добавить item в кучку того же ресурса в той же клетке, если такая есть.</summary>
+        private bool TryMerge(DroppedItem item, out DroppedItem pile)
+        {
+            foreach (var other in items)
+            {
+                if (other.Drop.ItemId == item.Drop.ItemId && other.Cell == item.Cell)
+                {
+                    other.Drop = new ItemDrop(other.Drop.ItemId, other.Drop.Count + item.Drop.Count);
+                    pile = other;
+                    return true;
+                }
+            }
+            pile = null;
+            return false;
         }
 
         /// <summary>

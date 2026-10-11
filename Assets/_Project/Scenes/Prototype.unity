@@ -719,6 +719,7 @@ MonoBehaviour:
   drops: {fileID: 11400000, guid: 6f07bd270b3d480bbf8f9fe41843bbcc, type: 2}
   itemMaterial: {fileID: 2100000, guid: 273a4ded7a59b41aea0d0162bf49b3df, type: 2}
   itemSize: 0.35
+  maxStack: 5
 --- !u!4 &1950212303
 Transform:
   m_ObjectHideFlags: 0
