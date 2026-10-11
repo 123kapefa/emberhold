@@ -39,20 +39,20 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
-        public void RotatedClockwise_FourTimes_IsIdentity()
+        public void RotatedQuarter_FourTimes_IsIdentity()
         {
             var ramp = new BlockShape(0, 0, 16, 16);
             var stairs = BlockShape.Catalog(BlockForm.Stairs, 0);
 
-            Assert.That(ramp.RotatedClockwise().RotatedClockwise().RotatedClockwise().RotatedClockwise(), Is.EqualTo(ramp));
-            Assert.That(stairs.RotatedClockwise().RotatedClockwise().RotatedClockwise().RotatedClockwise(), Is.EqualTo(stairs));
+            Assert.That(ramp.RotatedQuarter().RotatedQuarter().RotatedQuarter().RotatedQuarter(), Is.EqualTo(ramp));
+            Assert.That(stairs.RotatedQuarter().RotatedQuarter().RotatedQuarter().RotatedQuarter(), Is.EqualTo(stairs));
         }
 
         [Test]
-        public void RotatedClockwise_RampRisingToPlusZ_RisesToMinusX()
+        public void RotatedQuarter_RampRisingToPlusZ_RisesToMinusX()
         {
             // (x, z) → (1 − z, x): высокий край z = 1 переходит на x = 0.
-            var rotated = new BlockShape(0, 0, 16, 16).RotatedClockwise();
+            var rotated = new BlockShape(0, 0, 16, 16).RotatedQuarter();
 
             Assert.That(rotated, Is.EqualTo(new BlockShape(16, 0, 16, 0)));
         }

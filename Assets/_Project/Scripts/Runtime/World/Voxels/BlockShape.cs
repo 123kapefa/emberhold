@@ -24,7 +24,7 @@ namespace Emberhold.World.Voxels
         public readonly byte C01;
         public readonly byte C11;
         public readonly BlockForm Form;
-        /// <summary>Поворот фигурной формы: число четвертей оборота по часовой стрелке, если смотреть сверху.</summary>
+        /// <summary>Поворот фигурной формы: число четвертей оборота против часовой стрелки, если смотреть сверху (+X вправо, +Z вверх).</summary>
         public readonly byte Rotation;
 
         public BlockShape(int c00, int c10, int c01, int c11)
@@ -69,10 +69,10 @@ namespace Emberhold.World.Voxels
         public float Fill => IsCatalog ? BlockForms.Fill(Form) : (C00 + C10 + C01 + C11) / (4f * MaxHeight);
 
         /// <summary>
-        /// Повёрнутая на четверть оборота по часовой стрелке (вид сверху) форма: точка (x, z) переходит
+        /// Повёрнутая на четверть оборота против часовой стрелки (вид сверху: +X вправо, +Z вверх) форма: точка (x, z) переходит
         /// в (1 − z, x). У простой формы переставляются углы, у фигурной меняется поворот.
         /// </summary>
-        public BlockShape RotatedClockwise() =>
+        public BlockShape RotatedQuarter() =>
             IsCatalog ? new BlockShape(Form, Rotation + 1) : new BlockShape(C01, C00, C11, C10);
 
         /// <summary>Упаковка в 25 бит (по 5 на угол, 3 на форму, 2 на поворот) — ключ для палитры форм чанка.</summary>

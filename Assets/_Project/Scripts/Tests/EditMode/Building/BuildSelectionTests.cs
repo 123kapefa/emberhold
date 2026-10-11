@@ -18,9 +18,9 @@ namespace Emberhold.Tests.EditMode.Building
         }
 
         [Test]
-        public void Rotation_TurnsEveryFormClockwise()
+        public void Rotation_TurnsEveryFormByQuarter()
         {
-            Assert.That(BuildSelection.Shape(BuildForm.Ramp, 1, 8), Is.EqualTo(new BlockShape(0, 0, 16, 16).RotatedClockwise()));
+            Assert.That(BuildSelection.Shape(BuildForm.Ramp, 1, 8), Is.EqualTo(new BlockShape(0, 0, 16, 16).RotatedQuarter()));
             Assert.That(BuildSelection.Shape(BuildForm.Stairs, 3, 8), Is.EqualTo(BlockShape.Catalog(BlockForm.Stairs, 3)));
             // Плоские формы от поворота не меняются.
             Assert.That(BuildSelection.Shape(BuildForm.Slab, 2, 8), Is.EqualTo(BlockShape.Flat(8)));

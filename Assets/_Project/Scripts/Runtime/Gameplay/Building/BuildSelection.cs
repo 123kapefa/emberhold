@@ -27,7 +27,7 @@ namespace Emberhold.Gameplay.Building
         private int slabHeight = BlockShape.MaxHeight / 2;
 
         public BuildForm Form { get; private set; } = BuildForm.Full;
-        /// <summary>Поворот: четверти оборота по часовой стрелке (вид сверху), 0..3.</summary>
+        /// <summary>Поворот: четверти оборота против часовой стрелки (вид сверху: +X вправо, +Z вверх), 0..3.</summary>
         public int Rotation { get; private set; }
         public byte Material => Materials[materialIndex];
 
@@ -61,7 +61,7 @@ namespace Emberhold.Gameplay.Building
                 _ => throw new ArgumentOutOfRangeException(nameof(form)),
             };
             for (var i = 0; i < (rotation & 3); i++)
-                shape = shape.RotatedClockwise();
+                shape = shape.RotatedQuarter();
             return shape;
         }
 

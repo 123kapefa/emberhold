@@ -24,8 +24,8 @@ namespace Emberhold.World.Voxels
 
         public int Volume => (X1 - X0) * (Y1 - Y0) * (Z1 - Z0);
 
-        /// <summary>Поворот на четверть по часовой стрелке (вид сверху): (x, z) → (16 − z, x).</summary>
-        public FormBox RotatedClockwise()
+        /// <summary>Поворот на четверть против часовой стрелки (вид сверху: +X вправо, +Z вверх): (x, z) → (16 − z, x).</summary>
+        public FormBox RotatedQuarter()
         {
             const int s = BlockShape.MaxHeight;
             return new FormBox(s - Z1, Y0, X0, s - Z0, Y1, X1);
@@ -35,7 +35,7 @@ namespace Emberhold.World.Voxels
         {
             var box = this;
             for (var i = 0; i < (quarters & 3); i++)
-                box = box.RotatedClockwise();
+                box = box.RotatedQuarter();
             return box;
         }
     }
