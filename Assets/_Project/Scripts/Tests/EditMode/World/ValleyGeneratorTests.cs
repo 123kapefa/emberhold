@@ -126,7 +126,12 @@ namespace Emberhold.Tests.EditMode.World
         {
             // Без террас склоны не круче блока на блок укладываются в один слой без уступов.
             // Долина как в сцене Prototype: в маленькой тестовой склоны круче блока на блок.
-            var world = ValleyGenerator.Generate(PlainValley(ValleyParameters.Default));
+            // Мягкий рельеф: прежние значения шума и ширины дна, без террас.
+            var p = PlainValley(ValleyParameters.Default);
+            p.NoiseAmplitude = 2.5f;
+            p.NoiseScale = 24f;
+            p.FloorHalfWidth = 0.12f;
+            var world = ValleyGenerator.Generate(p);
             var (ledges, edges) = CountLedges(world);
 
             TestContext.WriteLine($"Уступов: {ledges} из {edges}");
