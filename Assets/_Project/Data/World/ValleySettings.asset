@@ -17,10 +17,18 @@ MonoBehaviour:
     SizeInChunks: {x: 8, y: 3, z: 8}
     FloorHeight: 8
     RimHeight: 26
-    FloorHalfWidth: 0.12
+    FloorHalfWidth: 0.2
     MeanderAmplitude: 0.12
     MeanderWaves: 1.2
-    NoiseScale: 24
-    NoiseAmplitude: 2.5
+    NoiseScale: 28
+    NoiseAmplitude: 6
     HeightStep: 4
-    DirtDepth: 3
+    TerraceHeight: 6
+    TerraceSlope: 0.3
+    CliffAmount: 0.45
+    CliffNoiseScale: 16
+    CliffEdgeRounding: 0
+    CliffFootRounding: 4
+    CapDepth: 2
+    CapWidth: 6
+    DirtDepth: 1

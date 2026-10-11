@@ -14,38 +14,58 @@ namespace Emberhold.World
     /// </summary>
     public sealed class VoxelWorldView : MonoBehaviour
     {
+        [Tooltip("Долина, которую сгенерировать при старте. Пусто — мир передаст другой компонент через Show (например, песочница).")]
         [SerializeField] private ValleySettings valley;
         [Tooltip("Материал для каждого номера материала блока: 0 — воздух (не используется), 1 — трава, 2 — земля, 3 — камень.")]
         [SerializeField] private Material[] blockMaterials;
         [Tooltip("Сдвинуть мир так, чтобы центр долины оказался в начале координат сцены.")]
         [SerializeField] private bool centerOnOrigin = true;
+        [Tooltip("Сглаженное освещение склонов: нормали верха блоков усредняются по соседям.")]
+        [SerializeField] private bool smoothShading;
 
         private readonly Dictionary<Vector3Int, ChunkView> chunkViews = new();
+        private readonly Dictionary<Collider, ChunkView> viewsByCollider = new();
         private readonly List<Vector3Int> dirtyBuffer = new();
         private readonly List<Material> sharedMaterials = new();
         private ChunkMeshData meshData;
+        private readonly SurfaceNormals surfaceNormals = new();
         private bool missingMaterialReported;
 
         public VoxelWorld World { get; private set; }
 
+        /// <summary>Сглаженное освещение склонов; при переключении весь мир перестраивается.</summary>
+        public bool SmoothShading
+        {
+            get => smoothShading;
+            set
+            {
+                if (smoothShading == value)
+                    return;
+                smoothShading = value;
+                World?.MarkAllDirty();
+            }
+        }
+
         private void Awake()
         {
-            if (valley == null)
-            {
-                Debug.LogError("[VoxelWorld] Не назначен ValleySettings.", this);
-                enabled = false;
-                return;
-            }
+            if (valley != null)
+                Show(ValleyGenerator.Generate(valley.Parameters));
+        }
 
-            World = ValleyGenerator.Generate(valley.Parameters);
+        /// <summary>Показать мир: старые чанки убираются, все чанки нового мира строятся сразу.</summary>
+        public void Show(VoxelWorld world)
+        {
+            ClearChunkViews();
+            World = world;
             if (centerOnOrigin)
             {
                 var size = World.SizeInBlocks;
                 transform.position = new Vector3(-size.x * 0.5f, 0f, -size.z * 0.5f);
             }
 
-            meshData = new ChunkMeshData();
-            BuildSharedMaterials();
+            meshData ??= new ChunkMeshData();
+            if (sharedMaterials.Count == 0)
+                BuildSharedMaterials();
             World.MarkAllDirty();
             RebuildDirtyChunks();
         }
@@ -56,11 +76,17 @@ namespace Emberhold.World
                 RebuildDirtyChunks();
         }
 
-        private void OnDestroy()
+        private void OnDestroy() => ClearChunkViews();
+
+        private void ClearChunkViews()
         {
             foreach (var view in chunkViews.Values)
+            {
                 Destroy(view.Mesh);
+                Destroy(view.Collider.gameObject);
+            }
             chunkViews.Clear();
+            viewsByCollider.Clear();
         }
 
         private void RebuildDirtyChunks()
@@ -73,13 +99,14 @@ namespace Emberhold.World
 
         private void RebuildChunk(Vector3Int chunk)
         {
-            ChunkMesher.Build(World, chunk, meshData);
+            ChunkMesher.Build(World, chunk, meshData, smoothShading ? surfaceNormals : null);
             if (!chunkViews.TryGetValue(chunk, out var view))
             {
                 if (meshData.IsEmpty)
                     return;
                 view = CreateChunkView(chunk);
                 chunkViews.Add(chunk, view);
+                viewsByCollider.Add(view.Collider, view);
             }
 
             ApplyMesh(view);
@@ -99,7 +126,7 @@ namespace Emberhold.World
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var renderer = go.AddComponent<MeshRenderer>();
             renderer.SetSharedMaterials(sharedMaterials);
-            return new ChunkView(mesh, renderer, go.AddComponent<MeshCollider>());
+            return new ChunkView(chunk, mesh, renderer, go.AddComponent<MeshCollider>());
         }
 
         private void ApplyMesh(ChunkView view)
@@ -115,8 +142,13 @@ namespace Emberhold.World
             // Если список менять при каждой перестройке, GPU Resident Drawer может остаться со старым
             // сопоставлением подмешей и материалов и нарисовать землю камнем до следующей перестройки.
             mesh.subMeshCount = sharedMaterials.Count;
+            view.TriangleBlocks.Clear();
             for (var subMesh = 0; subMesh < sharedMaterials.Count; subMesh++)
+            {
                 mesh.SetTriangles(meshData.Triangles[subMesh + 1], subMesh, false);
+                // Коллайдер нумерует треугольники подряд по подмешам, в том же порядке.
+                view.TriangleBlocks.AddRange(meshData.TriangleBlocks[subMesh + 1]);
+            }
             ReportUnmappedMaterials();
             mesh.RecalculateBounds();
 
@@ -157,14 +189,34 @@ namespace Emberhold.World
             return null;
         }
 
-        private readonly struct ChunkView
+        /// <summary>
+        /// Блок, которому принадлежит треугольник меша чанка, по попаданию луча (RaycastHit.collider и
+        /// RaycastHit.triangleIndex). Точнее, чем считать по точке: на склоне точка у низкого края лежит
+        /// прямо на полу ячейки.
+        /// </summary>
+        public bool TryGetBlock(Collider collider, int triangleIndex, out Vector3Int block)
         {
+            block = default;
+            if (collider == null || !viewsByCollider.TryGetValue(collider, out var view)
+                || (uint)triangleIndex >= (uint)view.TriangleBlocks.Count)
+                return false;
+
+            block = view.Chunk * ChunkData.Size + ChunkData.Position(view.TriangleBlocks[triangleIndex]);
+            return true;
+        }
+
+        private sealed class ChunkView
+        {
+            public readonly Vector3Int Chunk;
             public readonly Mesh Mesh;
             public readonly MeshRenderer Renderer;
             public readonly MeshCollider Collider;
+            /// <summary>Индекс блока в чанке для каждого треугольника меша по порядку.</summary>
+            public readonly List<int> TriangleBlocks = new();
 
-            public ChunkView(Mesh mesh, MeshRenderer renderer, MeshCollider collider)
+            public ChunkView(Vector3Int chunk, Mesh mesh, MeshRenderer renderer, MeshCollider collider)
             {
+                Chunk = chunk;
                 Mesh = mesh;
                 Renderer = renderer;
                 Collider = collider;

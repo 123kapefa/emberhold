@@ -28,6 +28,9 @@ namespace Emberhold.Tests.PlayMode.Building
             var local = view.transform.InverseTransformPoint(raycast.point);
             var normal = view.transform.InverseTransformDirection(raycast.normal);
             Assert.That(BlockPicking.TryPick(view.World, local, normal, out var hit), Is.True);
+            // Блок по треугольнику меша совпадает с блоком по точке (на ровном месте оба способа точны).
+            Assert.That(view.TryGetBlock(raycast.collider, raycast.triangleIndex, out var byTriangle), Is.True);
+            Assert.That(byTriangle, Is.EqualTo(hit.Block));
             var before = view.World.GetBlock(hit.Block);
 
             // Копание: блок держится до последнего удара и исчезает целиком, меш перестроен в том же кадре.

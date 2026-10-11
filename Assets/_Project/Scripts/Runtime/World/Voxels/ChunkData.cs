@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace Emberhold.World.Voxels
 {
@@ -6,8 +7,10 @@ namespace Emberhold.World.Voxels
     /// Блоки одного чанка 16×16×16. Каждый блок — 2 байта: 6 бит материала и 10 бит номера формы.
     /// Номера 0..16 — плоские формы высотой 0..16, они есть всегда. Склоны получают номера 17+
     /// из палитры чанка: четыре независимых угла 0..16 в 16 бит не помещаются, а разных склонов
-    /// в обычном рельефе в одном чанке намного меньше 1007 свободных номеров. Если склоны всё же
-    /// закончатся, <see cref="Set"/> бросит исключение; что делать в этом случае, решаем в #14.
+    /// в обычном рельефе в одном чанке намного меньше 1007 свободных номеров: генератор кладёт
+    /// не больше одного склона на столбец, то есть не больше 256 на чанк. Если номера всё же закончатся (например,
+    /// после множества правок с произвольными углами), новый склон сохраняется как плоский блок того же
+    /// объёма: мир остаётся целым, теряется только наклон одного блока.
     /// Только данные, без ссылок на сцену, чтобы потом перевести на NativeArray и Burst.
     /// </summary>
     public sealed class ChunkData
@@ -30,6 +33,10 @@ namespace Emberhold.World.Voxels
 
         /// <summary>Порядок x → z → y: горизонтальный слой лежит подряд.</summary>
         public static int Index(int x, int y, int z) => x + z * Size + y * Size * Size;
+
+        /// <summary>Обратное к <see cref="Index"/>: локальная координата блока по индексу.</summary>
+        public static Vector3Int Position(int index) =>
+            new(index % Size, index / (Size * Size), index / Size % Size);
 
         public Block Get(int x, int y, int z)
         {
@@ -72,7 +79,7 @@ namespace Emberhold.World.Voxels
             if (slopeShapeCount == MaxSlopeShapes)
                 CompactSlopeShapes();
             if (slopeShapeCount == MaxSlopeShapes)
-                throw new InvalidOperationException("В чанке закончились номера форм склонов");
+                return Mathf.Clamp(Mathf.RoundToInt(shape.Fill * BlockShape.MaxHeight), 1, BlockShape.MaxHeight);
 
             slopeShapes[slopeShapeCount] = packed;
             return FlatShapeCount + slopeShapeCount++;

@@ -176,6 +176,10 @@ namespace Emberhold.Gameplay.Building
             var space = worldView.transform;
             var localPoint = space.InverseTransformPoint(raycast.point);
             var localNormal = space.InverseTransformDirection(raycast.normal);
+            // Точно — по треугольнику меша; по точке — запасной путь, если попали не в чанк.
+            // Коллайдер перестраивается в LateUpdate, поэтому проверяем, что блок ещё на месте.
+            if (worldView.TryGetBlock(raycast.collider, raycast.triangleIndex, out var block))
+                return worldView.World.GetBlock(block).IsAir ? null : new BlockHit(block, BlockPicking.DominantAxis(localNormal));
             return BlockPicking.TryPick(worldView.World, localPoint, localNormal, out var hit) ? hit : null;
         }
 

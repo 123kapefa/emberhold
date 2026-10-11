@@ -147,7 +147,10 @@ namespace Emberhold.Tests.EditMode.World
             var world = WorldWith(
                 (new Vector3Int(5, 5, 5), Block.Flat(BlockMaterials.Grass, 12)),
                 (new Vector3Int(6, 5, 5), Block.Flat(BlockMaterials.Dirt, 4)),
-                (new Vector3Int(5, 6, 5), Block.Full(BlockMaterials.Stone)));
+                (new Vector3Int(5, 6, 5), Block.Full(BlockMaterials.Stone)),
+                (new Vector3Int(9, 5, 5), Slope(16, 16, 16, 0)),
+                (new Vector3Int(10, 5, 5), Slope(0, 16, 4, 8)),
+                (new Vector3Int(9, 5, 6), Slope(12, 0, 16, 4)));
 
             var mesh = Mesh(world, Vector3Int.zero);
 
@@ -177,6 +180,173 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(mesh.Triangles[BlockMaterials.Stone].Count, Is.EqualTo(36));
             Assert.That(mesh.Triangles[BlockMaterials.Grass].Count, Is.EqualTo(36));
             Assert.That(mesh.Triangles[BlockMaterials.Dirt], Is.Empty);
+        }
+        private static Block Slope(int c00, int c10, int c01, int c11) =>
+            new(BlockMaterials.Dirt, new BlockShape(c00, c10, c01, c11));
+
+        private static Vector3[] TopNormals(ChunkMeshData mesh) =>
+            mesh.Normals.Where(n => n.y > 0.01f).Distinct().ToArray();
+
+        [Test]
+        public void PlanarSlope_TopIsOneTiltedQuad()
+        {
+            // Высокий край на z = 0, низкий на z = 1: склон смотрит вверх и вперёд.
+            var world = WorldWith((new Vector3Int(5, 5, 5), Slope(16, 16, 0, 0)));
+
+            var mesh = Mesh(world, Vector3Int.zero);
+
+            var normals = TopNormals(mesh);
+            Assert.That(normals, Has.Length.EqualTo(1));
+            Assert.That(normals[0].z, Is.GreaterThan(0.5f));
+            Assert.That(mesh.Normals.Count(n => n == normals[0]), Is.EqualTo(4));
+        }
+
+        [Test]
+        public void ThreeCornersUp_SplitsAlongDiagonalWithoutFold()
+        {
+            // Низкий только угол (1,1): одна половина ровная, вторая наклонная.
+            var world = WorldWith((new Vector3Int(5, 5, 5), Slope(16, 16, 16, 0)));
+
+            var mesh = Mesh(world, Vector3Int.zero);
+
+            var normals = TopNormals(mesh);
+            Assert.That(normals, Has.Length.EqualTo(2));
+            Assert.That(normals, Has.Some.EqualTo(Vector3.up));
+            var top = mesh.Vertices.Where((_, i) => mesh.Normals[i] == Vector3.up).ToList();
+            Assert.That(top.Select(v => v.y), Has.All.EqualTo(6f).Within(Eps));
+        }
+
+        [Test]
+        public void SlopeInAir_SideUnderLowEdgeIsTriangleAndZeroEdgeHasNoSide()
+        {
+            var world = WorldWith((new Vector3Int(5, 5, 5), Slope(16, 16, 0, 0)));
+
+            var mesh = Mesh(world, Vector3Int.zero);
+
+            // Сторона +Z: оба угла на высоте 0 — грани нет. Стороны ±X: треугольники. Сторона −Z: полная.
+            Assert.That(mesh.Normals.Count(n => n == Vector3.forward), Is.Zero);
+            Assert.That(mesh.Normals.Count(n => n == Vector3.right), Is.EqualTo(3));
+            Assert.That(mesh.Normals.Count(n => n == Vector3.left), Is.EqualTo(3));
+            Assert.That(mesh.Normals.Count(n => n == Vector3.back), Is.EqualTo(4));
+        }
+
+        [Test]
+        public void MatchingSlopesSideBySide_HaveNoFacesBetweenThem()
+        {
+            var world = WorldWith(
+                (new Vector3Int(5, 5, 5), Slope(16, 16, 0, 0)),
+                (new Vector3Int(6, 5, 5), Slope(16, 16, 0, 0)));
+
+            var mesh = Mesh(world, Vector3Int.zero);
+
+            var between = mesh.Vertices.Where((v, i) => Mathf.Abs(v.x - 6f) < Eps
+                && (mesh.Normals[i] == Vector3.right || mesh.Normals[i] == Vector3.left));
+            Assert.That(between, Is.Empty);
+        }
+
+        [Test]
+        public void CrossingEdges_EachSideShowsItsUpperTriangle()
+        {
+            // На общем ребре x = 6 наш край идёт 16 → 0, край соседа 0 → 16: каждый виден до середины.
+            var world = WorldWith(
+                (new Vector3Int(5, 5, 5), Slope(16, 16, 0, 0)),
+                (new Vector3Int(6, 5, 5), Slope(0, 16, 16, 16)));
+
+            var mesh = Mesh(world, Vector3Int.zero);
+
+            var ours = mesh.Vertices.Where((v, i) => mesh.Normals[i] == Vector3.right && Mathf.Abs(v.x - 6f) < Eps).ToList();
+            var theirs = mesh.Vertices.Where((v, i) => mesh.Normals[i] == Vector3.left && Mathf.Abs(v.x - 6f) < Eps).ToList();
+            Assert.That(ours, Has.Count.EqualTo(3));
+            Assert.That(theirs, Has.Count.EqualTo(3));
+            Assert.That(ours.Max(v => v.z), Is.EqualTo(5.5f).Within(Eps));
+            Assert.That(theirs.Min(v => v.z), Is.EqualTo(5.5f).Within(Eps));
+        }
+
+        [Test]
+        public void SlopeWithFullCorner_UnderBlock_KeepsTheGapVisible()
+        {
+            // У склона верх 16, но он не полный: низ блока сверху виден в щели.
+            var world = WorldWith(
+                (new Vector3Int(5, 5, 5), Slope(16, 16, 16, 8)),
+                (new Vector3Int(5, 6, 5), Block.Full(BlockMaterials.Stone)));
+
+            var mesh = Mesh(world, Vector3Int.zero);
+
+            Assert.That(mesh.Normals.Count(n => n == Vector3.down), Is.EqualTo(8), "Низ склона и низ блока над ним");
+            // Ровная половина склона и верх блока смотрят вверх, вторая половина склона наклонная.
+            Assert.That(TopNormals(mesh), Has.Length.EqualTo(2));
+        }
+
+        [Test]
+        public void TriangleBlocks_PointToTheirBlocks()
+        {
+            var a = new Vector3Int(2, 3, 4);
+            var b = new Vector3Int(9, 3, 4);
+            var world = WorldWith((a, Block.Full(BlockMaterials.Stone)), (b, Slope(16, 16, 16, 0)));
+
+            var mesh = Mesh(world, Vector3Int.zero);
+
+            for (var material = 0; material < mesh.Triangles.Length; material++)
+            {
+                var tris = mesh.Triangles[material];
+                var blocks = mesh.TriangleBlocks[material];
+                Assert.That(blocks, Has.Count.EqualTo(tris.Count / 3));
+                for (var t = 0; t < blocks.Count; t++)
+                {
+                    var expected = material == BlockMaterials.Stone ? a : b;
+                    Assert.That(ChunkData.Position(blocks[t]), Is.EqualTo(expected));
+                    // Все вершины треугольника лежат в ячейке своего блока.
+                    for (var k = 0; k < 3; k++)
+                    {
+                        var v = mesh.Vertices[tris[t * 3 + k]] - (Vector3)expected;
+                        Assert.That(v.x, Is.InRange(-Eps, 1f + Eps));
+                        Assert.That(v.y, Is.InRange(-Eps, 1f + Eps));
+                        Assert.That(v.z, Is.InRange(-Eps, 1f + Eps));
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void SmoothNormals_OnEvenSlope_MatchFaceAndOnFlatPointUp()
+        {
+            // Ровный склон: 4 столбца подряд, каждый поднимается на 4/16 по X.
+            var world = new VoxelWorld(new Vector3Int(1, 1, 1));
+            for (var z = 0; z < 16; z++)
+            for (var x = 0; x < 16; x++)
+            {
+                var h = 4 + x / 4 * 4;
+                var rise = x % 4 == 3 ? 4 : 0;
+                world.SetBlock(new Vector3Int(x, 0, z), new Block(BlockMaterials.Grass, new BlockShape(h, h + rise, h, h + rise)));
+            }
+
+            var mesh = new ChunkMeshData();
+            ChunkMesher.Build(world, Vector3Int.zero, mesh, new SurfaceNormals());
+
+            // Внутри площадки нормали верха наклонены вдоль −X только там, где есть подъём рядом, и все смотрят вверх.
+            var tops = mesh.Normals.Where(n => n.y > 0.1f).ToList();
+            Assert.That(tops, Is.Not.Empty);
+            Assert.That(tops.Select(n => n.magnitude), Has.All.EqualTo(1f).Within(1e-4f));
+            Assert.That(tops.Select(n => n.x), Has.All.LessThanOrEqualTo(1e-4f));
+            Assert.That(tops.Select(n => Mathf.Abs(n.z)), Has.All.LessThan(1e-4f));
+            Assert.That(tops.Count(n => n.x < -1e-3f), Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void SmoothNormals_SharedCornerGetsSameNormalInBothBlocks()
+        {
+            var world = WorldWith(
+                (new Vector3Int(5, 5, 5), Slope(8, 12, 8, 12)),
+                (new Vector3Int(6, 5, 5), Slope(12, 16, 12, 16)));
+
+            var mesh = new ChunkMeshData();
+            ChunkMesher.Build(world, Vector3Int.zero, mesh, new SurfaceNormals());
+
+            // Угол (6, 5.75, 5) общий у двух блоков: нормаль в нём одна и та же.
+            var shared = Enumerable.Range(0, mesh.Vertices.Count)
+                .Where(i => (mesh.Vertices[i] - new Vector3(6f, 5.75f, 5f)).sqrMagnitude < 1e-6f && mesh.Normals[i].y > 0.1f)
+                .Select(i => mesh.Normals[i]).Distinct().ToList();
+            Assert.That(shared, Has.Count.EqualTo(1));
         }
     }
 }

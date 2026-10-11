@@ -57,5 +57,36 @@ namespace Emberhold.Tests.PlayMode.World
             Assert.That(world.DirtyCount, Is.Zero);
             Assert.That(mesh.vertexCount, Is.Not.EqualTo(verticesBefore));
         }
+
+        [UnityTest]
+        public IEnumerator RayOnSlope_FindsSlopeBlockByTriangle()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var view = Object.FindAnyObjectByType<VoxelWorldView>();
+            var world = view.World;
+            var size = world.SizeInBlocks;
+            var checkedSlopes = 0;
+            for (var z = 0; z < size.z && checkedSlopes < 20; z += 3)
+            for (var x = 0; x < size.x && checkedSlopes < 20; x += 3)
+            {
+                // Поверхность столбца — верхний непустой блок; берём только склоны.
+                var y = size.y - 1;
+                while (y >= 0 && world.GetBlock(new Vector3Int(x, y, z)).IsAir)
+                    y--;
+                var block = new Vector3Int(x, y, z);
+                if (y < 0 || world.GetBlock(block).Shape.IsFlat)
+                    continue;
+
+                var top = view.transform.TransformPoint(new Vector3(x + 0.5f, size.y + 1, z + 0.5f));
+                Assert.That(Physics.Raycast(top, Vector3.down, out var hit, size.y + 2, Layers.GroundMask), Is.True);
+                Assert.That(view.TryGetBlock(hit.collider, hit.triangleIndex, out var picked), Is.True);
+                Assert.That(picked, Is.EqualTo(block), $"Склон {block} {world.GetBlock(block)}");
+                checkedSlopes++;
+            }
+
+            Assert.That(checkedSlopes, Is.GreaterThan(5), "В долине должны быть склоны");
+        }
     }
 }

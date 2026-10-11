@@ -46,6 +46,39 @@ namespace Emberhold.World.Generation
         [Range(1, 16)]
         public int HeightStep;
 
+        [Header("Террасы и скалы")]
+        [Tooltip("Высота уровня террас в блоках: рельеф собирается в ровные площадки через эту высоту. 0 — без террас.")]
+        [Min(0f)]
+        public float TerraceHeight;
+
+        [Tooltip("Какая доля перепада между уровнями занята склоном (0..1): меньше — шире ровные площадки и круче склоны.")]
+        [Range(0.05f, 1f)]
+        public float TerraceSlope;
+
+        [Tooltip("Доля переходов между уровнями, которые становятся вертикальными скалами (0..1).")]
+        [Range(0f, 1f)]
+        public float CliffAmount;
+
+        [Tooltip("Размер областей со скалами в блоках.")]
+        [Min(1f)]
+        public float CliffNoiseScale;
+
+        [Tooltip("Скругление кромки скал и впадин: на сколько шестнадцатых опустить край над обрывом.")]
+        [Range(0, 16)]
+        public int CliffEdgeRounding;
+
+        [Tooltip("Скругление у подножия скал: на сколько шестнадцатых поднять землю у стены.")]
+        [Range(0, 16)]
+        public int CliffFootRounding;
+
+        [Tooltip("Купол на шапках скал: на сколько блоков верх опускается от середины к краю обрыва.")]
+        [Range(0f, 6f)]
+        public float CapDepth;
+
+        [Tooltip("На сколько блоков от края обрыва вглубь тянется купол.")]
+        [Range(1f, 16f)]
+        public float CapWidth;
+
         [Tooltip("Толщина земли под травой в блоках, глубже — камень.")]
         [Min(0)]
         public int DirtDepth;
@@ -56,13 +89,21 @@ namespace Emberhold.World.Generation
             SizeInChunks = new Vector3Int(8, 3, 8),
             FloorHeight = 8f,
             RimHeight = 26f,
-            FloorHalfWidth = 0.12f,
+            FloorHalfWidth = 0.2f,
             MeanderAmplitude = 0.12f,
             MeanderWaves = 1.2f,
-            NoiseScale = 24f,
-            NoiseAmplitude = 2.5f,
+            NoiseScale = 28f,
+            NoiseAmplitude = 6f,
             HeightStep = 4,
-            DirtDepth = 3,
+            TerraceHeight = 6f,
+            TerraceSlope = 0.3f,
+            CliffAmount = 0.45f,
+            CliffNoiseScale = 16f,
+            CliffEdgeRounding = 0,
+            CliffFootRounding = 4,
+            CapDepth = 2f,
+            CapWidth = 6f,
+            DirtDepth = 1,
         };
     }
 }
