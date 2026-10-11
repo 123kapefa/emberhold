@@ -22,7 +22,7 @@ namespace Emberhold.World
 
         private readonly Dictionary<Vector3Int, ChunkView> chunkViews = new();
         private readonly List<Vector3Int> dirtyBuffer = new();
-        private readonly List<Material> materialBuffer = new();
+        private readonly List<Material> sharedMaterials = new();
         private ChunkMeshData meshData;
         private bool missingMaterialReported;
 
@@ -45,6 +45,7 @@ namespace Emberhold.World
             }
 
             meshData = new ChunkMeshData();
+            BuildSharedMaterials();
             World.MarkAllDirty();
             RebuildDirtyChunks();
         }
@@ -96,7 +97,9 @@ namespace Emberhold.World
             var mesh = new Mesh { name = go.name };
             mesh.MarkDynamic();
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
-            return new ChunkView(mesh, go.AddComponent<MeshRenderer>(), go.AddComponent<MeshCollider>());
+            var renderer = go.AddComponent<MeshRenderer>();
+            renderer.SetSharedMaterials(sharedMaterials);
+            return new ChunkView(mesh, renderer, go.AddComponent<MeshCollider>());
         }
 
         private void ApplyMesh(ChunkView view)
@@ -108,21 +111,15 @@ namespace Emberhold.World
             mesh.SetNormals(meshData.Normals);
             mesh.SetUVs(0, meshData.Uvs);
 
-            // Подмеш только для материалов, которые есть в чанке.
-            materialBuffer.Clear();
-            var subMesh = 0;
-            mesh.subMeshCount = CountUsedMaterials();
-            for (var material = 0; material < meshData.Triangles.Length; material++)
-            {
-                var triangles = meshData.Triangles[material];
-                if (triangles.Count == 0)
-                    continue;
-                mesh.SetTriangles(triangles, subMesh++, false);
-                materialBuffer.Add(MaterialFor(material));
-            }
+            // Подмеш на каждый материал, даже пустой: у рендерера всегда один и тот же список материалов.
+            // Если список менять при каждой перестройке, GPU Resident Drawer может остаться со старым
+            // сопоставлением подмешей и материалов и нарисовать землю камнем до следующей перестройки.
+            mesh.subMeshCount = sharedMaterials.Count;
+            for (var subMesh = 0; subMesh < sharedMaterials.Count; subMesh++)
+                mesh.SetTriangles(meshData.Triangles[subMesh + 1], subMesh, false);
+            ReportUnmappedMaterials();
             mesh.RecalculateBounds();
 
-            view.Renderer.SetSharedMaterials(materialBuffer);
             view.Renderer.enabled = !meshData.IsEmpty;
             // Коллайдер берёт меш при назначении, поэтому переназначаем после каждой перестройки.
             view.Collider.sharedMesh = null;
@@ -130,15 +127,22 @@ namespace Emberhold.World
                 view.Collider.sharedMesh = mesh;
         }
 
-        private int CountUsedMaterials()
+        /// <summary>Материалы для подмешей: подмеш i — материал блока i + 1 (воздух не рисуется).</summary>
+        private void BuildSharedMaterials()
         {
-            var count = 0;
-            foreach (var triangles in meshData.Triangles)
+            sharedMaterials.Clear();
+            var count = Mathf.Max(BlockMaterials.Count, blockMaterials != null ? blockMaterials.Length : 0);
+            for (var material = 1; material < count; material++)
+                sharedMaterials.Add(MaterialFor(material));
+        }
+
+        private void ReportUnmappedMaterials()
+        {
+            for (var material = sharedMaterials.Count + 1; material < meshData.Triangles.Length; material++)
             {
-                if (triangles.Count > 0)
-                    count++;
+                if (meshData.Triangles[material].Count > 0)
+                    MaterialFor(material);
             }
-            return count;
         }
 
         private Material MaterialFor(int material)

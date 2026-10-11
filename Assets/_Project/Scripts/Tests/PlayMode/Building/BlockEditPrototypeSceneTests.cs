@@ -38,6 +38,14 @@ namespace Emberhold.Tests.PlayMode.Building
             // Луч теперь попадает ниже: коллайдер чанка обновился.
             Assert.That(Physics.Raycast(new Vector3(0.5f, 200f, 0.5f), Vector3.down, out var after, 400f, Layers.GroundMask), Is.True);
             Assert.That(after.point.y, Is.LessThan(raycast.point.y));
+
+            // У каждого чанка постоянный набор подмешей и материалов, сколько бы раз его ни перестраивали.
+            foreach (Transform chunk in view.transform)
+            {
+                var subMeshes = chunk.GetComponent<MeshFilter>().sharedMesh.subMeshCount;
+                Assert.That(chunk.GetComponent<MeshRenderer>().sharedMaterials.Length, Is.EqualTo(subMeshes), chunk.name);
+                Assert.That(subMeshes, Is.EqualTo(Emberhold.World.Voxels.BlockMaterials.Count - 1), chunk.name);
+            }
         }
     }
 }
