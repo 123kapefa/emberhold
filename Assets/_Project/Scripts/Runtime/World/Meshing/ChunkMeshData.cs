@@ -6,7 +6,8 @@ namespace Emberhold.World.Meshing
 {
     /// <summary>
     /// Результат меширования одного чанка: общие вершины и отдельный список треугольников на каждый материал.
-    /// Переиспользуется между перестройками, чтобы не плодить мусор.
+    /// Для каждого треугольника запоминается блок, которому он принадлежит, — так луч мыши находит блок
+    /// точно, даже на склоне. Переиспользуется между перестройками, чтобы не плодить мусор.
     /// </summary>
     public sealed class ChunkMeshData
     {
@@ -15,12 +16,21 @@ namespace Emberhold.World.Meshing
         public readonly List<Vector2> Uvs = new();
         /// <summary>Индекс — номер материала блока; для воздуха список всегда пуст.</summary>
         public readonly List<int>[] Triangles;
+        /// <summary>
+        /// Параллельно <see cref="Triangles"/>: на каждый треугольник (три индекса) — индекс блока в чанке
+        /// (<see cref="ChunkData.Index"/>).
+        /// </summary>
+        public readonly List<int>[] TriangleBlocks;
 
         public ChunkMeshData(int materialCount = BlockMaterials.Max + 1)
         {
             Triangles = new List<int>[materialCount];
+            TriangleBlocks = new List<int>[materialCount];
             for (var i = 0; i < materialCount; i++)
+            {
                 Triangles[i] = new List<int>();
+                TriangleBlocks[i] = new List<int>();
+            }
         }
 
         public bool IsEmpty => Vertices.Count == 0;
@@ -43,31 +53,48 @@ namespace Emberhold.World.Meshing
             Uvs.Clear();
             foreach (var list in Triangles)
                 list.Clear();
+            foreach (var list in TriangleBlocks)
+                list.Clear();
         }
 
         /// <summary>Четырёхугольник; вершины по часовой стрелке, если смотреть снаружи (лицевая сторона в Unity).</summary>
-        public void AddQuad(byte material, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal,
+        public void AddQuad(byte material, int block, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal,
             Vector2 uvA, Vector2 uvB, Vector2 uvC, Vector2 uvD)
         {
             var start = Vertices.Count;
-            Vertices.Add(a);
-            Vertices.Add(b);
-            Vertices.Add(c);
-            Vertices.Add(d);
-            for (var i = 0; i < 4; i++)
-                Normals.Add(normal);
-            Uvs.Add(uvA);
-            Uvs.Add(uvB);
-            Uvs.Add(uvC);
-            Uvs.Add(uvD);
+            AddVertex(a, normal, uvA);
+            AddVertex(b, normal, uvB);
+            AddVertex(c, normal, uvC);
+            AddVertex(d, normal, uvD);
+            AddIndices(material, block, start, start + 1, start + 2);
+            AddIndices(material, block, start, start + 2, start + 3);
+        }
 
+        /// <summary>Треугольник; вершины по часовой стрелке, если смотреть снаружи.</summary>
+        public void AddTriangle(byte material, int block, Vector3 a, Vector3 b, Vector3 c, Vector3 normal,
+            Vector2 uvA, Vector2 uvB, Vector2 uvC)
+        {
+            var start = Vertices.Count;
+            AddVertex(a, normal, uvA);
+            AddVertex(b, normal, uvB);
+            AddVertex(c, normal, uvC);
+            AddIndices(material, block, start, start + 1, start + 2);
+        }
+
+        private void AddVertex(Vector3 position, Vector3 normal, Vector2 uv)
+        {
+            Vertices.Add(position);
+            Normals.Add(normal);
+            Uvs.Add(uv);
+        }
+
+        private void AddIndices(byte material, int block, int a, int b, int c)
+        {
             var tris = Triangles[material];
-            tris.Add(start);
-            tris.Add(start + 1);
-            tris.Add(start + 2);
-            tris.Add(start);
-            tris.Add(start + 2);
-            tris.Add(start + 3);
+            tris.Add(a);
+            tris.Add(b);
+            tris.Add(c);
+            TriangleBlocks[material].Add(block);
         }
     }
 }

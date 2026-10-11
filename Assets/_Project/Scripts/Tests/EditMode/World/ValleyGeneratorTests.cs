@@ -55,8 +55,20 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(differ, Is.GreaterThan(0));
         }
 
+        /// <summary>Абсолютная высота угла столбца: слои складываются, у каждого угол обрезан до своей ячейки.</summary>
+        private static int CornerHeight(VoxelWorld world, int x, int z, int corner)
+        {
+            var total = 0;
+            for (var y = 0; y < world.SizeInBlocks.y; y++)
+            {
+                var s = world.GetBlock(new Vector3Int(x, y, z)).Shape;
+                total += corner switch { 0 => s.C00, 1 => s.C10, 2 => s.C01, _ => s.C11 };
+            }
+            return total;
+        }
+
         [Test]
-        public void Columns_AreSolidUpToSurface_WithGrassOnTop()
+        public void Columns_AreFullUnderOneGrassSurfaceBlock()
         {
             var world = ValleyGenerator.Generate(SmallValley());
 
@@ -65,15 +77,78 @@ namespace Emberhold.Tests.EditMode.World
             {
                 var height = ColumnHeight(world, x, z);
                 Assert.That(height, Is.GreaterThan(0));
-                var surfaceY = (height - 1) / BlockShape.MaxHeight;
-                Assert.That(world.GetBlock(new Vector3Int(x, surfaceY, z)).Material, Is.EqualTo(BlockMaterials.Grass));
-                for (var y = 0; y < surfaceY; y++)
+                var topY = (height - 1) / BlockShape.MaxHeight;
+                Assert.That(world.GetBlock(new Vector3Int(x, topY, z)).Material, Is.EqualTo(BlockMaterials.Grass));
+                for (var y = 0; y < topY; y++)
                 {
                     var block = world.GetBlock(new Vector3Int(x, y, z));
                     Assert.That(block.Shape.IsFull, Is.True, $"Под поверхностью неполный блок {x},{y},{z}");
                     Assert.That(block.Material, Is.Not.EqualTo(BlockMaterials.Grass));
                 }
             }
+        }
+
+        [Test]
+        public void GentleSlope_NeighbourColumnsShareCornerHeights()
+        {
+            // Пологая долина: склон не круче шага высоты на блок, уступов быть не должно.
+            var p = SmallValley();
+            p.RimHeight = p.FloorHeight + 1f;
+            p.NoiseAmplitude = 0f;
+            p.MeanderAmplitude = 0f;
+            var world = ValleyGenerator.Generate(p);
+            var size = world.SizeInBlocks;
+
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x - 1; x++)
+            {
+                Assert.That(CornerHeight(world, x, z, 1), Is.EqualTo(CornerHeight(world, x + 1, z, 0)), $"{x},{z} по X");
+                Assert.That(CornerHeight(world, x, z, 3), Is.EqualTo(CornerHeight(world, x + 1, z, 2)), $"{x},{z} по X");
+            }
+            for (var z = 0; z < size.z - 1; z++)
+            for (var x = 0; x < size.x; x++)
+            {
+                Assert.That(CornerHeight(world, x, z, 2), Is.EqualTo(CornerHeight(world, x, z + 1, 0)), $"{x},{z} по Z");
+                Assert.That(CornerHeight(world, x, z, 3), Is.EqualTo(CornerHeight(world, x, z + 1, 1)), $"{x},{z} по Z");
+            }
+        }
+
+        [Test]
+        public void DefaultValley_HasAlmostNoLedgesBetweenColumns()
+        {
+            // Склоны не круче блока на блок укладываются в один слой без уступов.
+            // Долина как в сцене Prototype: в маленькой тестовой склоны круче блока на блок.
+            var world = ValleyGenerator.Generate(ValleyParameters.Default);
+            var size = world.SizeInBlocks;
+
+            int edges = 0, ledges = 0;
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x - 1; x++)
+            {
+                edges++;
+                if (CornerHeight(world, x, z, 1) != CornerHeight(world, x + 1, z, 0)
+                    || CornerHeight(world, x, z, 3) != CornerHeight(world, x + 1, z, 2))
+                    ledges++;
+            }
+
+            TestContext.WriteLine($"Уступов: {ledges} из {edges}");
+            // Без выравнивания по слоям уступов было около четверти; остаются только места круче блока на блок.
+            Assert.That(ledges, Is.LessThan(edges / 20));
+        }
+
+        [Test]
+        public void ValleySides_AreMadeOfSlopes()
+        {
+            var world = ValleyGenerator.Generate(SmallValley());
+
+            var slopes = 0;
+            for (var y = 0; y < world.SizeInBlocks.y; y++)
+            for (var z = 0; z < world.SizeInBlocks.z; z++)
+            for (var x = 0; x < world.SizeInBlocks.x; x++)
+                if (!world.GetBlock(new Vector3Int(x, y, z)).Shape.IsFlat)
+                    slopes++;
+
+            Assert.That(slopes, Is.GreaterThan(world.SizeInBlocks.x));
         }
 
         [Test]

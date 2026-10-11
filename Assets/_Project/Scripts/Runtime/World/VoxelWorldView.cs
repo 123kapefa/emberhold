@@ -21,6 +21,7 @@ namespace Emberhold.World
         [SerializeField] private bool centerOnOrigin = true;
 
         private readonly Dictionary<Vector3Int, ChunkView> chunkViews = new();
+        private readonly Dictionary<Collider, ChunkView> viewsByCollider = new();
         private readonly List<Vector3Int> dirtyBuffer = new();
         private readonly List<Material> sharedMaterials = new();
         private ChunkMeshData meshData;
@@ -61,6 +62,7 @@ namespace Emberhold.World
             foreach (var view in chunkViews.Values)
                 Destroy(view.Mesh);
             chunkViews.Clear();
+            viewsByCollider.Clear();
         }
 
         private void RebuildDirtyChunks()
@@ -80,6 +82,7 @@ namespace Emberhold.World
                     return;
                 view = CreateChunkView(chunk);
                 chunkViews.Add(chunk, view);
+                viewsByCollider.Add(view.Collider, view);
             }
 
             ApplyMesh(view);
@@ -99,7 +102,7 @@ namespace Emberhold.World
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var renderer = go.AddComponent<MeshRenderer>();
             renderer.SetSharedMaterials(sharedMaterials);
-            return new ChunkView(mesh, renderer, go.AddComponent<MeshCollider>());
+            return new ChunkView(chunk, mesh, renderer, go.AddComponent<MeshCollider>());
         }
 
         private void ApplyMesh(ChunkView view)
@@ -115,8 +118,13 @@ namespace Emberhold.World
             // Если список менять при каждой перестройке, GPU Resident Drawer может остаться со старым
             // сопоставлением подмешей и материалов и нарисовать землю камнем до следующей перестройки.
             mesh.subMeshCount = sharedMaterials.Count;
+            view.TriangleBlocks.Clear();
             for (var subMesh = 0; subMesh < sharedMaterials.Count; subMesh++)
+            {
                 mesh.SetTriangles(meshData.Triangles[subMesh + 1], subMesh, false);
+                // Коллайдер нумерует треугольники подряд по подмешам, в том же порядке.
+                view.TriangleBlocks.AddRange(meshData.TriangleBlocks[subMesh + 1]);
+            }
             ReportUnmappedMaterials();
             mesh.RecalculateBounds();
 
@@ -157,14 +165,34 @@ namespace Emberhold.World
             return null;
         }
 
-        private readonly struct ChunkView
+        /// <summary>
+        /// Блок, которому принадлежит треугольник меша чанка, по попаданию луча (RaycastHit.collider и
+        /// RaycastHit.triangleIndex). Точнее, чем считать по точке: на склоне точка у низкого края лежит
+        /// прямо на полу ячейки.
+        /// </summary>
+        public bool TryGetBlock(Collider collider, int triangleIndex, out Vector3Int block)
         {
+            block = default;
+            if (collider == null || !viewsByCollider.TryGetValue(collider, out var view)
+                || (uint)triangleIndex >= (uint)view.TriangleBlocks.Count)
+                return false;
+
+            block = view.Chunk * ChunkData.Size + ChunkData.Position(view.TriangleBlocks[triangleIndex]);
+            return true;
+        }
+
+        private sealed class ChunkView
+        {
+            public readonly Vector3Int Chunk;
             public readonly Mesh Mesh;
             public readonly MeshRenderer Renderer;
             public readonly MeshCollider Collider;
+            /// <summary>Индекс блока в чанке для каждого треугольника меша по порядку.</summary>
+            public readonly List<int> TriangleBlocks = new();
 
-            public ChunkView(Mesh mesh, MeshRenderer renderer, MeshCollider collider)
+            public ChunkView(Vector3Int chunk, Mesh mesh, MeshRenderer renderer, MeshCollider collider)
             {
+                Chunk = chunk;
                 Mesh = mesh;
                 Renderer = renderer;
                 Collider = collider;

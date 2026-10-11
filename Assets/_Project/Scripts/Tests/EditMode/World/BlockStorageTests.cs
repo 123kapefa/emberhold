@@ -90,6 +90,41 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void Chunk_TooManyDifferentSlopes_StoresExtraAsFlatOfSameVolume()
+        {
+            var chunk = new ChunkData();
+            var placed = 0;
+            Block last = default;
+            // Каждый склон в своей ячейке: сжать палитру нечем.
+            for (var a = 0; a <= 16 && placed < ChunkData.MaxSlopeShapes + 1; a++)
+            for (var b = 0; b <= 16 && placed < ChunkData.MaxSlopeShapes + 1; b++)
+            for (var c = 0; c <= 16 && placed < ChunkData.MaxSlopeShapes + 1; c++)
+            {
+                var shape = new BlockShape(a, b, c, 16);
+                if (shape.IsFlat)
+                    continue;
+                last = new Block(BlockMaterials.Dirt, shape);
+                var pos = ChunkData.Position(placed++);
+                Assert.DoesNotThrow(() => chunk.Set(pos.x, pos.y, pos.z, last));
+            }
+
+            var stored = chunk.Get(ChunkData.Position(placed - 1).x, ChunkData.Position(placed - 1).y, ChunkData.Position(placed - 1).z);
+            Assert.That(stored.Material, Is.EqualTo(BlockMaterials.Dirt));
+            Assert.That(stored.Shape.IsFlat, Is.True);
+            Assert.That(stored.Shape.Fill, Is.EqualTo(last.Shape.Fill).Within(1f / 32));
+        }
+
+        [Test]
+        public void Position_IsInverseOfIndex()
+        {
+            for (var i = 0; i < ChunkData.Volume; i += 37)
+            {
+                var p = ChunkData.Position(i);
+                Assert.That(ChunkData.Index(p.x, p.y, p.z), Is.EqualTo(i));
+            }
+        }
+
+        [Test]
         public void Chunk_RejectsMaterialAbove63()
         {
             var chunk = new ChunkData();
