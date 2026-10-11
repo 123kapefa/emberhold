@@ -140,7 +140,7 @@ namespace Emberhold.CameraRig
             }
             target.Pitch = Mathf.Clamp(target.Pitch, settings.MinPitch, settings.MaxPitch);
 
-            // Колесо даёт шаги за кадр, R/F — плавный зум при удержании.
+            // Колесо даёт шаги за кадр, Z/X — плавный зум при удержании (R занята поворотом блока).
             var zoomSteps = CameraRigMath.NormalizeScroll(zoom.ReadValue<float>())
                             + zoomKeys.ReadValue<float>() * settings.ZoomKeySteps * dt;
             target.Distance = CameraRigMath.Zoom(target.Distance, zoomSteps, settings.ZoomStepFraction,

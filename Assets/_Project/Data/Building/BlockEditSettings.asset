@@ -20,5 +20,6 @@ MonoBehaviour:
     m_Bits: 64
   digColor: {r: 1, g: 0.75, b: 0.2, a: 1}
   removeColor: {r: 1, g: 0.25, b: 0.2, a: 1}
+  buildColor: {r: 0.35, g: 0.9, b: 0.45, a: 1}
   outlinePadding: 0.01
   crackColor: {r: 0.08, g: 0.06, b: 0.05, a: 1}

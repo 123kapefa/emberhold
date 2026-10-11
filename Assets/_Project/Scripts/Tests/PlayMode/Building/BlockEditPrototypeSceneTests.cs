@@ -3,6 +3,7 @@ using Emberhold.Core;
 using Emberhold.Gameplay.Building;
 using Emberhold.World;
 using Emberhold.World.Editing;
+using Emberhold.World.Voxels;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -58,6 +59,38 @@ namespace Emberhold.Tests.PlayMode.Building
                 Assert.That(chunk.GetComponent<MeshRenderer>().sharedMaterials.Length, Is.EqualTo(subMeshes), chunk.name);
                 Assert.That(subMeshes, Is.EqualTo(Emberhold.World.Voxels.BlockMaterials.Count - 1), chunk.name);
             }
+        }
+
+        [UnityTest]
+        public IEnumerator PrototypeScene_BuildPlacesStairsOnSurface()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var editor = Object.FindAnyObjectByType<BlockEditController>();
+            var view = Object.FindAnyObjectByType<VoxelWorldView>();
+            Assert.That(Physics.Raycast(new Vector3(0.5f, 200f, 0.5f), Vector3.down, out var raycast, 400f, Layers.GroundMask), Is.True);
+            Assert.That(view.TryGetBlock(raycast.collider, raycast.triangleIndex, out var surface), Is.True);
+            // Ставим на верх поверхности: ячейка над ней должна быть свободна.
+            var hit = new BlockHit(surface, Vector3Int.up);
+            var above = surface + Vector3Int.up;
+            Assume.That(view.World.GetBlock(above).IsAir, Is.True);
+
+            editor.Tool = BlockTool.Build;
+            while (editor.Selection.Form != BuildForm.Stairs)
+                editor.Selection.NextForm();
+            editor.Selection.Rotate();
+
+            // Верх неполной травы досыпается, только если материал тот же; наш — не трава, значит, встанет сверху.
+            Assert.That(editor.Apply(hit), Is.True);
+            yield return null;
+            Assert.That(view.World.GetBlock(above).Shape, Is.EqualTo(BlockShape.Catalog(BlockForm.Stairs, 1)));
+            Assert.That(view.World.DirtyCount, Is.Zero, "Меш перестроен в том же кадре");
+
+            // Луч сверху теперь попадает в лестницу.
+            Assert.That(Physics.Raycast(new Vector3(0.5f, 200f, 0.5f), Vector3.down, out var onStairs, 400f, Layers.GroundMask), Is.True);
+            Assert.That(view.TryGetBlock(onStairs.collider, onStairs.triangleIndex, out var picked), Is.True);
+            Assert.That(picked, Is.EqualTo(above));
         }
     }
 }

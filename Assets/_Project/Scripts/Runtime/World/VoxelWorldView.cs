@@ -16,7 +16,7 @@ namespace Emberhold.World
     {
         [Tooltip("Долина, которую сгенерировать при старте. Пусто — мир передаст другой компонент через Show (например, песочница).")]
         [SerializeField] private ValleySettings valley;
-        [Tooltip("Материал для каждого номера материала блока: 0 — воздух (не используется), 1 — трава, 2 — земля, 3 — камень.")]
+        [Tooltip("Материал для каждого номера материала блока: 0 — воздух (не используется), 1 — трава, 2 — земля, 3 — камень, 4 — дерево.")]
         [SerializeField] private Material[] blockMaterials;
         [Tooltip("Сдвинуть мир так, чтобы центр долины оказался в начале координат сцены.")]
         [SerializeField] private bool centerOnOrigin = true;
@@ -176,6 +176,9 @@ namespace Emberhold.World
                     MaterialFor(material);
             }
         }
+
+        /// <summary>Материал, которым рисуется блок с этим номером материала (для предпросмотра постановки).</summary>
+        public Material BlockMaterial(byte material) => MaterialFor(material);
 
         private Material MaterialFor(int material)
         {

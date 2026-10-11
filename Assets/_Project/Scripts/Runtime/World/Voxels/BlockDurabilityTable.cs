@@ -10,8 +10,8 @@ namespace Emberhold.World.Voxels
     [CreateAssetMenu(fileName = "BlockDurability", menuName = "Emberhold/Block Durability")]
     public sealed class BlockDurabilityTable : ScriptableObject, IBlockDurability
     {
-        [Tooltip("Прочность полного блока по номеру материала: 0 — воздух (не используется), 1 — трава, 2 — земля, 3 — камень.")]
-        [SerializeField] private float[] hitPoints = { 0f, 100f, 100f, 100f };
+        [Tooltip("Прочность полного блока по номеру материала: 0 — воздух (не используется), 1 — трава, 2 — земля, 3 — камень, 4 — дерево.")]
+        [SerializeField] private float[] hitPoints = { 0f, 100f, 100f, 100f, 100f };
         [Tooltip("Прочность материалов, которых нет в списке.")]
         [Min(1f)]
         [SerializeField] private float fallbackHitPoints = 100f;

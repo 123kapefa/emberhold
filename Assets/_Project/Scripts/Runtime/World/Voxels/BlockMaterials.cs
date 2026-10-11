@@ -10,9 +10,10 @@ namespace Emberhold.World.Voxels
         public const byte Grass = 1;
         public const byte Dirt = 2;
         public const byte Stone = 3;
+        public const byte Wood = 4;
 
         /// <summary>Сколько материалов прототипа заведено, включая воздух.</summary>
-        public const int Count = 4;
+        public const int Count = 5;
 
         public const byte Max = 63;
     }
