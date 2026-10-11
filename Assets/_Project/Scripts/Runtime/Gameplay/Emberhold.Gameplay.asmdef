@@ -1,7 +1,11 @@
 {
     "name": "Emberhold.Gameplay",
-    "rootNamespace": "Emberhold",
-    "references": ["Emberhold.World", "Emberhold.Core"],
+    "rootNamespace": "Emberhold.Gameplay",
+    "references": [
+        "Emberhold.World",
+        "Emberhold.Core",
+        "Unity.InputSystem"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
