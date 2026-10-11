@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Emberhold.World.Voxels;
 using UnityEngine;
@@ -20,6 +21,9 @@ namespace Emberhold.World.Editing
         {
             this.durability = durability;
         }
+
+        /// <summary>Блок разрушен ударом: координата и каким он был до разрушения (для выпадения ресурсов).</summary>
+        public event Action<Vector3Int, Block> Destroyed;
 
         /// <summary>Сколько блоков сейчас повреждено.</summary>
         public int Count => taken.Count;
@@ -70,6 +74,7 @@ namespace Emberhold.World.Editing
             {
                 taken.Remove(block);
                 world.SetBlock(block, Block.Air);
+                Destroyed?.Invoke(block, current);
                 return true;
             }
 
