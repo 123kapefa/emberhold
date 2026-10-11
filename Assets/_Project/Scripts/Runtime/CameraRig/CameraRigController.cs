@@ -21,6 +21,7 @@ namespace Emberhold.CameraRig
         private InputActionMap map;
         private InputAction pan;
         private InputAction rotate;
+        private InputAction tilt;
         private InputAction zoom;
         private InputAction pointerDelta;
         private InputAction orbitHold;
@@ -71,6 +72,7 @@ namespace Emberhold.CameraRig
 
             pan = map.FindAction("Pan", true);
             rotate = map.FindAction("Rotate", true);
+            tilt = map.FindAction("Tilt", true);
             zoom = map.FindAction("Zoom", true);
             pointerDelta = map.FindAction("PointerDelta", true);
             orbitHold = map.FindAction("OrbitHold", true);
@@ -119,6 +121,8 @@ namespace Emberhold.CameraRig
             }
 
             target.Yaw += rotate.ReadValue<float>() * settings.RotateSpeed * dt;
+            // R поднимает взгляд к горизонту (меньше наклон), F опускает его вниз.
+            target.Pitch -= tilt.ReadValue<float>() * settings.TiltSpeed * dt;
 
             if (orbitHold.IsPressed())
             {

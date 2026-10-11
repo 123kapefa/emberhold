@@ -1014,6 +1014,15 @@
                     "initialStateCheck": true
                 },
                 {
+                    "name": "Tilt",
+                    "type": "Value",
+                    "id": "91488824-add0-4ee3-88bf-6214726eaddd",
+                    "expectedControlType": "Axis",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
                     "name": "Zoom",
                     "type": "Value",
                     "id": "81497aa5-81d4-4dae-bc39-4ba4adc170cb",
@@ -1213,6 +1222,50 @@
                     "processors": "",
                     "groups": "Gamepad",
                     "action": "Rotate",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "RF",
+                    "id": "2a5e0204-fb74-4b20-8920-559cbb189e25",
+                    "path": "1DAxis",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Tilt",
+                    "isComposite": true,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "negative",
+                    "id": "a11325fa-a8e4-46db-9711-02ba9ad6392b",
+                    "path": "<Keyboard>/f",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Tilt",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "positive",
+                    "id": "52e03fd8-35c7-4d81-b5cc-2c2e111226c3",
+                    "path": "<Keyboard>/r",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Tilt",
+                    "isComposite": false,
+                    "isPartOfComposite": true
+                },
+                {
+                    "name": "",
+                    "id": "3fd7d5f6-a632-489d-a085-cccf45c10a6b",
+                    "path": "<Gamepad>/rightStick/y",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Gamepad",
+                    "action": "Tilt",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

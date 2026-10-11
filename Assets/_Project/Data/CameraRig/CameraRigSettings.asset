@@ -20,6 +20,7 @@ MonoBehaviour:
   focusBoundsMin: {x: -100, y: -100}
   focusBoundsMax: {x: 100, y: 100}
   rotateSpeed: 90
+  tiltSpeed: 60
   mouseOrbitSensitivity: 0.25
   minPitch: 25
   maxPitch: 80

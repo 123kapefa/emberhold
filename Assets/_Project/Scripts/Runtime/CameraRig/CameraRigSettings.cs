@@ -21,6 +21,8 @@ namespace Emberhold.CameraRig
         [Header("Вращение")]
         [Tooltip("Градусы/с с клавиатуры (Q/E).")]
         [SerializeField] private float rotateSpeed = 90f;
+        [Tooltip("Градусы/с наклона с клавиатуры (R — к горизонту, F — сверху вниз).")]
+        [SerializeField] private float tiltSpeed = 60f;
         [Tooltip("Градусы на пиксель при перетаскивании правой кнопкой.")]
         [SerializeField] private float mouseOrbitSensitivity = 0.25f;
         [SerializeField] private float minPitch = 25f;
@@ -50,6 +52,7 @@ namespace Emberhold.CameraRig
         public Vector2 FocusBoundsMin => focusBoundsMin;
         public Vector2 FocusBoundsMax => focusBoundsMax;
         public float RotateSpeed => rotateSpeed;
+        public float TiltSpeed => tiltSpeed;
         public float MouseOrbitSensitivity => mouseOrbitSensitivity;
         public float MinPitch => minPitch;
         public float MaxPitch => maxPitch;
