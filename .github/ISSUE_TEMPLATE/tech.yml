@@ -1,0 +1,26 @@
+name: Техническая задача
+description: Инфраструктура, рефакторинг, инструменты
+labels: ["type:tech"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Цель
+      description: Зачем нужна задача и какой результат ожидаем
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Критерии готовности
+      value: |
+        - [ ] 
+    validations:
+      required: true
+  - type: input
+    id: design-doc
+    attributes:
+      label: Ссылка на дизайн-документ
+      description: Раздел дизайн-документа Emberhold (необязательно)
+    validations:
+      required: false

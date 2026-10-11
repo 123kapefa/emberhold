@@ -1,0 +1,32 @@
+name: Баг
+description: Ошибка или неверное поведение
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги
+      description: Как воспроизвести
+      value: |
+        1. 
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидалось
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Получилось
+    validations:
+      required: true
+  - type: input
+    id: design-doc
+    attributes:
+      label: Ссылка на дизайн-документ
+      description: Раздел дизайн-документа Emberhold (необязательно)
+    validations:
+      required: false
