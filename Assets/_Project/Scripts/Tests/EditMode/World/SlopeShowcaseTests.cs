@@ -77,37 +77,29 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
-        public void Rise_ClimbsTwelveBlocksWithLowerCentre()
+        public void Rise_ClimbsTwelveBlocksTurning90Degrees()
         {
             var world = Build(snap: false);
             var area = SlopeShowcase.Pads[^1].Area;
             var baseSixteenths = (int)(BaseHeight * BlockShape.MaxHeight);
+            var high = baseSixteenths + 12 * BlockShape.MaxHeight;
             int At(Vector2 local) => Corner(world, area.x + Mathf.RoundToInt(local.x), area.y + Mathf.RoundToInt(local.y), 0);
 
-            var entrance = SlopeShowcase.RiseCentre(0f);
-            Assert.That(Corner(world, area.x + (int)entrance.x, area.y + 1, 0), Is.EqualTo(baseSixteenths), "Нижний уровень спереди");
-            var exit = SlopeShowcase.RiseCentre(1f);
-            Assert.That(Corner(world, area.x + (int)exit.x, area.yMax - 1, 2),
-                Is.EqualTo(baseSixteenths + 12 * BlockShape.MaxHeight), "Выход на верхний уровень");
+            // Начало подъёма — у нижнего уровня, выход — у верхнего, и он под 90° к началу.
+            Assert.That(At(SlopeShowcase.RiseCentre(0f)), Is.LessThan(baseSixteenths + 2 * BlockShape.MaxHeight), "Начало");
+            Assert.That(At(SlopeShowcase.RiseCentre(1f)), Is.GreaterThan(high - 2 * BlockShape.MaxHeight), "Выход");
+            var start = SlopeShowcase.RiseCentre(0.02f) - SlopeShowcase.RiseCentre(0f);
+            var end = SlopeShowcase.RiseCentre(1f) - SlopeShowcase.RiseCentre(0.98f);
+            Assert.That(Vector2.Angle(start, end), Is.EqualTo(90f).Within(3f));
 
-            // Посередине подъёма центр прохода ниже точки ближе к борту на той же высоте по Z
-            // (вогнутый поперечный профиль; высота вдоль склона зависит только от Z).
+            // Высота растёт вдоль поворота.
+            Assert.That(At(SlopeShowcase.RiseCentre(0.25f)), Is.LessThan(At(SlopeShowcase.RiseCentre(0.5f))));
+            Assert.That(At(SlopeShowcase.RiseCentre(0.5f)), Is.LessThan(At(SlopeShowcase.RiseCentre(0.75f))));
+
+            // Поперёк прохода профиль вогнутый: у бортов выше, чем посередине.
             var middle = SlopeShowcase.RiseCentre(0.5f);
-            var side = middle + new Vector2(8f, 0f);
-            Assert.That(At(middle), Is.LessThan(At(side)));
-        }
-
-        [Test]
-        public void RiseCentre_EntersStraightAndExitsTurned45Degrees()
-        {
-            var startDirection = (SlopeShowcase.RiseCentre(0.02f) - SlopeShowcase.RiseCentre(0f)).normalized;
-            var endDirection = (SlopeShowcase.RiseCentre(1f) - SlopeShowcase.RiseCentre(0.98f)).normalized;
-
-            Assert.That(Vector2.Angle(startDirection, Vector2.up), Is.LessThan(2f));
-            Assert.That(Vector2.Angle(endDirection, Vector2.up), Is.EqualTo(45f).Within(2f));
-            var area = SlopeShowcase.Pads[^1].Area;
-            Assert.That(SlopeShowcase.RiseCentre(1f).x, Is.InRange(0f, area.width));
-            Assert.That(SlopeShowcase.RiseCentre(1f).y, Is.InRange(0f, area.height));
+            var outward = (middle - SlopeShowcase.RisePivot).normalized;
+            Assert.That(At(middle), Is.LessThan(At(middle + outward * 7f)));
         }
 
         [TestCase(1)]

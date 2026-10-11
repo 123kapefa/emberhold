@@ -35,7 +35,7 @@ namespace Emberhold.World.Sandbox
                 Mathf.Clamp(Mathf.Max(8f - u, 8f - v) * s, 0f, 3f * s))),
             Small(7, "Седло", (u, v, s) => (2f + ((u - 8f) * (u - 8f) - (v - 8f) * (v - 8f)) / 24f) * s * Window(u, v)),
             Small(8, "Шумный рельеф", null),
-            new("Подъём между уровнями: 12 блоков, ~25°, поворот на 45°",
+            new("Подъём между уровнями: 12 блоков, поворот на 90°",
                 new RectInt(0, PadsPerRow * PadSize, PadsPerRow * PadSize, 2 * PadSize), Rise, flatBorder: false),
         };
 
@@ -120,70 +120,52 @@ namespace Emberhold.World.Sandbox
             new(name, new RectInt(index % PadsPerRow * PadSize, index / PadsPerRow * PadSize, PadSize, PadSize),
                 height, flatBorder: true);
 
-        private const float RiseLowStrip = 4f;      // ровный нижний уровень спереди
-        private const float RiseTop = 30f;          // где склон выходит на верхний уровень (по Z)
-        private const float RiseLength = 30f;       // длина оси прохода
-        private const float RiseTurn = 45f;         // поворот прохода, градусы
-        private const float RiseTurnStart = 0.15f;  // доли длины оси, где идёт поворот
-        private const float RiseTurnEnd = 0.5f;
-        private const float RiseHalfWidth = 12f;
-        private const int RiseSamples = 96;
-        private static readonly Vector2[] RiseAxis = BuildRiseAxis();
-
+        private const float RiseLowStrip = 4f;    // ровный нижний уровень спереди
+        private const float RiseInner = 10f;      // радиус внутреннего угла поворота
+        private const float RiseOuter = 28f;      // радиус внешнего борта
         /// <summary>
-        /// Ось прохода «Подъём» в координатах площадки, t от 0 (вход) до 1 (выход). Как на референсе:
-        /// вход смотрит прямо (+Z), в первой половине проход сворачивает вправо на 45°, дальше идёт
-        /// прямо по диагонали, так что борт прохода — ровная диагональная стена.
+        /// Центр поворота «Подъёма» в координатах площадки — внутренний угол, где сходятся линия начала
+        /// подъёма (вдоль X) и линия выхода наверх (вдоль Z).
         /// </summary>
-        public static Vector2 RiseCentre(float t)
-        {
-            var f = Mathf.Clamp01(t) * RiseSamples;
-            var i = Mathf.Min((int)f, RiseSamples - 1);
-            return Vector2.Lerp(RiseAxis[i], RiseAxis[i + 1], f - i);
-        }
-
-        private static Vector2[] BuildRiseAxis()
-        {
-            var axis = new Vector2[RiseSamples + 1];
-            var point = new Vector2(16f, RiseLowStrip);
-            var step = RiseLength / RiseSamples;
-            axis[0] = point;
-            for (var i = 1; i <= RiseSamples; i++)
-            {
-                var t = (i - 0.5f) / RiseSamples;
-                var heading = RiseTurn * Mathf.Deg2Rad * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(RiseTurnStart, RiseTurnEnd, t));
-                point += new Vector2(Mathf.Sin(heading), Mathf.Cos(heading)) * step;
-                axis[i] = point;
-            }
-            return axis;
-        }
+        public static readonly Vector2 RisePivot = new(40f, RiseLowStrip);
 
         /// <summary>
-        /// Подъём как на референсе: спереди нижний уровень, сзади и по бокам верхний (на 12 блоков выше),
-        /// между ними широкий травяной проход, который сворачивает на 45°. Высота растёт к дальнему краю
-        /// (по Z) плавной кривой, в среднем ~25°: если считать её вдоль оси, на внутренней стороне поворота
-        /// путь слишком короткий и склон рассыпается на уступы. Поперёк прохода профиль вогнутый:
-        /// середина ниже краёв, края поднимаются к обрывам.
+        /// Подъём как на референсе: проход поворачивает на 90°. Склон начинается вдоль ровной линии
+        /// спереди (идёт от центра поворота влево, вдоль X) и выходит на верхний уровень вдоль
+        /// перпендикулярной линии (от центра поворота вперёд, вдоль Z). Высота растёт с углом вокруг
+        /// центра поворота, так что линии одной высоты расходятся веером. Поперёк прохода (по радиусу)
+        /// профиль вогнутый. Внутри внутреннего радиуса и за внешним — верхний уровень с обрывами:
+        /// ближе к центру поворота склон был бы круче блока на блок.
         /// </summary>
         private static float Rise(float u, float v, float s)
         {
             var high = 12f * s;
             if (v < RiseLowStrip)
                 return 0f;
-
-            // Расстояние до ближайшей точки оси.
-            var point = new Vector2(u, v);
-            var best = float.MaxValue;
-            foreach (var p in RiseAxis)
-                best = Mathf.Min(best, (point - p).sqrMagnitude);
-
-            var across = Mathf.Sqrt(best) / RiseHalfWidth;
-            if (across > 1f)
+            var offset = new Vector2(u, v) - RisePivot;
+            // Справа от линии выхода — верхний уровень.
+            if (offset.x > 0f)
                 return high;
-            var t = Mathf.InverseLerp(RiseLowStrip, RiseTop, v);
-            var along = Mathf.Lerp(t, Mathf.SmoothStep(0f, 1f, t), 0.5f);
+
+            var radius = offset.magnitude;
+            if (radius < RiseInner || radius > RiseOuter)
+                return high;
+
+            // Угол от линии начала (−X) к линии выхода (+Z): 0 … 1.
+            var turn = Mathf.Atan2(offset.y, -offset.x) / (Mathf.PI * 0.5f);
+            var along = Mathf.Lerp(turn, Mathf.SmoothStep(0f, 1f, turn), 0.5f);
+            var middle = (RiseInner + RiseOuter) * 0.5f;
+            var across = (radius - middle) / ((RiseOuter - RiseInner) * 0.5f);
             var dish = 2f * s * across * across;
             return Mathf.Min(high, along * high + dish);
+        }
+
+        /// <summary>Точка на оси «Подъёма» (посередине между бортами) при доле поворота t от 0 до 1.</summary>
+        public static Vector2 RiseCentre(float t)
+        {
+            var angle = Mathf.Clamp01(t) * Mathf.PI * 0.5f;
+            var middle = (RiseInner + RiseOuter) * 0.5f;
+            return RisePivot + new Vector2(-Mathf.Cos(angle), Mathf.Sin(angle)) * middle;
         }
 
         private static float Dist2(float u, float v) => (u - 8f) * (u - 8f) + (v - 8f) * (v - 8f);
