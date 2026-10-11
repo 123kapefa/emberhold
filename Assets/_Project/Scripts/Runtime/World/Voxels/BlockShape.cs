@@ -34,6 +34,9 @@ namespace Emberhold.World.Voxels
         public bool IsFull => IsFlat && C00 == MaxHeight;
         public bool IsEmpty => C00 == 0 && C10 == 0 && C01 == 0 && C11 == 0;
 
+        /// <summary>Заполнение ячейки 0..1: средняя высота углов. У склона — объём под его верхом.</summary>
+        public float Fill => (C00 + C10 + C01 + C11) / (4f * MaxHeight);
+
         /// <summary>Наибольшая высота угла, 0..16.</summary>
         public int Top => Math.Max(Math.Max(C00, C10), Math.Max(C01, C11));
 
