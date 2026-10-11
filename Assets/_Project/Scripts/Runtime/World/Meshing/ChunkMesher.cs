@@ -48,13 +48,14 @@ namespace Emberhold.World.Meshing
                     continue;
                 }
 
-                // Верх закрыт, только если блок полный и сверху стоит другой блок (он всегда опирается на пол ячейки).
-                if (!s.IsFull || Neighbor(world, data, origin, x, y + 1, z).IsAir)
+                // Верх закрыт, только если блок полный, а блок сверху закрывает весь пол своей ячейки
+                // (у внешнего угла ската половина пола открыта — там видна земля снизу).
+                if (!s.IsFull || !Neighbor(world, data, origin, x, y + 1, z).Shape.CoversFloor)
                     AddTop(output, material, index, p, s, smoothNormals, (origin.y + y) * BlockShape.MaxHeight);
 
                 // Низ закрыт только полным блоком снизу; у воздуха форма пустая.
                 if (!Neighbor(world, data, origin, x, y - 1, z).Shape.IsFull)
-                    AddBottom(output, material, index, p);
+                    AddBottom(output, material, index, p, s);
 
                 // Общее ребро с соседом: наши два угла и его два угла на той же стороне.
                 var n = Neighbor(world, data, origin, x + 1, y, z).Shape;
@@ -111,13 +112,19 @@ namespace Emberhold.World.Meshing
             }
             else if (Mathf.Abs(s.C00 - s.C11) <= Mathf.Abs(s.C10 - s.C01))
             {
-                output.AddTriangle(material, index, c00, c01, c11, Normal(c00, c01, c11), uv00, uv01, uv11);
-                output.AddTriangle(material, index, c00, c11, c10, Normal(c00, c11, c10), uv00, uv11, uv10);
+                // Половина с нулевыми углами лежит на полу ячейки: у неё нет объёма, и рисовать её
+                // нельзя — она закрыла бы собой землю под блоком (внешний угол ската).
+                if (s.C00 + s.C01 + s.C11 > 0)
+                    output.AddTriangle(material, index, c00, c01, c11, Normal(c00, c01, c11), uv00, uv01, uv11);
+                if (s.C00 + s.C11 + s.C10 > 0)
+                    output.AddTriangle(material, index, c00, c11, c10, Normal(c00, c11, c10), uv00, uv11, uv10);
             }
             else
             {
-                output.AddTriangle(material, index, c01, c11, c10, Normal(c01, c11, c10), uv01, uv11, uv10);
-                output.AddTriangle(material, index, c01, c10, c00, Normal(c01, c10, c00), uv01, uv10, uv00);
+                if (s.C01 + s.C11 + s.C10 > 0)
+                    output.AddTriangle(material, index, c01, c11, c10, Normal(c01, c11, c10), uv01, uv11, uv10);
+                if (s.C01 + s.C10 + s.C00 > 0)
+                    output.AddTriangle(material, index, c01, c10, c00, Normal(c01, c10, c00), uv01, uv10, uv00);
             }
         }
 
@@ -156,17 +163,21 @@ namespace Emberhold.World.Meshing
 
             if (alongMain)
             {
-                output.AddTriangle(material, index, c00, c01, c11,
-                    N(0, 0, s.C00, fa), N(0, 1, s.C01, fa), N(1, 1, s.C11, fa), uv00, uv01, uv11);
-                output.AddTriangle(material, index, c00, c11, c10,
-                    N(0, 0, s.C00, fb), N(1, 1, s.C11, fb), N(1, 0, s.C10, fb), uv00, uv11, uv10);
+                if (s.C00 + s.C01 + s.C11 > 0)
+                    output.AddTriangle(material, index, c00, c01, c11,
+                        N(0, 0, s.C00, fa), N(0, 1, s.C01, fa), N(1, 1, s.C11, fa), uv00, uv01, uv11);
+                if (s.C00 + s.C11 + s.C10 > 0)
+                    output.AddTriangle(material, index, c00, c11, c10,
+                        N(0, 0, s.C00, fb), N(1, 1, s.C11, fb), N(1, 0, s.C10, fb), uv00, uv11, uv10);
             }
             else
             {
-                output.AddTriangle(material, index, c01, c11, c10,
-                    N(0, 1, s.C01, fa), N(1, 1, s.C11, fa), N(1, 0, s.C10, fa), uv01, uv11, uv10);
-                output.AddTriangle(material, index, c01, c10, c00,
-                    N(0, 1, s.C01, fb), N(1, 0, s.C10, fb), N(0, 0, s.C00, fb), uv01, uv10, uv00);
+                if (s.C01 + s.C11 + s.C10 > 0)
+                    output.AddTriangle(material, index, c01, c11, c10,
+                        N(0, 1, s.C01, fa), N(1, 1, s.C11, fa), N(1, 0, s.C10, fa), uv01, uv11, uv10);
+                if (s.C01 + s.C10 + s.C00 > 0)
+                    output.AddTriangle(material, index, c01, c10, c00,
+                        N(0, 1, s.C01, fb), N(1, 0, s.C10, fb), N(0, 0, s.C00, fb), uv01, uv10, uv00);
             }
         }
 
@@ -259,12 +270,39 @@ namespace Emberhold.World.Meshing
             _ => new Vector2(p.x + v.x, p.y + v.y),
         };
 
-        private static void AddBottom(ChunkMeshData output, byte material, int index, Vector3 p)
+        /// <summary>
+        /// Низ блока — только под той частью верха, у которой есть объём: у внешнего угла ската половина
+        /// верха лежит на полу ячейки, и низ под ней лёг бы на землю внизу своей текстурой.
+        /// </summary>
+        private static void AddBottom(ChunkMeshData output, byte material, int index, Vector3 p, BlockShape s)
         {
-            output.AddQuad(material, index,
-                p, p + new Vector3(1, 0, 0), p + new Vector3(1, 0, 1), p + new Vector3(0, 0, 1),
-                Vector3.down,
-                new Vector2(p.x, p.z), new Vector2(p.x + 1, p.z), new Vector2(p.x + 1, p.z + 1), new Vector2(p.x, p.z + 1));
+            var b00 = p;
+            var b10 = p + new Vector3(1, 0, 0);
+            var b01 = p + new Vector3(0, 0, 1);
+            var b11 = p + new Vector3(1, 0, 1);
+            var uv00 = new Vector2(p.x, p.z);
+            var uv10 = new Vector2(p.x + 1, p.z);
+            var uv01 = new Vector2(p.x, p.z + 1);
+            var uv11 = new Vector2(p.x + 1, p.z + 1);
+
+            if (s.C00 + s.C11 == s.C10 + s.C01)
+            {
+                output.AddQuad(material, index, b00, b10, b11, b01, Vector3.down, uv00, uv10, uv11, uv01);
+            }
+            else if (Mathf.Abs(s.C00 - s.C11) <= Mathf.Abs(s.C10 - s.C01))
+            {
+                if (s.C00 + s.C01 + s.C11 > 0)
+                    output.AddTriangle(material, index, b00, b11, b01, Vector3.down, uv00, uv11, uv01);
+                if (s.C00 + s.C11 + s.C10 > 0)
+                    output.AddTriangle(material, index, b00, b10, b11, Vector3.down, uv00, uv10, uv11);
+            }
+            else
+            {
+                if (s.C01 + s.C11 + s.C10 > 0)
+                    output.AddTriangle(material, index, b01, b10, b11, Vector3.down, uv01, uv10, uv11);
+                if (s.C01 + s.C10 + s.C00 > 0)
+                    output.AddTriangle(material, index, b01, b00, b10, Vector3.down, uv01, uv00, uv10);
+            }
         }
 
         /// <summary>

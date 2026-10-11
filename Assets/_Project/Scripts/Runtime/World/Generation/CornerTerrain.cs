@@ -380,10 +380,14 @@ namespace Emberhold.World.Generation
             var surface = new BlockShape(columns[x, z, 0] - floor, columns[x, z, 1] - floor,
                 columns[x, z, 2] - floor, columns[x, z, 3] - floor);
 
+            // У внешнего угла ската половина пола открыта, и в ней виден верх блока ниже — пусть это тоже трава.
+            var grassBelow = !surface.IsEmpty && !surface.CoversFloor ? 1 : 0;
             for (var y = 0; y < topY; y++)
             {
                 var depth = topY - y;
-                var material = depth <= dirtDepth ? BlockMaterials.Dirt : BlockMaterials.Stone;
+                var material = depth <= grassBelow ? BlockMaterials.Grass
+                    : depth <= dirtDepth + grassBelow ? BlockMaterials.Dirt
+                    : BlockMaterials.Stone;
                 world.SetBlock(new Vector3Int(x, y, z), Block.Full(material));
             }
             // Скругление может опустить углы до пола слоя; совсем пустым блок поверхности не оставляем.

@@ -62,6 +62,27 @@ namespace Emberhold.World.Voxels
         public bool IsFull => IsFlat && C00 == MaxHeight;
         public bool IsEmpty => !IsCatalog && C00 == 0 && C10 == 0 && C01 == 0 && C11 == 0;
 
+        /// <summary>
+        /// Закрывает ли форма весь пол ячейки. Нет — если у простой формы половина верха лежит на полу
+        /// (внешний угол ската): там у формы нет объёма, и верх блока под ней должен быть виден.
+        /// Половины верха — те же, что у меша: диагональ между углами с меньшим перепадом.
+        /// </summary>
+        public bool CoversFloor
+        {
+            get
+            {
+                if (IsCatalog)
+                    return true;
+                if (IsEmpty)
+                    return false;
+                if (C00 + C11 == C10 + C01)
+                    return true;
+                return Math.Abs(C00 - C11) <= Math.Abs(C10 - C01)
+                    ? C00 + C01 + C11 > 0 && C00 + C11 + C10 > 0
+                    : C01 + C11 + C10 > 0 && C01 + C10 + C00 > 0;
+            }
+        }
+
         /// <summary>Наибольшая высота формы, 0..16.</summary>
         public int Top => IsCatalog ? BlockForms.Top(Form) : Math.Max(Math.Max(C00, C10), Math.Max(C01, C11));
 

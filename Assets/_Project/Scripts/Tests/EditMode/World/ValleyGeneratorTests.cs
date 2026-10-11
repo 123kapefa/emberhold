@@ -86,12 +86,15 @@ namespace Emberhold.Tests.EditMode.World
                 var height = ColumnHeight(world, x, z);
                 Assert.That(height, Is.GreaterThan(0));
                 var topY = (height - 1) / BlockShape.MaxHeight;
-                Assert.That(world.GetBlock(new Vector3Int(x, topY, z)).Material, Is.EqualTo(BlockMaterials.Grass));
+                var surface = world.GetBlock(new Vector3Int(x, topY, z));
+                Assert.That(surface.Material, Is.EqualTo(BlockMaterials.Grass));
+                // Под внешним углом ската пол наполовину открыт, поэтому блок под ним тоже трава.
+                var grassBelow = surface.Shape.CoversFloor ? 0 : 1;
                 for (var y = 0; y < topY; y++)
                 {
                     var block = world.GetBlock(new Vector3Int(x, y, z));
                     Assert.That(block.Shape.IsFull, Is.True, $"Под поверхностью неполный блок {x},{y},{z}");
-                    Assert.That(block.Material, Is.Not.EqualTo(BlockMaterials.Grass));
+                    Assert.That(block.Material == BlockMaterials.Grass, Is.EqualTo(topY - y <= grassBelow), $"{x},{y},{z}");
                 }
             }
         }
