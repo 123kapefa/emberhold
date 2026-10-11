@@ -24,11 +24,11 @@ MonoBehaviour:
     NoiseAmplitude: 6
     HeightStep: 4
     TerraceHeight: 6
-    TerraceSlope: 0.75
-    CliffAmount: 0.35
-    CliffNoiseScale: 20
+    TerraceSlope: 0.3
+    CliffAmount: 0.45
+    CliffNoiseScale: 16
     CliffEdgeRounding: 0
     CliffFootRounding: 4
-    CapDepth: 1
+    CapDepth: 2
     CapWidth: 6
     DirtDepth: 1

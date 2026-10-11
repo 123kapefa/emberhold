@@ -33,18 +33,33 @@ namespace Emberhold.World.Generation
 
             // Высоты в углах: точка (x, z) — общий угол четырёх столбцов вокруг неё.
             var corners = new int[size.x + 1, size.z + 1];
+            var cliffs = new bool[size.x + 1, size.z + 1];
             for (var z = 0; z <= size.z; z++)
             for (var x = 0; x <= size.x; x++)
-                corners[x, z] = CornerHeight(p, size, x, z, noiseOffset, meanderPhase, cliffOffset);
-            CornerTerrain.SnapSteepToLevels(corners, Mathf.RoundToInt(Mathf.Max(p.TerraceHeight, 1f) * BlockShape.MaxHeight));
+            {
+                cliffs[x, z] = IsCliff(p, x, z, cliffOffset);
+                corners[x, z] = CornerHeight(p, size, x, z, noiseOffset, meanderPhase, cliffs[x, z]);
+            }
+            // Вне скал крутые места становятся проходимыми склонами, в скалах — чистыми стенами.
+            CornerTerrain.LimitSlopes(corners, cliffs);
+            CornerTerrain.SnapSteepToLevels(corners, Mathf.RoundToInt(Mathf.Max(p.TerraceHeight, 1f) * BlockShape.MaxHeight), cliffs);
+            CornerTerrain.RoundCaps(corners, Mathf.RoundToInt(p.CapDepth * BlockShape.MaxHeight), p.CapWidth, p.HeightStep);
+            // Сдвиги на уровни и купола могли сделать крутыми соседние склоны — возвращаем их к 45°.
+            CornerTerrain.LimitSlopes(corners, cliffs);
             CornerTerrain.SnapToLayers(corners);
-            CornerTerrain.Fill(world, corners, p.DirtDepth, p.CliffEdgeRounding, p.CliffFootRounding,
-                Mathf.RoundToInt(p.CapDepth * BlockShape.MaxHeight), p.CapWidth, p.HeightStep);
+            CornerTerrain.Fill(world, corners, p.DirtDepth, p.CliffEdgeRounding, p.CliffFootRounding);
         }
 
         /// <summary>Высота поверхности в углу сетки в шестнадцатых блока, уже квантованная и в пределах мира.</summary>
+        /// <summary>Разрешена ли в этом углу скала: области по шуму «скалистости», доля — CliffAmount.</summary>
+        private static bool IsCliff(ValleyParameters p, int x, int z, Vector2 cliffOffset)
+        {
+            var cliffScale = Mathf.Max(p.CliffNoiseScale, 1f);
+            return Mathf.PerlinNoise(cliffOffset.x + x / cliffScale, cliffOffset.y + z / cliffScale) < p.CliffAmount;
+        }
+
         private static int CornerHeight(ValleyParameters p, Vector3Int size, int x, int z, Vector2 noiseOffset, float meanderPhase,
-            Vector2 cliffOffset)
+            bool cliff)
         {
             var u = (float)x / size.x;
             var v = (float)z / size.z;
@@ -57,8 +72,6 @@ namespace Emberhold.World.Generation
             var noise = Mathf.PerlinNoise(noiseOffset.x + x / noiseScale, noiseOffset.y + z / noiseScale) * 2f - 1f;
             var blocks = Mathf.Lerp(p.FloorHeight, p.RimHeight, slope) + noise * p.NoiseAmplitude;
 
-            var cliffScale = Mathf.Max(p.CliffNoiseScale, 1f);
-            var cliff = Mathf.PerlinNoise(cliffOffset.x + x / cliffScale, cliffOffset.y + z / cliffScale) < p.CliffAmount;
             blocks = Terrace(blocks, p.TerraceHeight, p.TerraceSlope, cliff);
 
             return CornerTerrain.Quantize(blocks, p.HeightStep, size.y);
@@ -83,7 +96,10 @@ namespace Emberhold.World.Generation
             else
             {
                 var share = Mathf.Clamp(slopeShare, 0.05f, 1f);
-                shaped = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1f - share, 1f, fraction));
+                // Почти прямой склон со слегка скруглёнными концами: у S-кривой середина в полтора раза
+                // круче, и на крутых бортах склоны превращались бы в скалы — уровни не соединялись бы подъёмами.
+                var ramp = Mathf.InverseLerp(1f - share, 1f, fraction);
+                shaped = Mathf.Lerp(ramp, Mathf.SmoothStep(0f, 1f, ramp), 0.3f);
             }
             return (level + shaped) * levelHeight;
         }

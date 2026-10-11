@@ -232,7 +232,8 @@ namespace Emberhold.Tests.EditMode.World
             for (var x = 0; x <= 16; x++)
                 corners[x, z] = x <= 8 ? 96 : 32;
 
-            CornerTerrain.Fill(world, corners, dirtDepth: 1, capDepth: 16, capWidth: 6f);
+            CornerTerrain.RoundCaps(corners, capDepth: 16, capWidth: 6f, heightStep: 1);
+            CornerTerrain.Fill(world, corners, dirtDepth: 1);
 
             // У кромки (x = 9) шапка опущена на блок, к середине плато поднимается, дальше ровно.
             var edge = CornerHeight(world, 8, 8, 1);
@@ -302,7 +303,8 @@ namespace Emberhold.Tests.EditMode.World
             var middle = ColumnHeight(world, size.x / 2, size.z / 2);
             var edge = ColumnHeight(world, 0, size.z / 2);
 
-            Assert.That(middle, Is.EqualTo(4 * BlockShape.MaxHeight));
+            // Борт маленькой долины круче 45°: склон у подножия поднимается, и дно может стать чуть выше заданного.
+            Assert.That(middle, Is.GreaterThanOrEqualTo(4 * BlockShape.MaxHeight));
             Assert.That(edge, Is.GreaterThan(middle));
         }
 
