@@ -25,6 +25,7 @@ namespace Emberhold.World.Sandbox
                 return;
             }
 
+            worldView.SmoothShading = settings.SmoothShading;
             worldView.Show(SlopeShowcase.Build(settings));
         }
 
@@ -48,6 +49,7 @@ namespace Emberhold.World.Sandbox
             if (!rebuildRequested || worldView.World == null)
                 return;
             rebuildRequested = false;
+            worldView.SmoothShading = settings.SmoothShading;
             SlopeShowcase.Fill(worldView.World, settings.HeightStep, settings.SnapToLayers, settings.Steepness,
                 settings.BaseHeight, settings.DirtDepth, settings.Seed);
         }

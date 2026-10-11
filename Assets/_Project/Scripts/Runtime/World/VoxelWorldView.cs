@@ -20,15 +20,31 @@ namespace Emberhold.World
         [SerializeField] private Material[] blockMaterials;
         [Tooltip("Сдвинуть мир так, чтобы центр долины оказался в начале координат сцены.")]
         [SerializeField] private bool centerOnOrigin = true;
+        [Tooltip("Сглаженное освещение склонов: нормали верха блоков усредняются по соседям.")]
+        [SerializeField] private bool smoothShading;
 
         private readonly Dictionary<Vector3Int, ChunkView> chunkViews = new();
         private readonly Dictionary<Collider, ChunkView> viewsByCollider = new();
         private readonly List<Vector3Int> dirtyBuffer = new();
         private readonly List<Material> sharedMaterials = new();
         private ChunkMeshData meshData;
+        private readonly SurfaceNormals surfaceNormals = new();
         private bool missingMaterialReported;
 
         public VoxelWorld World { get; private set; }
+
+        /// <summary>Сглаженное освещение склонов; при переключении весь мир перестраивается.</summary>
+        public bool SmoothShading
+        {
+            get => smoothShading;
+            set
+            {
+                if (smoothShading == value)
+                    return;
+                smoothShading = value;
+                World?.MarkAllDirty();
+            }
+        }
 
         private void Awake()
         {
@@ -83,7 +99,7 @@ namespace Emberhold.World
 
         private void RebuildChunk(Vector3Int chunk)
         {
-            ChunkMesher.Build(World, chunk, meshData);
+            ChunkMesher.Build(World, chunk, meshData, smoothShading ? surfaceNormals : null);
             if (!chunkViews.TryGetValue(chunk, out var view))
             {
                 if (meshData.IsEmpty)

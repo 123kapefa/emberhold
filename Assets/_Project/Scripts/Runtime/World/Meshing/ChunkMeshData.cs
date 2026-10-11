@@ -81,6 +81,17 @@ namespace Emberhold.World.Meshing
             AddIndices(material, block, start, start + 1, start + 2);
         }
 
+        /// <summary>Треугольник со своей нормалью в каждой вершине (сглаженное освещение).</summary>
+        public void AddTriangle(byte material, int block, Vector3 a, Vector3 b, Vector3 c,
+            Vector3 normalA, Vector3 normalB, Vector3 normalC, Vector2 uvA, Vector2 uvB, Vector2 uvC)
+        {
+            var start = Vertices.Count;
+            AddVertex(a, normalA, uvA);
+            AddVertex(b, normalB, uvB);
+            AddVertex(c, normalC, uvC);
+            AddIndices(material, block, start, start + 1, start + 2);
+        }
+
         private void AddVertex(Vector3 position, Vector3 normal, Vector2 uv)
         {
             Vertices.Add(position);

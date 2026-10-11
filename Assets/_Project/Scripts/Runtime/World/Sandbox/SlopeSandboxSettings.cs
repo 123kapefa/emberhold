@@ -23,6 +23,8 @@ namespace Emberhold.World.Sandbox
         [Tooltip("Толщина земли под травой в блоках, глубже — камень.")]
         [Min(0)]
         [SerializeField] private int dirtDepth = 3;
+        [Tooltip("Сглаженное освещение склонов: без граней между треугольниками.")]
+        [SerializeField] private bool smoothShading = true;
         [Tooltip("Seed шумного рельефа.")]
         [SerializeField] private int seed = 1;
 
@@ -32,6 +34,7 @@ namespace Emberhold.World.Sandbox
         public float BaseHeight => baseHeight;
         public int DirtDepth => dirtDepth;
         public int Seed => seed;
+        public bool SmoothShading => smoothShading;
 
         /// <summary>Вызывается при изменении в инспекторе.</summary>
         public event Action Changed;

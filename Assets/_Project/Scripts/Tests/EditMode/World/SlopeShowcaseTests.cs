@@ -31,8 +31,14 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void Pads_FillTheGrid()
         {
-            Assert.That(SlopeShowcase.Pads, Has.Length.EqualTo(SlopeShowcase.PadsPerRow * SlopeShowcase.PadsPerRow));
-            Assert.That(Build().SizeInBlocks.x, Is.EqualTo(SlopeShowcase.PadsPerRow * SlopeShowcase.PadSize));
+            // Девять маленьких площадок и большая «Подъём» за ними.
+            Assert.That(SlopeShowcase.Pads, Has.Length.EqualTo(SlopeShowcase.PadsPerRow * SlopeShowcase.PadsPerRow + 1));
+            var size = Build().SizeInBlocks;
+            foreach (var pad in SlopeShowcase.Pads)
+            {
+                Assert.That(pad.Area.xMax, Is.LessThanOrEqualTo(size.x), pad.Name);
+                Assert.That(pad.Area.yMax, Is.LessThanOrEqualTo(size.z), pad.Name);
+            }
         }
 
         [Test]
@@ -42,7 +48,9 @@ namespace Emberhold.Tests.EditMode.World
             var world = Build(snap: false);
             var baseSixteenths = (int)(BaseHeight * BlockShape.MaxHeight);
 
-            for (var i = 0; i < world.SizeInBlocks.x; i++)
+            // Только сетка маленьких площадок: у большой края не ровные (там обрывы).
+            var gridSize = SlopeShowcase.PadsPerRow * SlopeShowcase.PadSize;
+            for (var i = 0; i < gridSize; i++)
             for (var pad = 0; pad < SlopeShowcase.PadsPerRow; pad++)
             {
                 var edge = pad * SlopeShowcase.PadSize;
@@ -66,6 +74,21 @@ namespace Emberhold.Tests.EditMode.World
                     differs = Corner(world, (int)c.x + dx, (int)c.y + dz, 0) != baseSixteenths;
                 Assert.That(differs, Is.True, SlopeShowcase.Pads[pad].Name);
             }
+        }
+
+        [Test]
+        public void Rise_ClimbsTwelveBlocksWithLowerCentre()
+        {
+            var world = Build(snap: false);
+            var rise = SlopeShowcase.Pads[^1].Area;
+            var baseSixteenths = (int)(BaseHeight * BlockShape.MaxHeight);
+            var centreX = (int)rise.center.x;
+
+            Assert.That(Corner(world, centreX, rise.yMin + 1, 0), Is.EqualTo(baseSixteenths), "Нижний уровень спереди");
+            Assert.That(Corner(world, centreX, rise.yMax - 1, 2), Is.EqualTo(baseSixteenths + 12 * BlockShape.MaxHeight), "Верхний уровень");
+            // На середине подъёма центр ниже краёв склона.
+            var middle = rise.yMin + rise.height / 2;
+            Assert.That(Corner(world, centreX, middle, 0), Is.LessThan(Corner(world, centreX + 10, middle, 0)));
         }
 
         [TestCase(1)]

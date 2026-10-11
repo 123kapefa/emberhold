@@ -17,4 +17,5 @@ MonoBehaviour:
   steepness: 1
   baseHeight: 4
   dirtDepth: 3
+  smoothShading: 1
   seed: 1

@@ -306,5 +306,47 @@ namespace Emberhold.Tests.EditMode.World
                 }
             }
         }
+
+        [Test]
+        public void SmoothNormals_OnEvenSlope_MatchFaceAndOnFlatPointUp()
+        {
+            // Ровный склон: 4 столбца подряд, каждый поднимается на 4/16 по X.
+            var world = new VoxelWorld(new Vector3Int(1, 1, 1));
+            for (var z = 0; z < 16; z++)
+            for (var x = 0; x < 16; x++)
+            {
+                var h = 4 + x / 4 * 4;
+                var rise = x % 4 == 3 ? 4 : 0;
+                world.SetBlock(new Vector3Int(x, 0, z), new Block(BlockMaterials.Grass, new BlockShape(h, h + rise, h, h + rise)));
+            }
+
+            var mesh = new ChunkMeshData();
+            ChunkMesher.Build(world, Vector3Int.zero, mesh, new SurfaceNormals());
+
+            // Внутри площадки нормали верха наклонены вдоль −X только там, где есть подъём рядом, и все смотрят вверх.
+            var tops = mesh.Normals.Where(n => n.y > 0.1f).ToList();
+            Assert.That(tops, Is.Not.Empty);
+            Assert.That(tops.Select(n => n.magnitude), Has.All.EqualTo(1f).Within(1e-4f));
+            Assert.That(tops.Select(n => n.x), Has.All.LessThanOrEqualTo(1e-4f));
+            Assert.That(tops.Select(n => Mathf.Abs(n.z)), Has.All.LessThan(1e-4f));
+            Assert.That(tops.Count(n => n.x < -1e-3f), Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void SmoothNormals_SharedCornerGetsSameNormalInBothBlocks()
+        {
+            var world = WorldWith(
+                (new Vector3Int(5, 5, 5), Slope(8, 12, 8, 12)),
+                (new Vector3Int(6, 5, 5), Slope(12, 16, 12, 16)));
+
+            var mesh = new ChunkMeshData();
+            ChunkMesher.Build(world, Vector3Int.zero, mesh, new SurfaceNormals());
+
+            // Угол (6, 5.75, 5) общий у двух блоков: нормаль в нём одна и та же.
+            var shared = Enumerable.Range(0, mesh.Vertices.Count)
+                .Where(i => (mesh.Vertices[i] - new Vector3(6f, 5.75f, 5f)).sqrMagnitude < 1e-6f && mesh.Normals[i].y > 0.1f)
+                .Select(i => mesh.Normals[i]).Distinct().ToList();
+            Assert.That(shared, Has.Count.EqualTo(1));
+        }
     }
 }

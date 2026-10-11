@@ -6,52 +6,62 @@ using UnityEngine;
 namespace Emberhold.World.Sandbox
 {
     /// <summary>
-    /// Макеты склонов для песочницы: сетка 3 × 3 площадок, каждая — один чанк 16 × 16.
-    /// Рельеф площадки задан функцией высоты в блоках от координат угла (u, v) внутри площадки;
-    /// дальше — тот же путь, что у долины: квантование, выравнивание по слоям, заполнение столбцов.
+    /// Макеты склонов для песочницы. Спереди сетка 3 × 3 маленьких площадок (по чанку 16 × 16),
+    /// за ними большая площадка «Подъём» 48 × 32. Рельеф площадки задан функцией высоты в блоках
+    /// от координат угла (u, v) внутри площадки; дальше — тот же путь, что у долины: квантование,
+    /// выравнивание по слоям, заполнение столбцов.
     /// </summary>
     public static class SlopeShowcase
     {
         public const int PadsPerRow = 3;
         public const int PadSize = ChunkData.Size;
-        public static readonly Vector3Int SizeInChunks = new(PadsPerRow, 2, PadsPerRow);
+        public static readonly Vector3Int SizeInChunks = new(PadsPerRow, 2, PadsPerRow + 2);
 
         /// <summary>
-        /// Площадки по порядку: слева направо, затем следующий ряд. Рельеф каждой сходит на нет к краям,
-        /// чтобы на стыке площадок не было обрывов, которые путались бы с тем, что мы оцениваем.
+        /// Площадки: сначала маленькие слева направо и по рядам, затем большая. Рельеф маленьких сходит
+        /// на нет к краям, чтобы на стыках не было обрывов, которые путались бы с тем, что мы оцениваем.
         /// </summary>
         public static readonly Pad[] Pads =
         {
-            new("Пологие склоны 1:4", (u, v, s) => Mesa(u, v, 1.5f * s, 0.25f * s)),
-            new("Склоны 1:1 (45°)", (u, v, s) => Mesa(u, v, 4f * s, 1f * s)),
-            new("Крутые склоны 2:1", (u, v, s) => Mesa(u, v, 5f * s, 2f * s)),
-            new("Ромб: склоны по диагонали", (u, v, s) =>
+            Small(0, "Пологие склоны 1:4", (u, v, s) => Mesa(u, v, 1.5f * s, 0.25f * s)),
+            Small(1, "Склоны 1:1 (45°)", (u, v, s) => Mesa(u, v, 4f * s, 1f * s)),
+            Small(2, "Крутые склоны 2:1", (u, v, s) => Mesa(u, v, 5f * s, 2f * s)),
+            Small(3, "Ромб: склоны по диагонали", (u, v, s) =>
                 Mathf.Clamp(0.75f * s * (7f - Mathf.Abs(u - 8f) - Mathf.Abs(v - 8f)), 0f, 3f * s)),
-            new("Холм", (u, v, s) => 6f * s * Mathf.Exp(-Dist2(u, v) / 14f) * Window(u, v)),
-            new("Котлован", (u, v, s) => -3f * s * Mathf.Clamp01((6f - Mathf.Sqrt(Dist2(u, v))) / 3f)),
-            new("Терраса: внешние и внутренний угол", (u, v, s) => Mathf.Min(
+            Small(4, "Холм", (u, v, s) => 6f * s * Mathf.Exp(-Dist2(u, v) / 14f) * Window(u, v)),
+            Small(5, "Котлован", (u, v, s) => -3f * s * Mathf.Clamp01((6f - Mathf.Sqrt(Dist2(u, v))) / 3f)),
+            Small(6, "Терраса: внешние и внутренний угол", (u, v, s) => Mathf.Min(
                 Mesa(u, v, 3f * s, s),
                 Mathf.Clamp(Mathf.Max(8f - u, 8f - v) * s, 0f, 3f * s))),
-            new("Седло", (u, v, s) => (2f + ((u - 8f) * (u - 8f) - (v - 8f) * (v - 8f)) / 24f) * s * Window(u, v)),
-            new("Шумный рельеф", null),
+            Small(7, "Седло", (u, v, s) => (2f + ((u - 8f) * (u - 8f) - (v - 8f) * (v - 8f)) / 24f) * s * Window(u, v)),
+            Small(8, "Шумный рельеф", null),
+            new("Подъём между уровнями: 12 блоков, ~25°, вогнутый центр",
+                new RectInt(0, PadsPerRow * PadSize, PadsPerRow * PadSize, 2 * PadSize), Rise, flatBorder: false),
         };
 
         public readonly struct Pad
         {
             public readonly string Name;
-            /// <summary>Высота над ровной землёй в блоках; s — множитель крутизны. null — шум.</summary>
+            /// <summary>Где площадка лежит в мире, в блоках по X и Z.</summary>
+            public readonly RectInt Area;
+            /// <summary>Высота над ровной землёй в блоках от (u, v) внутри площадки; s — множитель крутизны. null — шум.</summary>
             public readonly Func<float, float, float, float> Height;
+            /// <summary>Ближний и левый края площадки — ровная земля (стыкуются с соседями без обрыва).</summary>
+            public readonly bool FlatBorder;
 
-            public Pad(string name, Func<float, float, float, float> height)
+            public Pad(string name, RectInt area, Func<float, float, float, float> height, bool flatBorder)
             {
                 Name = name;
+                Area = area;
                 Height = height;
+                FlatBorder = flatBorder;
             }
+
+            public Vector2 Center => Area.center;
         }
 
         /// <summary>Центр площадки в блоках мира (по X и Z).</summary>
-        public static Vector2 PadCenter(int pad) =>
-            new((pad % PadsPerRow + 0.5f) * PadSize, (pad / PadsPerRow + 0.5f) * PadSize);
+        public static Vector2 PadCenter(int pad) => Pads[pad].Center;
 
         public static VoxelWorld Build(SlopeSandboxSettings settings)
         {
@@ -73,17 +83,14 @@ namespace Emberhold.World.Sandbox
             for (var z = 0; z <= size.z; z++)
             for (var x = 0; x <= size.x; x++)
             {
-                // Угол на границе площадок относим к той, что левее/ниже, кроме самого края мира.
-                var padX = Mathf.Min(x / PadSize, PadsPerRow - 1);
-                var padZ = Mathf.Min(z / PadSize, PadsPerRow - 1);
-                var u = x - padX * PadSize;
-                var v = z - padZ * PadSize;
-                var pad = Pads[padZ * PadsPerRow + padX];
+                var pad = Pads[PadAt(x, z)];
+                var u = x - pad.Area.x;
+                var v = z - pad.Area.y;
                 var relief = pad.Height != null
                     ? pad.Height(u, v, steepness)
                     : Mathf.PerlinNoise(noiseOffset.x + x / 5f, noiseOffset.y + z / 5f) * 4f * steepness * Window(u, v);
-                // Край площадки — ровная земля: угол на границе общий с соседней площадкой.
-                if (u == 0 || v == 0)
+                // Угол на границе общий с соседней площадкой: держим его на уровне ровной земли.
+                if (pad.FlatBorder && (u == 0 || v == 0))
                     relief = 0f;
                 corners[x, z] = CornerTerrain.Quantize(baseHeight + relief, heightStep, size.y);
             }
@@ -91,6 +98,50 @@ namespace Emberhold.World.Sandbox
             if (snapToLayers)
                 CornerTerrain.SnapToLayers(corners);
             CornerTerrain.Fill(world, corners, dirtDepth);
+        }
+
+        /// <summary>Площадка, которой принадлежит угол: та, что на нём начинается; на дальних краях мира — та, где он лежит.</summary>
+        private static int PadAt(int x, int z)
+        {
+            var fallback = 0;
+            for (var i = 0; i < Pads.Length; i++)
+            {
+                var a = Pads[i].Area;
+                if (x < a.xMin || x > a.xMax || z < a.yMin || z > a.yMax)
+                    continue;
+                if (x < a.xMax && z < a.yMax)
+                    return i;
+                fallback = i;
+            }
+            return fallback;
+        }
+
+        private static Pad Small(int index, string name, Func<float, float, float, float> height) =>
+            new(name, new RectInt(index % PadsPerRow * PadSize, index / PadsPerRow * PadSize, PadSize, PadSize),
+                height, flatBorder: true);
+
+        /// <summary>
+        /// Подъём как на референсе: спереди нижний уровень, сзади и по бокам верхний (на 12 блоков выше),
+        /// между ними широкий травяной склон. Склон по длине — плавная S-кривая (в среднем ~25°),
+        /// поперёк вогнутый: середина ниже краёв, края поднимаются к обрывам по бокам.
+        /// </summary>
+        private static float Rise(float u, float v, float s)
+        {
+            const float width = PadsPerRow * PadSize;
+            const float lowStrip = 4f;     // ровный нижний уровень спереди
+            const float rampEnd = 30f;     // где склон выходит на верхний уровень
+            const float halfCorridor = 13f;
+            var high = 12f * s;
+
+            if (v < lowStrip)
+                return 0f;
+            var across = (u - width * 0.5f) / halfCorridor;
+            if (Mathf.Abs(across) > 1f)
+                return high;
+
+            var along = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(lowStrip, rampEnd, v));
+            var dish = 3f * s * across * across;
+            return Mathf.Min(high, along * high + dish);
         }
 
         private static float Dist2(float u, float v) => (u - 8f) * (u - 8f) + (v - 8f) * (v - 8f);

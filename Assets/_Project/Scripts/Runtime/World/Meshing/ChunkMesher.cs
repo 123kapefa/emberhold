@@ -20,11 +20,13 @@ namespace Emberhold.World.Meshing
             Back,
         }
 
-        public static void Build(VoxelWorld world, Vector3Int chunk, ChunkMeshData output)
+        /// <param name="smoothNormals">Если задано — верх блоков получает сглаженные нормали (плавное освещение склонов).</param>
+        public static void Build(VoxelWorld world, Vector3Int chunk, ChunkMeshData output, SurfaceNormals smoothNormals = null)
         {
             output.Clear();
             var data = world.GetChunk(chunk);
             var origin = chunk * ChunkData.Size;
+            smoothNormals?.Prepare(world, chunk);
 
             for (var y = 0; y < ChunkData.Size; y++)
             for (var z = 0; z < ChunkData.Size; z++)
@@ -41,7 +43,7 @@ namespace Emberhold.World.Meshing
 
                 // Верх закрыт, только если блок полный и сверху стоит другой блок (он всегда опирается на пол ячейки).
                 if (!s.IsFull || Neighbor(world, data, origin, x, y + 1, z).IsAir)
-                    AddTop(output, material, index, p, s);
+                    AddTop(output, material, index, p, s, smoothNormals, (origin.y + y) * BlockShape.MaxHeight);
 
                 // Низ закрыт только полным блоком снизу; у воздуха форма пустая.
                 if (!Neighbor(world, data, origin, x, y - 1, z).Shape.IsFull)
@@ -78,8 +80,15 @@ namespace Emberhold.World.Meshing
         /// Диагональ проводим между углами с меньшей разницей высот: тогда у склона «три угла вверху,
         /// один внизу» получается ровная половина и наклонная половина, а не излом поперёк склона.
         /// </summary>
-        private static void AddTop(ChunkMeshData output, byte material, int index, Vector3 p, BlockShape s)
+        private static void AddTop(ChunkMeshData output, byte material, int index, Vector3 p, BlockShape s,
+            SurfaceNormals smooth, int floorHeight)
         {
+            if (smooth != null)
+            {
+                AddSmoothTop(output, material, index, p, s, smooth, floorHeight);
+                return;
+            }
+
             var c00 = p + new Vector3(0, s.C00 * Sixteenth, 0);
             var c10 = p + new Vector3(1, s.C10 * Sixteenth, 0);
             var c01 = p + new Vector3(0, s.C01 * Sixteenth, 1);
@@ -102,6 +111,55 @@ namespace Emberhold.World.Meshing
             {
                 output.AddTriangle(material, index, c01, c11, c10, Normal(c01, c11, c10), uv01, uv11, uv10);
                 output.AddTriangle(material, index, c01, c10, c00, Normal(c01, c10, c00), uv01, uv10, uv00);
+            }
+        }
+
+        /// <summary>То же разбиение, что у <see cref="AddTop"/>, но нормали в вершинах сглажены.</summary>
+        private static void AddSmoothTop(ChunkMeshData output, byte material, int index, Vector3 p, BlockShape s,
+            SurfaceNormals smooth, int floorHeight)
+        {
+            var x = (int)p.x;
+            var z = (int)p.z;
+            var c00 = p + new Vector3(0, s.C00 * Sixteenth, 0);
+            var c10 = p + new Vector3(1, s.C10 * Sixteenth, 0);
+            var c01 = p + new Vector3(0, s.C01 * Sixteenth, 1);
+            var c11 = p + new Vector3(1, s.C11 * Sixteenth, 1);
+            var uv00 = new Vector2(p.x, p.z);
+            var uv10 = new Vector2(p.x + 1, p.z);
+            var uv01 = new Vector2(p.x, p.z + 1);
+            var uv11 = new Vector2(p.x + 1, p.z + 1);
+
+            // Нормаль граней на случай, когда вершина не на поверхности (её сгладить не по чему).
+            var flat = s.C00 + s.C11 == s.C10 + s.C01;
+            var alongMain = Mathf.Abs(s.C00 - s.C11) <= Mathf.Abs(s.C10 - s.C01);
+            Vector3 fa, fb;
+            if (alongMain)
+            {
+                fa = Normal(c00, c01, c11);
+                fb = flat ? fa : Normal(c00, c11, c10);
+            }
+            else
+            {
+                fa = Normal(c01, c11, c10);
+                fb = flat ? fa : Normal(c01, c10, c00);
+            }
+
+            Vector3 N(int cx, int cz, int corner, Vector3 fallback) =>
+                smooth.At(x + cx, z + cz, floorHeight + corner, fallback);
+
+            if (alongMain)
+            {
+                output.AddTriangle(material, index, c00, c01, c11,
+                    N(0, 0, s.C00, fa), N(0, 1, s.C01, fa), N(1, 1, s.C11, fa), uv00, uv01, uv11);
+                output.AddTriangle(material, index, c00, c11, c10,
+                    N(0, 0, s.C00, fb), N(1, 1, s.C11, fb), N(1, 0, s.C10, fb), uv00, uv11, uv10);
+            }
+            else
+            {
+                output.AddTriangle(material, index, c01, c11, c10,
+                    N(0, 1, s.C01, fa), N(1, 1, s.C11, fa), N(1, 0, s.C10, fa), uv01, uv11, uv10);
+                output.AddTriangle(material, index, c01, c10, c00,
+                    N(0, 1, s.C01, fb), N(1, 0, s.C10, fb), N(0, 0, s.C00, fb), uv01, uv10, uv00);
             }
         }
 
