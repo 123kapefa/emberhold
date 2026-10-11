@@ -1,0 +1,14 @@
+{
+    "name": "Emberhold.Gameplay",
+    "rootNamespace": "Emberhold",
+    "references": ["Emberhold.World", "Emberhold.Core"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

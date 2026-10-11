@@ -1,0 +1,14 @@
+{
+    "name": "Emberhold.CameraRig",
+    "rootNamespace": "Emberhold.CameraRig",
+    "references": ["Emberhold.Gameplay", "Emberhold.World", "Emberhold.Core"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
