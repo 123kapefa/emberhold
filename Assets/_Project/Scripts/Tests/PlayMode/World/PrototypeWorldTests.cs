@@ -76,7 +76,9 @@ namespace Emberhold.Tests.PlayMode.World
                 while (y >= 0 && world.GetBlock(new Vector3Int(x, y, z)).IsAir)
                     y--;
                 var block = new Vector3Int(x, y, z);
-                if (y < 0 || world.GetBlock(block).Shape.IsFlat)
+                // Только склоны, закрывающие весь пол: у внешнего угла половина ячейки пустая,
+                // и луч в её середину честно попадает в блок ниже.
+                if (y < 0 || world.GetBlock(block).Shape.IsFlat || !world.GetBlock(block).Shape.CoversFloor)
                     continue;
 
                 var top = view.transform.TransformPoint(new Vector3(x + 0.5f, size.y + 1, z + 0.5f));

@@ -272,7 +272,8 @@ namespace Emberhold.Tests.EditMode.World
 
             var mesh = Mesh(world, Vector3Int.zero);
 
-            Assert.That(mesh.Normals.Count(n => n == Vector3.down), Is.EqualTo(8), "Низ склона и низ блока над ним");
+            // Низ склона — два треугольника (6 вершин) под его разбиением, низ блока над ним — четырёхугольник.
+            Assert.That(mesh.Normals.Count(n => n == Vector3.down), Is.EqualTo(10), "Низ склона и низ блока над ним");
             // Ровная половина склона и верх блока смотрят вверх, вторая половина склона наклонная.
             Assert.That(TopNormals(mesh), Has.Length.EqualTo(2));
         }
@@ -347,6 +348,52 @@ namespace Emberhold.Tests.EditMode.World
                 .Where(i => (mesh.Vertices[i] - new Vector3(6f, 5.75f, 5f)).sqrMagnitude < 1e-6f && mesh.Normals[i].y > 0.1f)
                 .Select(i => mesh.Normals[i]).Distinct().ToList();
             Assert.That(shared, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void OuterCorner_DoesNotDrawFlatHalfOnTheFloor()
+        {
+            // Внешний угол ската: высокий только угол (1, 1). Половина с нулевыми углами — без объёма.
+            var world = WorldWith((new Vector3Int(5, 5, 5), Slope(0, 0, 0, 16)));
+
+            var mesh = Mesh(world, Vector3Int.zero);
+
+            // Ни одной грани на полу ячейки, кроме низа под настоящим объёмом: один треугольник снизу.
+            var flatOnFloor = 0;
+            foreach (var tris in mesh.Triangles)
+                for (var i = 0; i < tris.Count; i += 3)
+                    if (mesh.Normals[tris[i]].y > 0.5f && Enumerable.Range(0, 3).All(k => Mathf.Abs(mesh.Vertices[tris[i + k]].y - 5f) < Eps))
+                        flatOnFloor++;
+            Assert.That(flatOnFloor, Is.Zero, "Плоская половина верха на полу");
+            Assert.That(mesh.Normals.Count(n => n == Vector3.down), Is.EqualTo(3), "Низ — один треугольник под скатом");
+            foreach (var tris in mesh.Triangles)
+            {
+                for (var i = 0; i < tris.Count; i += 3)
+                {
+                    var a = mesh.Vertices[tris[i]];
+                    var b = mesh.Vertices[tris[i + 1]];
+                    var c = mesh.Vertices[tris[i + 2]];
+                    var faceNormal = Vector3.Cross(b - a, c - a).normalized;
+                    Assert.That(Vector3.Dot(faceNormal, mesh.Normals[tris[i]]), Is.EqualTo(1f).Within(1e-4f));
+                }
+            }
+        }
+
+        [Test]
+        public void FullBlockUnderOuterCorner_KeepsItsTop()
+        {
+            var world = WorldWith(
+                (new Vector3Int(5, 5, 5), Block.Full(BlockMaterials.Stone)),
+                (new Vector3Int(5, 6, 5), Slope(0, 0, 0, 16)));
+
+            var mesh = Mesh(world, Vector3Int.zero);
+
+            // Верх камня нужен: под открытой половиной внешнего угла его видно.
+            var stoneTop = mesh.Triangles[BlockMaterials.Stone].Count(i => mesh.Normals[i] == Vector3.up);
+            Assert.That(stoneTop, Is.EqualTo(6));
+            Assert.That(Slope(0, 0, 0, 16).Shape.CoversFloor, Is.False);
+            Assert.That(Slope(0, 16, 16, 16).Shape.CoversFloor, Is.True);
+            Assert.That(Slope(0, 0, 16, 16).Shape.CoversFloor, Is.True);
         }
     }
 }

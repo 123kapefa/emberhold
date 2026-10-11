@@ -14,6 +14,12 @@ namespace Emberhold.Gameplay.Building
         [Range(1, BlockCrackMesh.MaxStages)]
         [SerializeField] private int crackStages = 3;
 
+        [Header("Стройка")]
+        [Tooltip("Насколько пикселей может сдвинуться мышь между нажатием и отпусканием ПКМ, чтобы это считалось " +
+                 "щелчком (поворот блока), а не вращением камеры.")]
+        [Range(0f, 40f)]
+        [SerializeField] private float rotateClickMaxDrag = 6f;
+
         [Header("Луч")]
         [Range(10f, 1000f)]
         [SerializeField] private float maxRayDistance = 500f;
@@ -22,6 +28,7 @@ namespace Emberhold.Gameplay.Building
         [Header("Подсветка")]
         [SerializeField] private Color digColor = new(1f, 0.75f, 0.2f);
         [SerializeField] private Color removeColor = new(1f, 0.25f, 0.2f);
+        [SerializeField] private Color buildColor = new(0.35f, 0.9f, 0.45f);
         [Tooltip("Рамка блока вне света: здесь править нельзя.")]
         [SerializeField] private Color blockedColor = new(0.45f, 0.55f, 0.7f);
         [Tooltip("Сколько секунд показывать подсказку после клика вне света.")]
@@ -35,10 +42,12 @@ namespace Emberhold.Gameplay.Building
 
         public float HitDamage => hitDamage;
         public int CrackStages => crackStages;
+        public float RotateClickMaxDrag => rotateClickMaxDrag;
         public float MaxRayDistance => maxRayDistance;
         public LayerMask GroundMask => groundMask;
         public Color DigColor => digColor;
         public Color RemoveColor => removeColor;
+        public Color BuildColor => buildColor;
         public Color BlockedColor => blockedColor;
         public float BlockedMessageSeconds => blockedMessageSeconds;
         public float OutlinePadding => outlinePadding;

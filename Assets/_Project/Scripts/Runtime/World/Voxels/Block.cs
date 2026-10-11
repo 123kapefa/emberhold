@@ -34,7 +34,7 @@ namespace Emberhold.World.Voxels
 
         public bool Equals(Block other) => Material == other.Material && Shape == other.Shape;
         public override bool Equals(object obj) => obj is Block other && Equals(other);
-        public override int GetHashCode() => Material << 20 ^ Shape.GetHashCode();
+        public override int GetHashCode() => Material << 25 ^ Shape.GetHashCode();
         public static bool operator ==(Block a, Block b) => a.Equals(b);
         public static bool operator !=(Block a, Block b) => !a.Equals(b);
 

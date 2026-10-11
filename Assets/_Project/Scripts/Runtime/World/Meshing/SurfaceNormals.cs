@@ -72,6 +72,9 @@ namespace Emberhold.World.Meshing
                 var block = world.GetBlock(new Vector3Int(x, y, z));
                 if (block.IsAir)
                     continue;
+                // У фигурной формы (лестница) углы — не поверхность, сглаживать по ней нечего.
+                if (block.Shape.IsCatalog)
+                    return NoSurface;
                 var s = block.Shape;
                 var corner = cornerX == 0 ? (cornerZ == 0 ? s.C00 : s.C01) : (cornerZ == 0 ? s.C10 : s.C11);
                 return y * BlockShape.MaxHeight + corner;

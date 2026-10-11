@@ -12,8 +12,11 @@ namespace Emberhold.Tests.EditMode.World
         private static readonly Vector3Int DefaultSize = new(8, 3, 8);
         private static readonly Vector3Int SmallSize = new(2, 2, 2);
 
-        /// <summary>Отпечаток всех блоков мира: материал и углы формы.</summary>
-        private const int DefaultValleyHash = 1566940970;
+        /// <summary>
+        /// Отпечаток всех блоков мира: материал и углы формы. Обновлён в #20: под внешним углом ската
+        /// блок ниже теперь из материала поверхности (его верх виден в открытой половине).
+        /// </summary>
+        private const int DefaultValleyHash = -2000301201;
 
         /// <summary>Маленькая долина 2×2×2 чанка: дно на 4 блоках, борта на 20.</summary>
         private static TerrainProfileParameters SmallValley()
@@ -98,12 +101,15 @@ namespace Emberhold.Tests.EditMode.World
                 var height = ColumnHeight(world, x, z);
                 Assert.That(height, Is.GreaterThan(0));
                 var topY = (height - 1) / BlockShape.MaxHeight;
-                Assert.That(world.GetBlock(new Vector3Int(x, topY, z)).Material, Is.EqualTo(BlockMaterials.Grass));
+                var surface = world.GetBlock(new Vector3Int(x, topY, z));
+                Assert.That(surface.Material, Is.EqualTo(BlockMaterials.Grass));
+                // Под внешним углом ската пол наполовину открыт, поэтому блок под ним тоже трава.
+                var grassBelow = surface.Shape.CoversFloor ? 0 : 1;
                 for (var y = 0; y < topY; y++)
                 {
                     var block = world.GetBlock(new Vector3Int(x, y, z));
                     Assert.That(block.Shape.IsFull, Is.True, $"Под поверхностью неполный блок {x},{y},{z}");
-                    Assert.That(block.Material, Is.Not.EqualTo(BlockMaterials.Grass));
+                    Assert.That(block.Material == BlockMaterials.Grass, Is.EqualTo(topY - y <= grassBelow), $"{x},{y},{z}");
                 }
             }
         }
@@ -470,10 +476,15 @@ namespace Emberhold.Tests.EditMode.World
             for (var x = 0; x < world.SizeInBlocks.x; x++)
             {
                 var topY = (ColumnHeight(world, x, z) - 1) / BlockShape.MaxHeight;
-                Assert.That(world.GetBlock(new Vector3Int(x, topY, z)).Material, Is.EqualTo(BlockMaterials.Stone));
+                var surface = world.GetBlock(new Vector3Int(x, topY, z));
+                Assert.That(surface.Material, Is.EqualTo(BlockMaterials.Stone));
+                // Под внешним углом ската ещё один блок из материала поверхности.
+                var surfaceBelow = surface.Shape.CoversFloor ? 0 : 1;
                 for (var y = 0; y < topY; y++)
                 {
-                    var expected = topY - y <= 2 ? BlockMaterials.Grass : BlockMaterials.Dirt;
+                    var depth = topY - y;
+                    var expected = depth <= surfaceBelow ? BlockMaterials.Stone
+                        : depth - surfaceBelow <= 2 ? BlockMaterials.Grass : BlockMaterials.Dirt;
                     Assert.That(world.GetBlock(new Vector3Int(x, y, z)).Material, Is.EqualTo(expected), $"{x},{y},{z}");
                 }
             }
