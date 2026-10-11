@@ -5,8 +5,9 @@ using UnityEngine;
 namespace Emberhold.World.Editing
 {
     /// <summary>
-    /// Снятая прочность блоков. Удар снимает ХП; когда снято не меньше прочности материала
-    /// (<see cref="IBlockDurability"/>), блок исчезает целиком, сколько бы он ни был заполнен.
+    /// Снятая прочность блоков. Прочность блока — прочность материала (<see cref="IBlockDurability"/>),
+    /// умноженная на заполнение: блок на половину разбивается вдвое быстрее полного. Удар снимает ХП;
+    /// когда ХП кончились, блок исчезает целиком.
     /// Начатый блок помнит урон: если рабочий ударил дважды и ушёл, следующий продолжит с того же места.
     /// Хранятся только начатые блоки.
     /// </summary>
@@ -32,18 +33,19 @@ namespace Emberhold.World.Editing
         /// <summary>Сколько ХП уже снято с блока.</summary>
         public float Taken(Vector3Int block) => taken.TryGetValue(block, out var value) ? value : 0f;
 
+        /// <summary>Полная прочность блока: прочность материала × заполнение. У воздуха — 0.</summary>
+        public float MaxHitPoints(Block block) =>
+            block.IsAir ? 0f : durability.HitPoints(block.Material) * block.Shape.Fill;
+
         /// <summary>Сколько ХП у блока осталось; у воздуха — 0.</summary>
-        public float Remaining(VoxelWorld world, Vector3Int block)
-        {
-            var current = world.GetBlock(block);
-            return current.IsAir ? 0f : Mathf.Max(0f, durability.HitPoints(current.Material) - Taken(block));
-        }
+        public float Remaining(VoxelWorld world, Vector3Int block) =>
+            Mathf.Max(0f, MaxHitPoints(world.GetBlock(block)) - Taken(block));
 
         /// <summary>Доля разрушения 0..1 — для показа трещин.</summary>
         public float Fraction(VoxelWorld world, Vector3Int block)
         {
-            var current = world.GetBlock(block);
-            return current.IsAir ? 0f : Mathf.Clamp01(Taken(block) / durability.HitPoints(current.Material));
+            var max = MaxHitPoints(world.GetBlock(block));
+            return max <= 0f ? 0f : Mathf.Clamp01(Taken(block) / max);
         }
 
         /// <summary>
@@ -64,7 +66,7 @@ namespace Emberhold.World.Editing
             var value = Taken(block) + damage;
             Version++;
             // Небольшой допуск, чтобы 4 удара по 25 при прочности 100 ломали блок и при ошибках округления.
-            if (value >= durability.HitPoints(current.Material) - 1e-3f)
+            if (value >= MaxHitPoints(current) - 1e-3f)
             {
                 taken.Remove(block);
                 world.SetBlock(block, Block.Air);

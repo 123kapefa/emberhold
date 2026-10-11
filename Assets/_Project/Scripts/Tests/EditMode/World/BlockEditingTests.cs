@@ -71,30 +71,38 @@ namespace Emberhold.Tests.EditMode.World
 
         private static BlockDamage NewDamage() => new(new UniformBlockDurability(100f));
 
-        [Test]
-        public void Hit_PartialBlock_BreaksWholeBlockAfterSameHitsAsFull()
+        [TestCase(16, 4)]
+        [TestCase(8, 2)]
+        [TestCase(6, 2)]   // 37,5 %: 37,5 ХП — нужен второй удар
+        [TestCase(5, 2)]   // 31 %, как «треть»: всё равно два удара
+        [TestCase(4, 1)]
+        [TestCase(1, 1)]
+        public void Hit_HitsNeeded_FollowFill(int height, int expectedHits)
         {
             var world = new VoxelWorld(Vector3Int.one);
-            var partial = Cell + Vector3Int.right;
-            world.SetBlock(Cell, Block.Full(BlockMaterials.Dirt));
-            world.SetBlock(partial, Block.Flat(BlockMaterials.Grass, 12));
+            var block = Block.Flat(BlockMaterials.Dirt, height);
+            world.SetBlock(Cell, block);
             var damage = NewDamage();
 
-            for (var hit = 0; hit < 3; hit++)
+            var hits = 1;
+            while (!damage.Hit(world, Cell, 25f))
             {
-                Assert.That(damage.Hit(world, Cell, 25f), Is.False);
-                Assert.That(damage.Hit(world, partial, 25f), Is.False);
+                // До последнего удара блок не меняется: урон не снимает слои.
+                Assert.That(world.GetBlock(Cell), Is.EqualTo(block));
+                hits++;
             }
-            // До последнего удара блок не меняется: урон не снимает слои.
-            Assert.That(world.GetBlock(Cell), Is.EqualTo(Block.Full(BlockMaterials.Dirt)));
-            Assert.That(world.GetBlock(partial), Is.EqualTo(Block.Flat(BlockMaterials.Grass, 12)));
-            Assert.That(damage.Remaining(world, Cell), Is.EqualTo(25f).Within(1e-4f));
 
-            Assert.That(damage.Hit(world, Cell, 25f), Is.True);
-            Assert.That(damage.Hit(world, partial, 25f), Is.True);
+            Assert.That(hits, Is.EqualTo(expectedHits));
             Assert.That(world.GetBlock(Cell).IsAir, Is.True);
-            Assert.That(world.GetBlock(partial).IsAir, Is.True);
             Assert.That(damage.Count, Is.Zero);
+        }
+
+        [Test]
+        public void MaxHitPoints_Slope_UsesAverageCornerHeight()
+        {
+            var block = new Block(BlockMaterials.Dirt, new BlockShape(16, 16, 0, 0));
+
+            Assert.That(NewDamage().MaxHitPoints(block), Is.EqualTo(50f).Within(1e-4f));
         }
 
         [Test]
