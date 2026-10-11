@@ -86,11 +86,14 @@ namespace Emberhold.Tests.EditMode.World
 
             var entrance = SlopeShowcase.RiseCentre(0f);
             Assert.That(Corner(world, area.x + (int)entrance.x, area.y + 1, 0), Is.EqualTo(baseSixteenths), "Нижний уровень спереди");
-            Assert.That(At(SlopeShowcase.RiseCentre(1f)), Is.EqualTo(baseSixteenths + 12 * BlockShape.MaxHeight), "Выход наверх");
+            var exit = SlopeShowcase.RiseCentre(1f);
+            Assert.That(Corner(world, area.x + (int)exit.x, area.yMax - 1, 2),
+                Is.EqualTo(baseSixteenths + 12 * BlockShape.MaxHeight), "Выход на верхний уровень");
 
-            // Посередине подъёма центр прохода ниже точки ближе к краю (вогнутый поперечный профиль).
+            // Посередине подъёма центр прохода ниже точки ближе к борту на той же высоте по Z
+            // (вогнутый поперечный профиль; высота вдоль склона зависит только от Z).
             var middle = SlopeShowcase.RiseCentre(0.5f);
-            var side = middle + (Vector2)(Quaternion.Euler(0f, 0f, -22.5f) * Vector2.right) * 8f;
+            var side = middle + new Vector2(8f, 0f);
             Assert.That(At(middle), Is.LessThan(At(side)));
         }
 
