@@ -46,6 +46,23 @@ namespace Emberhold.World.Generation
         [Range(1, 16)]
         public int HeightStep;
 
+        [Header("Террасы и скалы")]
+        [Tooltip("Высота уровня террас в блоках: рельеф собирается в ровные площадки через эту высоту. 0 — без террас.")]
+        [Min(0f)]
+        public float TerraceHeight;
+
+        [Tooltip("Какая доля перепада между уровнями занята склоном (0..1): меньше — шире ровные площадки и круче склоны.")]
+        [Range(0.05f, 1f)]
+        public float TerraceSlope;
+
+        [Tooltip("Доля переходов между уровнями, которые становятся вертикальными скалами (0..1).")]
+        [Range(0f, 1f)]
+        public float CliffAmount;
+
+        [Tooltip("Размер областей со скалами в блоках.")]
+        [Min(1f)]
+        public float CliffNoiseScale;
+
         [Tooltip("Толщина земли под травой в блоках, глубже — камень.")]
         [Min(0)]
         public int DirtDepth;
@@ -62,6 +79,10 @@ namespace Emberhold.World.Generation
             NoiseScale = 24f,
             NoiseAmplitude = 2.5f,
             HeightStep = 4,
+            TerraceHeight = 3f,
+            TerraceSlope = 0.5f,
+            CliffAmount = 0.3f,
+            CliffNoiseScale = 20f,
             DirtDepth = 3,
         };
     }

@@ -6,9 +6,11 @@ namespace Emberhold.World.Generation
 {
     /// <summary>
     /// Простая долина: вдоль оси Z петляет ровное дно, к краям по X поднимаются склоны, сверху — мягкий шум.
-    /// Высота считается в углах сетки блоков и квантуется до <see cref="ValleyParameters.HeightStep"/>
-    /// шестнадцатых; углы верхнего блока столбца берутся из соседних точек сетки, поэтому рельеф
-    /// получается склонами, а не ступеньками. Поверхность — трава, под ней земля, глубже камень.
+    /// Рельеф собирается в террасы: ровные площадки через <see cref="ValleyParameters.TerraceHeight"/> блоков,
+    /// между ними склоны, а местами (шум «скалистости») — вертикальные скалы. Высота считается в углах
+    /// сетки блоков и квантуется до <see cref="ValleyParameters.HeightStep"/> шестнадцатых; углы верхнего
+    /// блока столбца берутся из соседних точек сетки, поэтому склоны гладкие, без ступенек.
+    /// Поверхность — трава, под ней земля, глубже камень.
     /// </summary>
     public static class ValleyGenerator
     {
@@ -27,18 +29,21 @@ namespace Emberhold.World.Generation
             var random = new System.Random(p.Seed);
             var noiseOffset = new Vector2((float)random.NextDouble() * 10000f, (float)random.NextDouble() * 10000f);
             var meanderPhase = (float)(random.NextDouble() * Math.PI * 2);
+            var cliffOffset = new Vector2((float)random.NextDouble() * 10000f, (float)random.NextDouble() * 10000f);
 
             // Высоты в углах: точка (x, z) — общий угол четырёх столбцов вокруг неё.
             var corners = new int[size.x + 1, size.z + 1];
             for (var z = 0; z <= size.z; z++)
             for (var x = 0; x <= size.x; x++)
-                corners[x, z] = CornerHeight(p, size, x, z, noiseOffset, meanderPhase);
+                corners[x, z] = CornerHeight(p, size, x, z, noiseOffset, meanderPhase, cliffOffset);
+            CornerTerrain.SnapSteepToLevels(corners, Mathf.RoundToInt(Mathf.Max(p.TerraceHeight, 1f) * BlockShape.MaxHeight));
             CornerTerrain.SnapToLayers(corners);
             CornerTerrain.Fill(world, corners, p.DirtDepth);
         }
 
         /// <summary>Высота поверхности в углу сетки в шестнадцатых блока, уже квантованная и в пределах мира.</summary>
-        private static int CornerHeight(ValleyParameters p, Vector3Int size, int x, int z, Vector2 noiseOffset, float meanderPhase)
+        private static int CornerHeight(ValleyParameters p, Vector3Int size, int x, int z, Vector2 noiseOffset, float meanderPhase,
+            Vector2 cliffOffset)
         {
             var u = (float)x / size.x;
             var v = (float)z / size.z;
@@ -51,7 +56,35 @@ namespace Emberhold.World.Generation
             var noise = Mathf.PerlinNoise(noiseOffset.x + x / noiseScale, noiseOffset.y + z / noiseScale) * 2f - 1f;
             var blocks = Mathf.Lerp(p.FloorHeight, p.RimHeight, slope) + noise * p.NoiseAmplitude;
 
+            var cliffScale = Mathf.Max(p.CliffNoiseScale, 1f);
+            var cliff = Mathf.PerlinNoise(cliffOffset.x + x / cliffScale, cliffOffset.y + z / cliffScale) < p.CliffAmount;
+            blocks = Terrace(blocks, p.TerraceHeight, p.TerraceSlope, cliff);
+
             return CornerTerrain.Quantize(blocks, p.HeightStep, size.y);
+        }
+
+        /// <summary>
+        /// Террасы: высота собирается в ровные уровни через levelHeight блоков. Верхняя доля slopeShare
+        /// каждого перепада — плавный склон (S-кривая) к следующему уровню, остальное — ровная площадка.
+        /// На скале переход — ступенька посередине перепада: столбец на ней круче блока на блок,
+        /// его выровняет <see cref="CornerTerrain"/>, и встанет вертикальная стенка.
+        /// </summary>
+        public static float Terrace(float blocks, float levelHeight, float slopeShare, bool cliff)
+        {
+            if (levelHeight <= 0f)
+                return blocks;
+            var t = blocks / levelHeight;
+            var level = Mathf.Floor(t);
+            var fraction = t - level;
+            float shaped;
+            if (cliff)
+                shaped = fraction < 0.5f ? 0f : 1f;
+            else
+            {
+                var share = Mathf.Clamp(slopeShare, 0.05f, 1f);
+                shaped = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(1f - share, 1f, fraction));
+            }
+            return (level + shaped) * levelHeight;
         }
     }
 }

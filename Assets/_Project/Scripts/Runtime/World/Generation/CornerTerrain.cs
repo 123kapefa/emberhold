@@ -35,12 +35,52 @@ namespace Emberhold.World.Generation
         }
 
         /// <summary>
+        /// Склон круче блока на блок в блоки не уложить. Такие места превращаем в чистые скалы: углы
+        /// крутых столбцов сдвигаем на ближайший уровень террас (кратный levelSixteenths). Углы общие
+        /// с соседями, поэтому сдвиг может сделать крутым соседа — повторяем, пока крутых столбцов
+        /// с углами вне уровней не останется. Угол на уровне больше не двигается, так что проходы
+        /// заканчиваются. Столбец между двумя уровнями потом станет ровным (<see cref="FillColumn"/>),
+        /// и между уровнями встанет вертикальная стенка по линии уровня, без зубцов от склонов рядом.
+        /// </summary>
+        public static void SnapSteepToLevels(int[,] corners, int levelSixteenths)
+        {
+            if (levelSixteenths <= 0)
+                return;
+            var sizeX = corners.GetLength(0) - 1;
+            var sizeZ = corners.GetLength(1) - 1;
+            for (var pass = 0; pass < 64; pass++)
+            {
+                var changed = false;
+                for (var z = 0; z < sizeZ; z++)
+                for (var x = 0; x < sizeX; x++)
+                {
+                    var (min, max) = Span(corners, x, z);
+                    if (max - min <= BlockShape.MaxHeight)
+                        continue;
+                    for (var i = 0; i < 4; i++)
+                    {
+                        var (cx, cz) = (x + (i & 1), z + (i >> 1));
+                        var value = corners[cx, cz];
+                        var snapped = Mathf.RoundToInt((float)value / levelSixteenths) * levelSixteenths;
+                        // Ниже первого уровня не опускаем: у столбца должен остаться хотя бы один блок.
+                        if (snapped == value || snapped <= 0)
+                            continue;
+                        corners[cx, cz] = snapped;
+                        changed = true;
+                    }
+                }
+                if (!changed)
+                    return;
+            }
+        }
+
+        /// <summary>
         /// Склон умещается только внутри одного блока. Если углы столбца лежат по разные стороны границы
         /// слоя (кратной 16), сдвигаем на границу углы одной стороны: той, что ближе, а если так соседний
         /// столбец станет круче блока на блок — другой. Углы общие у соседних столбцов, поэтому рельеф
         /// остаётся непрерывным, просто переход между слоями проходит ровно по границе. Угол на границе
         /// больше не двигается, так что проходы быстро заканчиваются. Что исправить не удалось
-        /// (склон круче блока на блок), обрежет <see cref="FillColumn"/> небольшим уступом.
+        /// (склон круче блока на блок), <see cref="FillColumn"/> сделает ровным, и там встанет стенка.
         /// </summary>
         public static void SnapToLayers(int[,] corners)
         {
@@ -103,14 +143,41 @@ namespace Emberhold.World.Generation
 
         /// <summary>
         /// Столбец под четырьмя углами (высоты в шестнадцатых от дна мира). Поверхность столбца — один блок
-        /// слоя k, ниже — полные блоки. Если углы всё же пересекают границу слоя (столбец круче блока
-        /// на блок), слой берём по средней высоте, а углы обрезаем до него: на стыке с соседом получается уступ. Стопка из нескольких склонов друг на друге
+        /// слоя k, ниже — полные блоки. Столбец круче блока на блок становится ровным (см. ниже); если углы
+        /// всё же пересекают границу слоя, слой берём по средней высоте, а углы обрезаем до него. Стопка из нескольких склонов друг на друге
         /// дала бы «пилу»: каждый блок поднимался бы на всю ширину и обрывался вниз.
         /// </summary>
+        /// <summary>Значение, ближайшее к target; при равенстве — большее (стенка остаётся за верхним уровнем).</summary>
+        private static int NearestTo(float target, params int[] values)
+        {
+            var best = values[0];
+            foreach (var value in values)
+            {
+                var d = Mathf.Abs(value - target);
+                var bestD = Mathf.Abs(best - target);
+                if (d < bestD || Mathf.Approximately(d, bestD) && value > best)
+                    best = value;
+            }
+            return best;
+        }
+
         private static void FillColumn(VoxelWorld world, int dirtDepth, int x, int z, int c00, int c10, int c01, int c11)
         {
             const int h = BlockShape.MaxHeight;
             var average = (c00 + c10 + c01 + c11) / 4f;
+
+            // Круче блока на блок склон в один блок не уместить: такой столбец делаем ровным на высоте
+            // ближайшего к средней угла. Соседи по обе стороны ровные на своих уровнях, и между ними
+            // встаёт чистая вертикальная стенка, а не уступ на каждом столбце.
+            var min = Mathf.Min(Mathf.Min(c00, c10), Mathf.Min(c01, c11));
+            var max = Mathf.Max(Mathf.Max(c00, c10), Mathf.Max(c01, c11));
+            if (max - min > h)
+            {
+                var level = NearestTo(average, c00, c10, c01, c11);
+                c00 = c10 = c01 = c11 = level;
+                average = level;
+            }
+
             // Слой, в котором лежит средняя высота; ровная поверхность ровно на границе — полный блок снизу.
             var topY = Mathf.Max(0, Mathf.FloorToInt((average - 0.5f) / h));
             var floor = topY * h;

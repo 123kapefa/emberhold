@@ -419,6 +419,7 @@ MonoBehaviour:
   - {fileID: 2100000, guid: dca6da02ef30040818e1cee2a135f7a6, type: 2}
   - {fileID: 2100000, guid: 273a4ded7a59b41aea0d0162bf49b3df, type: 2}
   centerOnOrigin: 1
+  smoothShading: 1
 --- !u!4 &520718231
 Transform:
   m_ObjectHideFlags: 0

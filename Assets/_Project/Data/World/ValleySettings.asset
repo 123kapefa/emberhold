@@ -23,4 +23,8 @@ MonoBehaviour:
     NoiseScale: 24
     NoiseAmplitude: 2.5
     HeightStep: 4
+    TerraceHeight: 3
+    TerraceSlope: 0.5
+    CliffAmount: 0.3
+    CliffNoiseScale: 20
     DirtDepth: 3
