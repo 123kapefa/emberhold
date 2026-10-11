@@ -70,73 +70,98 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
-        public void Dig_FullBlock_LowersTopByStep()
+        public void Damage_PartialBlock_BreaksWholeBlockAfterSameHitsAsFull()
         {
             var world = new VoxelWorld(Vector3Int.one);
+            var partial = Cell + Vector3Int.right;
             world.SetBlock(Cell, Block.Full(BlockMaterials.Dirt));
+            world.SetBlock(partial, Block.Flat(BlockMaterials.Grass, 12));
+            var damage = new BlockDamage();
 
-            Assert.That(BlockEdits.Dig(world, Cell, 4), Is.True);
+            for (var hit = 0; hit < 3; hit++)
+            {
+                Assert.That(damage.Add(world, Cell, 0.25f), Is.False);
+                Assert.That(damage.Add(world, partial, 0.25f), Is.False);
+            }
+            // До последнего удара блок не меняется: урон не снимает слои.
+            Assert.That(world.GetBlock(Cell), Is.EqualTo(Block.Full(BlockMaterials.Dirt)));
+            Assert.That(world.GetBlock(partial), Is.EqualTo(Block.Flat(BlockMaterials.Grass, 12)));
+            Assert.That(damage.Get(Cell), Is.EqualTo(0.75f).Within(1e-5f));
 
-            Assert.That(world.GetBlock(Cell), Is.EqualTo(Block.Flat(BlockMaterials.Dirt, 12)));
+            Assert.That(damage.Add(world, Cell, 0.25f), Is.True);
+            Assert.That(damage.Add(world, partial, 0.25f), Is.True);
+            Assert.That(world.GetBlock(Cell).IsAir, Is.True);
+            Assert.That(world.GetBlock(partial).IsAir, Is.True);
+            Assert.That(damage.Count, Is.Zero);
         }
 
         [Test]
-        public void Dig_RepeatedUntilEmpty_LeavesAir()
+        public void Damage_SmallTimeSteps_AccumulateToBreak()
         {
+            // Так будут копать рабочие: урон dt / секунд на блок каждый кадр.
             var world = new VoxelWorld(Vector3Int.one);
             world.SetBlock(Cell, Block.Full(BlockMaterials.Stone));
+            var damage = new BlockDamage();
+            const float secondsPerBlock = 2f, dt = 1f / 60f;
 
-            for (var i = 0; i < 4; i++)
-                Assert.That(BlockEdits.Dig(world, Cell, 4), Is.True);
+            var frames = 0;
+            while (!damage.Add(world, Cell, dt / secondsPerBlock))
+                frames++;
 
-            Assert.That(world.GetBlock(Cell).IsAir, Is.True);
-            Assert.That(BlockEdits.Dig(world, Cell, 4), Is.False);
+            Assert.That(frames + 1, Is.EqualTo(120).Within(1));
         }
 
         [Test]
-        public void Dig_ThinnerThanStep_RemovesBlock()
+        public void Damage_AirOrOutside_DoesNothing()
         {
             var world = new VoxelWorld(Vector3Int.one);
-            world.SetBlock(Cell, Block.Flat(BlockMaterials.Grass, 3));
+            var damage = new BlockDamage();
 
-            BlockEdits.Dig(world, Cell, 4);
-
-            Assert.That(world.GetBlock(Cell).IsAir, Is.True);
+            Assert.That(damage.Add(world, Cell, 0.5f), Is.False);
+            Assert.That(damage.Add(world, new Vector3Int(-1, 0, 0), 0.5f), Is.False);
+            Assert.That(damage.Count, Is.Zero);
+            Assert.That(world.DirtyCount, Is.Zero);
         }
 
         [Test]
-        public void Dig_Slope_LowersEveryCornerAndClampsAtFloor()
-        {
-            var world = new VoxelWorld(Vector3Int.one);
-            world.SetBlock(Cell, new Block(BlockMaterials.Dirt, new BlockShape(16, 12, 4, 2)));
-
-            BlockEdits.Dig(world, Cell, 4);
-
-            Assert.That(world.GetBlock(Cell).Shape, Is.EqualTo(new BlockShape(12, 8, 0, 0)));
-        }
-
-        [Test]
-        public void Dig_OnChunkBorder_MarksNeighbourChunk()
+        public void Damage_BreakOnChunkBorder_MarksNeighbourChunk()
         {
             var world = new VoxelWorld(new Vector3Int(2, 1, 1));
             var border = new Vector3Int(15, 3, 3);
             world.SetBlock(border, Block.Full(BlockMaterials.Dirt));
             world.TakeDirtyChunks(new List<Vector3Int>());
+            var damage = new BlockDamage();
 
-            BlockEdits.Dig(world, border, 4);
+            damage.Add(world, border, 1f);
 
             Assert.That(world.IsDirty(Vector3Int.zero), Is.True);
             Assert.That(world.IsDirty(Vector3Int.right), Is.True);
         }
 
         [Test]
-        public void Dig_NonPositiveStep_DoesNothing()
+        public void Damage_ForgetMissing_DropsRemovedBlocks()
         {
             var world = new VoxelWorld(Vector3Int.one);
             world.SetBlock(Cell, Block.Full(BlockMaterials.Dirt));
+            var damage = new BlockDamage();
+            damage.Add(world, Cell, 0.5f);
+            var version = damage.Version;
 
-            Assert.That(BlockEdits.Dig(world, Cell, 0), Is.False);
-            Assert.That(world.GetBlock(Cell), Is.EqualTo(Block.Full(BlockMaterials.Dirt)));
+            BlockEdits.Remove(world, Cell);
+            damage.ForgetMissing(world);
+
+            Assert.That(damage.Count, Is.Zero);
+            Assert.That(damage.Version, Is.Not.EqualTo(version));
+        }
+
+        [TestCase(0f, 0)]
+        [TestCase(0.25f, 1)]
+        [TestCase(0.5f, 2)]
+        [TestCase(0.75f, 3)]
+        [TestCase(0.99f, 3)]
+        public void Stage_FourHits_ShowsOneStagePerHit(float value, int expected)
+        {
+            Assert.That(BlockDamage.Stage(value, 3), Is.EqualTo(expected));
         }
 
         [Test]

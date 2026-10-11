@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8755434ba47fc47eeac59fbd9bc003c9, type: 3}
   m_Name: BlockEditSettings
   m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Building.BlockEditSettings
-  digStep: 4
+  hitsToBreak: 4
   maxRayDistance: 500
   groundMask:
     serializedVersion: 2
@@ -20,3 +20,4 @@ MonoBehaviour:
   digColor: {r: 1, g: 0.75, b: 0.2, a: 1}
   removeColor: {r: 1, g: 0.25, b: 0.2, a: 1}
   outlinePadding: 0.01
+  crackColor: {r: 0.08, g: 0.06, b: 0.05, a: 1}

@@ -13,7 +13,7 @@ namespace Emberhold.Tests.PlayMode.Building
     public sealed class BlockEditPrototypeSceneTests
     {
         [UnityTest]
-        public IEnumerator PrototypeScene_DigLowersSurfaceBlockAndCollider()
+        public IEnumerator PrototypeScene_DigBreaksSurfaceBlockAndUpdatesCollider()
         {
             yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
             yield return null;
@@ -28,11 +28,20 @@ namespace Emberhold.Tests.PlayMode.Building
             var local = view.transform.InverseTransformPoint(raycast.point);
             var normal = view.transform.InverseTransformDirection(raycast.normal);
             Assert.That(BlockPicking.TryPick(view.World, local, normal, out var hit), Is.True);
-            var before = view.World.GetBlock(hit.Block).Shape.Top;
+            var before = view.World.GetBlock(hit.Block);
 
-            Assert.That(editor.Apply(hit), Is.True, "Копать");
+            // Копание: блок держится до последнего удара и исчезает целиком, меш перестроен в том же кадре.
+            Assert.That(editor.Apply(hit), Is.False, "Первый удар");
+            Assert.That(view.World.GetBlock(hit.Block), Is.EqualTo(before));
+            Assert.That(editor.Damage.Get(hit.Block), Is.GreaterThan(0f));
+            var hits = 1;
+            while (!editor.Apply(hit))
+            {
+                hits++;
+                Assert.That(hits, Is.LessThan(20), "Блок не разрушается");
+            }
             yield return null;
-            Assert.That(view.World.GetBlock(hit.Block).Shape.Top, Is.LessThan(before));
+            Assert.That(view.World.GetBlock(hit.Block).IsAir, Is.True);
             Assert.That(view.World.DirtyCount, Is.Zero, "Меш перестроен в том же кадре");
 
             // Луч теперь попадает ниже: коллайдер чанка обновился.

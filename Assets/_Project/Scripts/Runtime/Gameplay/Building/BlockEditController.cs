@@ -16,7 +16,8 @@ namespace Emberhold.Gameplay.Building
 
     /// <summary>
     /// Правка мира мышью: подсвечивает блок под курсором, ЛКМ применяет текущий инструмент.
-    /// 1 — «Копать» (снять слой), 2 — «Убрать» (блок целиком). Камера занимает ПКМ, СКМ и колесо,
+    /// 1 — «Копать»: каждый клик добавляет блоку урон и трещины, после нескольких кликов блок исчезает целиком;
+    /// 2 — «Убрать» сразу. Камера занимает ПКМ, СКМ и колесо,
     /// поэтому здесь только ЛКМ и цифры. Ввод берётся из карты «Building» в EmberholdControls.
     /// </summary>
     public sealed class BlockEditController : MonoBehaviour
@@ -50,10 +51,21 @@ namespace Emberhold.Gameplay.Building
         private Mesh outlineMesh;
         private (float height, Vector3Int face)? outlineShape;
 
+        private readonly List<Vector3> crackVertices = new();
+        private readonly List<int> crackIndices = new();
+        private MaterialPropertyBlock crackProperties;
+        private GameObject cracks;
+        private MeshRenderer cracksRenderer;
+        private Mesh cracksMesh;
+        private int cracksVersion = -1;
+
         public BlockTool Tool { get; private set; } = BlockTool.Dig;
 
         /// <summary>Блок под курсором в этом кадре, если он есть.</summary>
         public BlockHit? Hovered { get; private set; }
+
+        /// <summary>Урон начатых блоков. Рабочие потом будут копать через него же.</summary>
+        public BlockDamage Damage { get; } = new();
 
         private void Awake()
         {
@@ -66,7 +78,10 @@ namespace Emberhold.Gameplay.Building
 
             if (targetCamera == null)
                 targetCamera = UnityEngine.Camera.main;
-            CreateOutline();
+            (outline, outlineMesh, outlineRenderer) = CreateLineObject("Block Outline");
+            outlineProperties = new MaterialPropertyBlock();
+            (cracks, cracksMesh, cracksRenderer) = CreateLineObject("Block Cracks");
+            crackProperties = new MaterialPropertyBlock();
         }
 
         private void OnEnable()
@@ -106,10 +121,10 @@ namespace Emberhold.Gameplay.Building
 
         private void OnDestroy()
         {
-            if (outlineMesh != null)
-                Destroy(outlineMesh);
-            if (outline != null)
-                Destroy(outline);
+            Destroy(outlineMesh);
+            Destroy(outline);
+            Destroy(cracksMesh);
+            Destroy(cracks);
         }
 
         private void Update()
@@ -126,20 +141,23 @@ namespace Emberhold.Gameplay.Building
             if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging())
             {
                 Apply(hit);
-                // Блок стал ниже или исчез: рамка должна сразу показать новое состояние.
+                // Блок мог исчезнуть: рамка должна сразу показать новое состояние.
                 Hovered = worldView.World.GetBlock(hit.Block).IsAir ? null : hit;
             }
 
+            // Блок могли убрать не копанием (инструмент «Убрать», потом рабочие): его урон больше не нужен.
+            Damage.ForgetMissing(worldView.World);
             UpdateOutline();
+            UpdateCracks();
         }
 
         private bool IsCameraDragging() =>
             (cameraOrbitHold != null && cameraOrbitHold.IsPressed()) || (cameraPanHold != null && cameraPanHold.IsPressed());
 
-        /// <summary>Применить текущий инструмент к блоку. Меш перестроит VoxelWorldView в LateUpdate этого кадра.</summary>
+        /// <summary>Применить текущий инструмент к блоку. Возвращает true, если блок убран. Меш перестроит VoxelWorldView в LateUpdate этого кадра.</summary>
         public bool Apply(BlockHit hit) => Tool switch
         {
-            BlockTool.Dig => BlockEdits.Dig(worldView.World, hit.Block, settings.DigStep),
+            BlockTool.Dig => Damage.Add(worldView.World, hit.Block, 1f / settings.HitsToBreak),
             BlockTool.Remove => BlockEdits.Remove(worldView.World, hit.Block),
             _ => false,
         };
@@ -157,21 +175,29 @@ namespace Emberhold.Gameplay.Building
             return BlockPicking.TryPick(worldView.World, localPoint, localNormal, out var hit) ? hit : null;
         }
 
-        private void CreateOutline()
+        /// <summary>
+        /// Объект с мешем из линий в корне сцены: у мира в детях только чанки,
+        /// а масштаб и поворот мира копируем при каждом показе.
+        /// </summary>
+        private (GameObject, Mesh, MeshRenderer) CreateLineObject(string name)
         {
-            // Рамка — отдельный объект в корне сцены: у мира в детях только чанки,
-            // а масштаб и поворот мира копируем при каждом показе.
-            outline = new GameObject("Block Outline");
-            outline.SetActive(false);
+            var go = new GameObject(name);
+            go.SetActive(false);
+            var mesh = new Mesh { name = name };
+            mesh.MarkDynamic();
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = go.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = outlineMaterial;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            return (go, mesh, renderer);
+        }
 
-            outlineMesh = new Mesh { name = "Block Outline" };
-            outlineMesh.MarkDynamic();
-            outline.AddComponent<MeshFilter>().sharedMesh = outlineMesh;
-            outlineRenderer = outline.AddComponent<MeshRenderer>();
-            outlineRenderer.sharedMaterial = outlineMaterial;
-            outlineRenderer.shadowCastingMode = ShadowCastingMode.Off;
-            outlineRenderer.receiveShadows = false;
-            outlineProperties = new MaterialPropertyBlock();
+        private void PlaceInWorld(Transform target, Vector3 localPosition)
+        {
+            var space = worldView.transform;
+            target.SetPositionAndRotation(space.TransformPoint(localPosition), space.rotation);
+            target.localScale = space.lossyScale;
         }
 
         private void UpdateOutline()
@@ -194,12 +220,37 @@ namespace Emberhold.Gameplay.Building
                 outlineMesh.RecalculateBounds();
             }
 
-            var space = worldView.transform;
-            outline.transform.SetPositionAndRotation(space.TransformPoint(hit.Block), space.rotation);
-            outline.transform.localScale = space.lossyScale;
+            PlaceInWorld(outline.transform, hit.Block);
             outlineProperties.SetColor(BaseColorId, Tool == BlockTool.Dig ? settings.DigColor : settings.RemoveColor);
             outlineRenderer.SetPropertyBlock(outlineProperties);
             outline.SetActive(true);
+        }
+
+        /// <summary>Трещины всех повреждённых блоков одним мешем; перестраиваем, только когда урон изменился.</summary>
+        private void UpdateCracks()
+        {
+            if (cracksVersion == Damage.Version)
+                return;
+            cracksVersion = Damage.Version;
+
+            crackVertices.Clear();
+            crackIndices.Clear();
+            foreach (var (block, value) in Damage.Entries)
+            {
+                var height = (float)worldView.World.GetBlock(block).Shape.Top / BlockShape.MaxHeight;
+                var stage = BlockDamage.Stage(value, settings.CrackStages);
+                BlockCrackMesh.Append(block, height, stage, block.GetHashCode(), settings.OutlinePadding * 0.5f,
+                    crackVertices, crackIndices);
+            }
+
+            cracksMesh.Clear();
+            cracksMesh.SetVertices(crackVertices);
+            cracksMesh.SetTriangles(crackIndices, 0, false);
+            cracksMesh.RecalculateBounds();
+            PlaceInWorld(cracks.transform, Vector3.zero);
+            crackProperties.SetColor(BaseColorId, settings.CrackColor);
+            cracksRenderer.SetPropertyBlock(crackProperties);
+            cracks.SetActive(crackIndices.Count > 0);
         }
 
         private void OnGUI()
@@ -207,7 +258,7 @@ namespace Emberhold.Gameplay.Building
             if (map == null)
                 return;
             var name = Tool == BlockTool.Dig ? "Копать" : "Убрать";
-            GUI.Label(new Rect(10, 10, 400, 22), $"Инструмент: {name}   (1 — копать, 2 — убрать, ЛКМ — применить)");
+            GUI.Label(new Rect(10, 10, 400, 22), $"Инструмент: {name}   (1 — копать, 2 — убрать сразу, ЛКМ — применить)");
         }
     }
 }
