@@ -195,6 +195,29 @@ namespace Emberhold.Tests.EditMode.World
             }
         }
 
+        [Test]
+        public void CornerTerrain_RoundsCliffTopEdgeAndFoot()
+        {
+            // Левая половина на 6 блоках, правая на 2: между ними обрыв.
+            var world = new VoxelWorld(Vector3Int.one);
+            var corners = new int[17, 17];
+            for (var z = 0; z <= 16; z++)
+            for (var x = 0; x <= 16; x++)
+                corners[x, z] = x <= 8 ? 96 : 32;
+
+            CornerTerrain.Fill(world, corners, dirtDepth: 1, edgeRounding: 8, footRounding: 4);
+
+            // Столбец 8 (крутой) выровнен по верхнему уровню, его кромка над обрывом опущена на 8/16.
+            Assert.That(CornerHeight(world, 8, 5, 0), Is.EqualTo(96));
+            Assert.That(CornerHeight(world, 8, 5, 1), Is.EqualTo(88));
+            Assert.That(CornerHeight(world, 8, 5, 3), Is.EqualTo(88));
+            // У подножия земля поднята на 4/16, дальше ровно.
+            Assert.That(CornerHeight(world, 9, 5, 0), Is.EqualTo(36));
+            Assert.That(CornerHeight(world, 9, 5, 1), Is.EqualTo(32));
+            // Вдали от обрыва ничего не меняется.
+            Assert.That(CornerHeight(world, 3, 5, 1), Is.EqualTo(96));
+        }
+
         private static (int ledges, int edges) CountLedges(VoxelWorld world)
         {
             var size = world.SizeInBlocks;

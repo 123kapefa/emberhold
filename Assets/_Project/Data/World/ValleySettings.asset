@@ -27,4 +27,6 @@ MonoBehaviour:
     TerraceSlope: 0.75
     CliffAmount: 0.35
     CliffNoiseScale: 20
+    CliffEdgeRounding: 8
+    CliffFootRounding: 4
     DirtDepth: 1
