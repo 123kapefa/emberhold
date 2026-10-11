@@ -1,7 +1,7 @@
 {
     "name": "Emberhold.CameraRig",
     "rootNamespace": "Emberhold.CameraRig",
-    "references": ["Emberhold.Gameplay", "Emberhold.World", "Emberhold.Core"],
+    "references": ["Emberhold.Gameplay", "Emberhold.World", "Emberhold.Core", "Unity.InputSystem"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
