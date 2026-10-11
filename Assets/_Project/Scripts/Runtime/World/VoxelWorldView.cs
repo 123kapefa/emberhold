@@ -14,6 +14,7 @@ namespace Emberhold.World
     /// </summary>
     public sealed class VoxelWorldView : MonoBehaviour
     {
+        [Tooltip("Долина, которую сгенерировать при старте. Пусто — мир передаст другой компонент через Show (например, песочница).")]
         [SerializeField] private ValleySettings valley;
         [Tooltip("Материал для каждого номера материала блока: 0 — воздух (не используется), 1 — трава, 2 — земля, 3 — камень.")]
         [SerializeField] private Material[] blockMaterials;
@@ -31,22 +32,24 @@ namespace Emberhold.World
 
         private void Awake()
         {
-            if (valley == null)
-            {
-                Debug.LogError("[VoxelWorld] Не назначен ValleySettings.", this);
-                enabled = false;
-                return;
-            }
+            if (valley != null)
+                Show(ValleyGenerator.Generate(valley.Parameters));
+        }
 
-            World = ValleyGenerator.Generate(valley.Parameters);
+        /// <summary>Показать мир: старые чанки убираются, все чанки нового мира строятся сразу.</summary>
+        public void Show(VoxelWorld world)
+        {
+            ClearChunkViews();
+            World = world;
             if (centerOnOrigin)
             {
                 var size = World.SizeInBlocks;
                 transform.position = new Vector3(-size.x * 0.5f, 0f, -size.z * 0.5f);
             }
 
-            meshData = new ChunkMeshData();
-            BuildSharedMaterials();
+            meshData ??= new ChunkMeshData();
+            if (sharedMaterials.Count == 0)
+                BuildSharedMaterials();
             World.MarkAllDirty();
             RebuildDirtyChunks();
         }
@@ -57,10 +60,15 @@ namespace Emberhold.World
                 RebuildDirtyChunks();
         }
 
-        private void OnDestroy()
+        private void OnDestroy() => ClearChunkViews();
+
+        private void ClearChunkViews()
         {
             foreach (var view in chunkViews.Values)
+            {
                 Destroy(view.Mesh);
+                Destroy(view.Collider.gameObject);
+            }
             chunkViews.Clear();
             viewsByCollider.Clear();
         }
