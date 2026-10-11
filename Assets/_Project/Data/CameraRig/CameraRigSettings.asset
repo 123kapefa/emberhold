@@ -17,8 +17,8 @@ MonoBehaviour:
   startDistance: 30
   panSpeed: 20
   panReferenceDistance: 30
-  focusBoundsMin: {x: -100, y: -100}
-  focusBoundsMax: {x: 100, y: 100}
+  focusBoundsMin: {x: -64, y: -64}
+  focusBoundsMax: {x: 64, y: 64}
   rotateSpeed: 90
   mouseOrbitSensitivity: 0.25
   minPitch: 25
@@ -30,5 +30,5 @@ MonoBehaviour:
   sharpness: 12
   groundMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 64
   groundProbeHeight: 200

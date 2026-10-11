@@ -1,3 +1,4 @@
+using Emberhold.Core;
 using UnityEngine;
 
 namespace Emberhold.CameraRig
@@ -53,8 +54,8 @@ namespace Emberhold.CameraRig
         [SerializeField] private float sharpness = 12f;
 
         [Header("Высота земли")]
-        [Tooltip("Слои, по которым точка фокуса ищет высоту земли. Если луч не попал, высота не меняется.")]
-        [SerializeField] private LayerMask groundMask = ~0;
+        [Tooltip("Слои, по которым точка фокуса ищет высоту земли (обычно только Ground). Если луч не попал, высота не меняется.")]
+        [SerializeField] private LayerMask groundMask = Layers.GroundMask;
         [Range(10f, 1000f)]
         [SerializeField] private float groundProbeHeight = 200f;
 

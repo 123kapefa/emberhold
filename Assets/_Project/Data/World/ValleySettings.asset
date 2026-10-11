@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b5d7e5ef3a464f5fbd646e074b97c223, type: 3}
+  m_Name: ValleySettings
+  m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.ValleySettings
+  parameters:
+    Seed: 12345
+    SizeInChunks: {x: 8, y: 3, z: 8}
+    FloorHeight: 8
+    RimHeight: 26
+    FloorHalfWidth: 0.12
+    MeanderAmplitude: 0.12
+    MeanderWaves: 1.2
+    NoiseScale: 24
+    NoiseAmplitude: 2.5
+    HeightStep: 4
+    DirtDepth: 3
