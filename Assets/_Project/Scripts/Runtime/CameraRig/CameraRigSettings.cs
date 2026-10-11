@@ -44,7 +44,7 @@ namespace Emberhold.CameraRig
         [Tooltip("Доля дистанции, на которую приближает один щелчок колеса.")]
         [Range(0.01f, 0.5f)]
         [SerializeField] private float zoomStepFraction = 0.12f;
-        [Tooltip("Шагов зума в секунду при удержании Z/X.")]
+        [Tooltip("Шагов зума в секунду при удержании R/F.")]
         [Range(1f, 20f)]
         [SerializeField] private float zoomKeySteps = 6f;
 

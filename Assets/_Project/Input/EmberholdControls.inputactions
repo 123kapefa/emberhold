@@ -1226,7 +1226,7 @@
                     "isPartOfComposite": false
                 },
                 {
-                    "name": "ZX",
+                    "name": "RF",
                     "id": "2a5e0204-fb74-4b20-8920-559cbb189e25",
                     "path": "1DAxis",
                     "interactions": "",
@@ -1239,7 +1239,7 @@
                 {
                     "name": "negative",
                     "id": "a11325fa-a8e4-46db-9711-02ba9ad6392b",
-                    "path": "<Keyboard>/x",
+                    "path": "<Keyboard>/f",
                     "interactions": "",
                     "processors": "",
                     "groups": "Keyboard&Mouse",
@@ -1250,7 +1250,7 @@
                 {
                     "name": "positive",
                     "id": "52e03fd8-35c7-4d81-b5cc-2c2e111226c3",
-                    "path": "<Keyboard>/z",
+                    "path": "<Keyboard>/r",
                     "interactions": "",
                     "processors": "",
                     "groups": "Keyboard&Mouse",
@@ -1491,7 +1491,7 @@
                 {
                     "name": "",
                     "id": "db30b408-4f3a-4cb5-b802-f3ec51381d03",
-                    "path": "<Keyboard>/r",
+                    "path": "<Mouse>/rightButton",
                     "interactions": "",
                     "processors": "",
                     "groups": "Keyboard&Mouse",

@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Building.BlockEditSettings
   hitDamage: 25
   crackStages: 3
+  rotateClickMaxDrag: 6
   maxRayDistance: 500
   groundMask:
     serializedVersion: 2

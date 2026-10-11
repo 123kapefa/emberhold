@@ -14,6 +14,12 @@ namespace Emberhold.Gameplay.Building
         [Range(1, BlockCrackMesh.MaxStages)]
         [SerializeField] private int crackStages = 3;
 
+        [Header("Стройка")]
+        [Tooltip("Насколько пикселей может сдвинуться мышь между нажатием и отпусканием ПКМ, чтобы это считалось " +
+                 "щелчком (поворот блока), а не вращением камеры.")]
+        [Range(0f, 40f)]
+        [SerializeField] private float rotateClickMaxDrag = 6f;
+
         [Header("Луч")]
         [Range(10f, 1000f)]
         [SerializeField] private float maxRayDistance = 500f;
@@ -31,6 +37,7 @@ namespace Emberhold.Gameplay.Building
 
         public float HitDamage => hitDamage;
         public int CrackStages => crackStages;
+        public float RotateClickMaxDrag => rotateClickMaxDrag;
         public float MaxRayDistance => maxRayDistance;
         public LayerMask GroundMask => groundMask;
         public Color DigColor => digColor;

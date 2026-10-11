@@ -20,8 +20,10 @@ namespace Emberhold.Gameplay.Building
     /// 1 — «Копать»: каждый клик снимает с блока ХП (прочность — в BlockDurability), появляются трещины,
     /// а когда ХП кончились, блок исчезает целиком;
     /// 2 — «Убрать» сразу; 3 — «Строить»: блок встаёт за гранью под курсором, рядом виден его предпросмотр.
-    /// При стройке G — следующая форма, T — материал, R — поворот, [ и ] — высота полублока.
-    /// Камера занимает ПКМ, СКМ, колесо и WASD/QE/ZX. Ввод берётся из карты «Building» в EmberholdControls.
+    /// При стройке G — следующая форма, T — материал, щелчок ПКМ — поворот, [ и ] — высота полублока.
+    /// ПКМ с перетаскиванием по-прежнему вращает камеру: поворот блока срабатывает, только если мышь
+    /// между нажатием и отпусканием почти не сдвинулась. Камера занимает ПКМ (удержание), СКМ, колесо
+    /// и WASD/QE/RF. Ввод берётся из карты «Building» в EmberholdControls.
     /// </summary>
     public sealed class BlockEditController : MonoBehaviour
     {
@@ -70,6 +72,7 @@ namespace Emberhold.Gameplay.Building
         private int cracksVersion = -1;
 
         private BlockGhost ghost;
+        private Vector2 rotatePressPosition;
         private BlockPlacement.Plan? plan;
 
         public BlockTool Tool { get; set; } = BlockTool.Dig;
@@ -195,7 +198,12 @@ namespace Emberhold.Gameplay.Building
                 Selection.NextForm();
             if (nextMaterial.WasPressedThisFrame())
                 Selection.NextMaterial();
+            // Щелчок ПКМ — поворот; если мышь заметно сдвинулась, это было вращение камеры.
+            var pointer = point.ReadValue<Vector2>();
             if (rotate.WasPressedThisFrame())
+                rotatePressPosition = pointer;
+            if (rotate.WasReleasedThisFrame()
+                && (pointer - rotatePressPosition).sqrMagnitude <= settings.RotateClickMaxDrag * settings.RotateClickMaxDrag)
                 Selection.Rotate();
             if (slabHigher.WasPressedThisFrame())
                 Selection.SlabHeight++;
@@ -366,7 +374,7 @@ namespace Emberhold.Gameplay.Building
                 form += $" {Selection.SlabHeight}/16";
             GUI.Label(new Rect(10, 30, 700, 22),
                 $"{form}, {BuildSelection.MaterialName(Selection.Material)}, поворот {Selection.Rotation * 90}°   " +
-                "(G — форма, T — материал, R — повернуть, [ ] — высота полублока)");
+                "(G — форма, T — материал, щелчок ПКМ — повернуть, [ ] — высота полублока)");
         }
     }
 }
