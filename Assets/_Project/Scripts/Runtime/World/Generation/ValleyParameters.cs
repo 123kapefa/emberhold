@@ -1,0 +1,68 @@
+using System;
+using UnityEngine;
+
+namespace Emberhold.World.Generation
+{
+    /// <summary>
+    /// Параметры генератора долины. Обычные данные, чтобы генератор можно было вызывать из тестов
+    /// и из будущего редактора карт без ScriptableObject.
+    /// </summary>
+    [Serializable]
+    public struct ValleyParameters
+    {
+        [Tooltip("Одинаковый seed — одинаковая долина.")]
+        public int Seed;
+
+        [Tooltip("Размер мира в чанках 16×16×16 (X — ширина, Y — высота, Z — длина долины).")]
+        public Vector3Int SizeInChunks;
+
+        [Tooltip("Высота дна долины в блоках.")]
+        public float FloorHeight;
+
+        [Tooltip("Высота склонов у краёв мира в блоках.")]
+        public float RimHeight;
+
+        [Tooltip("Половина ширины ровного дна, доля ширины мира (0..0.5).")]
+        [Range(0f, 0.5f)]
+        public float FloorHalfWidth;
+
+        [Tooltip("Насколько русло петляет из стороны в сторону, доля ширины мира.")]
+        [Range(0f, 0.3f)]
+        public float MeanderAmplitude;
+
+        [Tooltip("Сколько изгибов русла на всю длину долины.")]
+        [Range(0f, 4f)]
+        public float MeanderWaves;
+
+        [Tooltip("Размер холмов шума в блоках.")]
+        [Min(1f)]
+        public float NoiseScale;
+
+        [Tooltip("Высота холмов шума в блоках (±).")]
+        [Min(0f)]
+        public float NoiseAmplitude;
+
+        [Tooltip("Шаг высоты поверхности в шестнадцатых блока: 16 — целые блоки, 4 — четверти.")]
+        [Range(1, 16)]
+        public int HeightStep;
+
+        [Tooltip("Толщина земли под травой в блоках, глубже — камень.")]
+        [Min(0)]
+        public int DirtDepth;
+
+        public static ValleyParameters Default => new()
+        {
+            Seed = 12345,
+            SizeInChunks = new Vector3Int(8, 3, 8),
+            FloorHeight = 8f,
+            RimHeight = 26f,
+            FloorHalfWidth = 0.12f,
+            MeanderAmplitude = 0.12f,
+            MeanderWaves = 1.2f,
+            NoiseScale = 24f,
+            NoiseAmplitude = 2.5f,
+            HeightStep = 4,
+            DirtDepth = 3,
+        };
+    }
+}
