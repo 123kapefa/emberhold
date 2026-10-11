@@ -27,7 +27,11 @@ namespace Emberhold.World.Generation
         /// На сколько шестнадцатых опустить верхнюю кромку над обрывом (скругление края скалы или впадины).
         /// </param>
         /// <param name="footRounding">На сколько шестнадцатых поднять землю у подножия обрыва.</param>
-        public static void Fill(VoxelWorld world, int[,] corners, int dirtDepth, int edgeRounding = 0, int footRounding = 0)
+        /// <param name="capDepth">На сколько шестнадцатых шапка над обрывом опускается к краю (купол).</param>
+        /// <param name="capWidth">На сколько блоков от края обрыва вглубь тянется купол.</param>
+        /// <param name="heightStep">Шаг высоты в шестнадцатых: опускание купола кратно ему.</param>
+        public static void Fill(VoxelWorld world, int[,] corners, int dirtDepth, int edgeRounding = 0, int footRounding = 0,
+            int capDepth = 0, float capWidth = 0f, int heightStep = 1)
         {
             var size = world.SizeInBlocks;
             if (corners.GetLength(0) != size.x + 1 || corners.GetLength(1) != size.z + 1)
@@ -41,6 +45,8 @@ namespace Emberhold.World.Generation
                 topY[x, z] = ShapeColumn(corners[x, z], corners[x + 1, z], corners[x, z + 1], corners[x + 1, z + 1],
                     columns, x, z);
 
+            if (capDepth > 0 && capWidth > 0f)
+                RoundCaps(columns, capDepth, capWidth, Mathf.Max(1, heightStep));
             if (edgeRounding > 0 || footRounding > 0)
                 RoundCliffEdges(columns, edgeRounding, footRounding);
 
@@ -58,6 +64,105 @@ namespace Emberhold.World.Generation
             (0, 1, 2, 3, 0, 1),   // +Z: наши C01, C11 — его C00, C10
             (0, -1, 0, 1, 2, 3),  // −Z
         };
+
+        /// <summary>
+        /// Купол на шапке скалы: верх над обрывом не плоский, а плавно опускается от середины к краю.
+        /// Для каждого угла сетки ищем расстояние до ближайшей кромки обрыва на той же высоте (двухпроходное
+        /// приближение расстояния по 8 соседям) и опускаем угол на capDepth · (1 − d / capWidth)².
+        /// Парабола даёт наклон у края 2 · capDepth / capWidth — при значениях по умолчанию не круче
+        /// блока на блок, так что шапка остаётся гладкой. Углы нижнего соседа у подножия не трогаем:
+        /// у столбцов на обрыве углы свои.
+        /// </summary>
+        private static void RoundCaps(int[,,] columns, int capDepth, float capWidth, int heightStep)
+        {
+            var sizeX = columns.GetLength(0);
+            var sizeZ = columns.GetLength(1);
+            var distance = new float[sizeX + 1, sizeZ + 1];
+            var source = new int[sizeX + 1, sizeZ + 1];
+            for (var z = 0; z <= sizeZ; z++)
+            for (var x = 0; x <= sizeX; x++)
+                distance[x, z] = float.MaxValue;
+
+            // Высота угла сетки — по любому столбцу вокруг (внутри плато они совпадают).
+            var height = new int[sizeX + 1, sizeZ + 1];
+            for (var z = 0; z <= sizeZ; z++)
+            for (var x = 0; x <= sizeX; x++)
+            {
+                var cx = Mathf.Min(x, sizeX - 1);
+                var cz = Mathf.Min(z, sizeZ - 1);
+                height[x, z] = columns[cx, cz, (x - cx) + 2 * (z - cz)];
+            }
+
+            // Источники — углы на кромке: столбец выше соседа за ребром хотя бы на блок.
+            for (var z = 0; z < sizeZ; z++)
+            for (var x = 0; x < sizeX; x++)
+            foreach (var (dx, dz, a0, a1, b0, b1) in Sides)
+            {
+                var nx = x + dx;
+                var nz = z + dz;
+                if (nx < 0 || nz < 0 || nx >= sizeX || nz >= sizeZ)
+                    continue;
+                if (Mathf.Min(columns[x, z, a0], columns[x, z, a1]) - Mathf.Max(columns[nx, nz, b0], columns[nx, nz, b1])
+                    < BlockShape.MaxHeight)
+                    continue;
+                foreach (var corner in new[] { a0, a1 })
+                {
+                    var gx = x + (corner & 1);
+                    var gz = z + (corner >> 1);
+                    distance[gx, gz] = 0f;
+                    source[gx, gz] = columns[x, z, corner];
+                }
+            }
+
+            // Два прохода: сверху-слева вниз-вправо и обратно. Расстояние переносится только по углам
+            // на той же высоте, что кромка, — на соседний уровень купол не перетекает.
+            const float diagonal = 1.4142f;
+            for (var pass = 0; pass < 2; pass++)
+            {
+                var forward = pass == 0;
+                for (var i = 0; i <= sizeZ; i++)
+                for (var j = 0; j <= sizeX; j++)
+                {
+                    var z = forward ? i : sizeZ - i;
+                    var x = forward ? j : sizeX - j;
+                    for (var k = 0; k < 4; k++)
+                    {
+                        // Уже пройденные соседи: слева, снизу и две диагонали (или зеркально).
+                        var (ox, oz, w) = k switch { 0 => (-1, 0, 1f), 1 => (0, -1, 1f), 2 => (-1, -1, diagonal), _ => (1, -1, diagonal) };
+                        if (!forward)
+                        {
+                            ox = -ox;
+                            oz = -oz;
+                        }
+                        var px = x + ox;
+                        var pz = z + oz;
+                        if (px < 0 || pz < 0 || px > sizeX || pz > sizeZ || distance[px, pz] == float.MaxValue)
+                            continue;
+                        var d = distance[px, pz] + w;
+                        if (d >= distance[x, z] || d >= capWidth)
+                            continue;
+                        if (Mathf.Abs(height[x, z] - source[px, pz]) > BlockShape.MaxHeight / 2)
+                            continue;
+                        distance[x, z] = d;
+                        source[x, z] = source[px, pz];
+                    }
+                }
+            }
+
+            for (var z = 0; z < sizeZ; z++)
+            for (var x = 0; x < sizeX; x++)
+            for (var i = 0; i < 4; i++)
+            {
+                var gx = x + (i & 1);
+                var gz = z + (i >> 1);
+                var d = distance[gx, gz];
+                if (d >= capWidth || Mathf.Abs(columns[x, z, i] - source[gx, gz]) > BlockShape.MaxHeight / 2)
+                    continue;
+                var t = 1f - d / capWidth;
+                // Опускание кратно шагу высоты, как и сам рельеф.
+                columns[x, z, i] -= Mathf.RoundToInt(capDepth * t * t / heightStep) * heightStep;
+            }
+        }
 
         /// <summary>
         /// Скругление обрывов: если столбец выше соседа за ребром хотя бы на блок, его углы на этом ребре
@@ -251,11 +356,9 @@ namespace Emberhold.World.Generation
         /// <summary>Записать столбец: углы обрезаются до блока поверхности (если углы вышли за слой — уступ).</summary>
         private static void WriteColumn(VoxelWorld world, int dirtDepth, int x, int z, int topY, int[,,] columns)
         {
-            // Подъём у подножия мог вылезти над полным блоком: тогда поверхность — в слое выше.
-            var min = Mathf.Min(Mathf.Min(columns[x, z, 0], columns[x, z, 1]), Mathf.Min(columns[x, z, 2], columns[x, z, 3]));
-            var max = Mathf.Max(Mathf.Max(columns[x, z, 0], columns[x, z, 1]), Mathf.Max(columns[x, z, 2], columns[x, z, 3]));
-            if (max > (topY + 1) * BlockShape.MaxHeight && min >= (topY + 1) * BlockShape.MaxHeight)
-                topY++;
+            // Скругления сдвигают углы, поэтому слой поверхности берём заново по средней высоте.
+            var average = (columns[x, z, 0] + columns[x, z, 1] + columns[x, z, 2] + columns[x, z, 3]) / 4f;
+            topY = Mathf.Max(0, Mathf.FloorToInt((average - 0.5f) / BlockShape.MaxHeight));
             var floor = topY * BlockShape.MaxHeight;
             var surface = new BlockShape(columns[x, z, 0] - floor, columns[x, z, 1] - floor,
                 columns[x, z, 2] - floor, columns[x, z, 3] - floor);

@@ -144,13 +144,17 @@ namespace Emberhold.Tests.EditMode.World
             var world = ValleyGenerator.Generate(ValleyParameters.Default);
             var size = world.SizeInBlocks;
 
+            // «Ровная» — пригодная для стройки: перепад углов не больше четверти блока
+            // (пологий купол у края плато тоже сюда попадает).
             int flat = 0, slopes = 0, columns = 0;
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
             {
-                var top = world.GetBlock(new Vector3Int(x, (ColumnHeight(world, x, z) - 1) / BlockShape.MaxHeight, z));
+                var s = world.GetBlock(new Vector3Int(x, (ColumnHeight(world, x, z) - 1) / BlockShape.MaxHeight, z)).Shape;
+                var spread = Mathf.Max(Mathf.Max(s.C00, s.C10), Mathf.Max(s.C01, s.C11))
+                             - Mathf.Min(Mathf.Min(s.C00, s.C10), Mathf.Min(s.C01, s.C11));
                 columns++;
-                if (top.Shape.IsFlat) flat++;
+                if (spread <= 4) flat++;
                 else slopes++;
             }
             var (ledges, edges) = CountLedges(world);
@@ -216,6 +220,32 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(CornerHeight(world, 9, 5, 1), Is.EqualTo(32));
             // Вдали от обрыва ничего не меняется.
             Assert.That(CornerHeight(world, 3, 5, 1), Is.EqualTo(96));
+        }
+
+        [Test]
+        public void CornerTerrain_CapOverCliffSlopesDownFromMiddleToEdge()
+        {
+            // Плато шириной 9 блоков на 6 блоках, вокруг земля на 2 блоках.
+            var world = new VoxelWorld(Vector3Int.one);
+            var corners = new int[17, 17];
+            for (var z = 0; z <= 16; z++)
+            for (var x = 0; x <= 16; x++)
+                corners[x, z] = x <= 8 ? 96 : 32;
+
+            CornerTerrain.Fill(world, corners, dirtDepth: 1, capDepth: 16, capWidth: 6f);
+
+            // У кромки (x = 9) шапка опущена на блок, к середине плато поднимается, дальше ровно.
+            var edge = CornerHeight(world, 8, 8, 1);
+            var nearEdge = CornerHeight(world, 6, 8, 1);
+            var inside = CornerHeight(world, 1, 8, 1);
+            Assert.That(edge, Is.EqualTo(80));
+            Assert.That(nearEdge, Is.GreaterThan(edge).And.LessThan(96));
+            Assert.That(inside, Is.EqualTo(96));
+            // Шапка гладкая: внутри плато соседние столбцы делят углы.
+            for (var x = 0; x < 8; x++)
+                Assert.That(CornerHeight(world, x, 8, 1), Is.EqualTo(CornerHeight(world, x + 1, 8, 0)), $"x = {x}");
+            // Земля у подножия не тронута.
+            Assert.That(CornerHeight(world, 10, 8, 0), Is.EqualTo(32));
         }
 
         private static (int ledges, int edges) CountLedges(VoxelWorld world)

@@ -71,6 +71,14 @@ namespace Emberhold.World.Generation
         [Range(0, 16)]
         public int CliffFootRounding;
 
+        [Tooltip("Купол на шапках скал: на сколько блоков верх опускается от середины к краю обрыва.")]
+        [Range(0f, 6f)]
+        public float CapDepth;
+
+        [Tooltip("На сколько блоков от края обрыва вглубь тянется купол.")]
+        [Range(1f, 16f)]
+        public float CapWidth;
+
         [Tooltip("Толщина земли под травой в блоках, глубже — камень.")]
         [Min(0)]
         public int DirtDepth;
@@ -91,8 +99,10 @@ namespace Emberhold.World.Generation
             TerraceSlope = 0.75f,
             CliffAmount = 0.35f,
             CliffNoiseScale = 20f,
-            CliffEdgeRounding = 8,
+            CliffEdgeRounding = 0,
             CliffFootRounding = 4,
+            CapDepth = 1f,
+            CapWidth = 6f,
             DirtDepth = 1,
         };
     }

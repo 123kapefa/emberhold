@@ -38,7 +38,8 @@ namespace Emberhold.World.Generation
                 corners[x, z] = CornerHeight(p, size, x, z, noiseOffset, meanderPhase, cliffOffset);
             CornerTerrain.SnapSteepToLevels(corners, Mathf.RoundToInt(Mathf.Max(p.TerraceHeight, 1f) * BlockShape.MaxHeight));
             CornerTerrain.SnapToLayers(corners);
-            CornerTerrain.Fill(world, corners, p.DirtDepth, p.CliffEdgeRounding, p.CliffFootRounding);
+            CornerTerrain.Fill(world, corners, p.DirtDepth, p.CliffEdgeRounding, p.CliffFootRounding,
+                Mathf.RoundToInt(p.CapDepth * BlockShape.MaxHeight), p.CapWidth, p.HeightStep);
         }
 
         /// <summary>Высота поверхности в углу сетки в шестнадцатых блока, уже квантованная и в пределах мира.</summary>
