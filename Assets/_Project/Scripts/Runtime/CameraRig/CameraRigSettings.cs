@@ -21,8 +21,6 @@ namespace Emberhold.CameraRig
         [Header("Вращение")]
         [Tooltip("Градусы/с с клавиатуры (Q/E).")]
         [SerializeField] private float rotateSpeed = 90f;
-        [Tooltip("Градусы/с наклона с клавиатуры (R — к горизонту, F — сверху вниз).")]
-        [SerializeField] private float tiltSpeed = 60f;
         [Tooltip("Градусы на пиксель при перетаскивании правой кнопкой.")]
         [SerializeField] private float mouseOrbitSensitivity = 0.25f;
         [SerializeField] private float minPitch = 25f;
@@ -34,6 +32,8 @@ namespace Emberhold.CameraRig
         [Tooltip("Доля дистанции, на которую приближает один щелчок колеса.")]
         [Range(0.01f, 0.5f)]
         [SerializeField] private float zoomStepFraction = 0.12f;
+        [Tooltip("Шагов зума в секунду при удержании R/F.")]
+        [SerializeField] private float zoomKeySteps = 6f;
 
         [Header("Плавность")]
         [Tooltip("Чем больше, тем быстрее камера догоняет цель. 0 — без сглаживания.")]
@@ -52,13 +52,13 @@ namespace Emberhold.CameraRig
         public Vector2 FocusBoundsMin => focusBoundsMin;
         public Vector2 FocusBoundsMax => focusBoundsMax;
         public float RotateSpeed => rotateSpeed;
-        public float TiltSpeed => tiltSpeed;
         public float MouseOrbitSensitivity => mouseOrbitSensitivity;
         public float MinPitch => minPitch;
         public float MaxPitch => maxPitch;
         public float MinDistance => minDistance;
         public float MaxDistance => maxDistance;
         public float ZoomStepFraction => zoomStepFraction;
+        public float ZoomKeySteps => zoomKeySteps;
         public float Sharpness => sharpness;
         public LayerMask GroundMask => groundMask;
         public float GroundProbeHeight => groundProbeHeight;

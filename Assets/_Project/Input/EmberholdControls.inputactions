@@ -1014,7 +1014,7 @@
                     "initialStateCheck": true
                 },
                 {
-                    "name": "Tilt",
+                    "name": "ZoomKeys",
                     "type": "Value",
                     "id": "91488824-add0-4ee3-88bf-6214726eaddd",
                     "expectedControlType": "Axis",
@@ -1232,7 +1232,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "Tilt",
+                    "action": "ZoomKeys",
                     "isComposite": true,
                     "isPartOfComposite": false
                 },
@@ -1243,7 +1243,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "Keyboard&Mouse",
-                    "action": "Tilt",
+                    "action": "ZoomKeys",
                     "isComposite": false,
                     "isPartOfComposite": true
                 },
@@ -1254,7 +1254,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "Keyboard&Mouse",
-                    "action": "Tilt",
+                    "action": "ZoomKeys",
                     "isComposite": false,
                     "isPartOfComposite": true
                 },
@@ -1265,7 +1265,7 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "Gamepad",
-                    "action": "Tilt",
+                    "action": "ZoomKeys",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
