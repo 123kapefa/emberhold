@@ -35,7 +35,7 @@ namespace Emberhold.World.Sandbox
                 Mathf.Clamp(Mathf.Max(8f - u, 8f - v) * s, 0f, 3f * s))),
             Small(7, "Седло", (u, v, s) => (2f + ((u - 8f) * (u - 8f) - (v - 8f) * (v - 8f)) / 24f) * s * Window(u, v)),
             Small(8, "Шумный рельеф", null),
-            new("Подъём между уровнями: 12 блоков, ~25°, вогнутый центр",
+            new("Подъём между уровнями: 12 блоков, ~25°, поворот на 45°",
                 new RectInt(0, PadsPerRow * PadSize, PadsPerRow * PadSize, 2 * PadSize), Rise, flatBorder: false),
         };
 
@@ -120,27 +120,63 @@ namespace Emberhold.World.Sandbox
             new(name, new RectInt(index % PadsPerRow * PadSize, index / PadsPerRow * PadSize, PadSize, PadSize),
                 height, flatBorder: true);
 
+        private const float RiseLowStrip = 4f;      // ровный нижний уровень спереди
+        private const float RiseLength = 28f;       // длина оси прохода по дуге
+        private const float RiseTurn = 45f;         // на сколько градусов проход поворачивает к выходу
+        private const float RiseHalfWidth = 12f;
+        private const int RiseSamples = 64;
+
+        /// <summary>
+        /// Ось прохода «Подъём» в координатах площадки: t = 0 — вход (смотрит прямо, вдоль +Z),
+        /// t = 1 — выход наверх, повёрнутый на <see cref="RiseTurn"/> градусов вправо. Поворот нарастает
+        /// равномерно по длине, так что проход заворачивает плавной дугой.
+        /// </summary>
+        public static Vector2 RiseCentre(float t)
+        {
+            // Аналитический интеграл направления (sin θ, cos θ) при θ = turn · t.
+            var turn = RiseTurn * Mathf.Deg2Rad;
+            var start = new Vector2(18f, RiseLowStrip);
+            if (t <= 0f)
+                return start;
+            var angle = turn * t;
+            var scale = RiseLength / turn;
+            return start + new Vector2((1f - Mathf.Cos(angle)) * scale, Mathf.Sin(angle) * scale);
+        }
+
         /// <summary>
         /// Подъём как на референсе: спереди нижний уровень, сзади и по бокам верхний (на 12 блоков выше),
-        /// между ними широкий травяной склон. Склон по длине — плавная S-кривая (в среднем ~25°),
-        /// поперёк вогнутый: середина ниже краёв, края поднимаются к обрывам по бокам.
+        /// между ними широкий травяной проход. Вход прямой, к выходу проход заворачивает на 45°.
+        /// По длине склон — плавная S-кривая (в среднем ~25°), поперёк вогнутый: середина ниже краёв,
+        /// края поднимаются к обрывам по бокам.
         /// </summary>
         private static float Rise(float u, float v, float s)
         {
-            const float width = PadsPerRow * PadSize;
-            const float lowStrip = 4f;     // ровный нижний уровень спереди
-            const float rampEnd = 30f;     // где склон выходит на верхний уровень
-            const float halfCorridor = 13f;
             var high = 12f * s;
-
-            if (v < lowStrip)
+            if (v < RiseLowStrip)
                 return 0f;
-            var across = (u - width * 0.5f) / halfCorridor;
-            if (Mathf.Abs(across) > 1f)
-                return high;
 
-            var along = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(lowStrip, rampEnd, v));
-            var dish = 3f * s * across * across;
+            // Ближайшая точка оси: доля пути t и расстояние поперёк (со знаком).
+            var point = new Vector2(u, v);
+            var bestT = 0f;
+            var bestDistance = float.MaxValue;
+            for (var i = 0; i <= RiseSamples; i++)
+            {
+                var t = (float)i / RiseSamples;
+                var d = (point - RiseCentre(t)).sqrMagnitude;
+                if (d < bestDistance)
+                {
+                    bestDistance = d;
+                    bestT = t;
+                }
+            }
+
+            var across = Mathf.Sqrt(bestDistance) / RiseHalfWidth;
+            if (across > 1f)
+                return high;
+            // Наполовину S-кривая: концы скруглены, а середина не круче блока на блок даже на внутренней
+            // стороне поворота, где путь короче (иначе склон там рассыпается на уступы).
+            var along = Mathf.Lerp(bestT, Mathf.SmoothStep(0f, 1f, bestT), 0.5f);
+            var dish = 2f * s * across * across;
             return Mathf.Min(high, along * high + dish);
         }
 

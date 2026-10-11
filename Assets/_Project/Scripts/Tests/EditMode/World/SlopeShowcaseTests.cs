@@ -80,15 +80,31 @@ namespace Emberhold.Tests.EditMode.World
         public void Rise_ClimbsTwelveBlocksWithLowerCentre()
         {
             var world = Build(snap: false);
-            var rise = SlopeShowcase.Pads[^1].Area;
+            var area = SlopeShowcase.Pads[^1].Area;
             var baseSixteenths = (int)(BaseHeight * BlockShape.MaxHeight);
-            var centreX = (int)rise.center.x;
+            int At(Vector2 local) => Corner(world, area.x + Mathf.RoundToInt(local.x), area.y + Mathf.RoundToInt(local.y), 0);
 
-            Assert.That(Corner(world, centreX, rise.yMin + 1, 0), Is.EqualTo(baseSixteenths), "Нижний уровень спереди");
-            Assert.That(Corner(world, centreX, rise.yMax - 1, 2), Is.EqualTo(baseSixteenths + 12 * BlockShape.MaxHeight), "Верхний уровень");
-            // На середине подъёма центр ниже краёв склона.
-            var middle = rise.yMin + rise.height / 2;
-            Assert.That(Corner(world, centreX, middle, 0), Is.LessThan(Corner(world, centreX + 10, middle, 0)));
+            var entrance = SlopeShowcase.RiseCentre(0f);
+            Assert.That(Corner(world, area.x + (int)entrance.x, area.y + 1, 0), Is.EqualTo(baseSixteenths), "Нижний уровень спереди");
+            Assert.That(At(SlopeShowcase.RiseCentre(1f)), Is.EqualTo(baseSixteenths + 12 * BlockShape.MaxHeight), "Выход наверх");
+
+            // Посередине подъёма центр прохода ниже точки ближе к краю (вогнутый поперечный профиль).
+            var middle = SlopeShowcase.RiseCentre(0.5f);
+            var side = middle + (Vector2)(Quaternion.Euler(0f, 0f, -22.5f) * Vector2.right) * 8f;
+            Assert.That(At(middle), Is.LessThan(At(side)));
+        }
+
+        [Test]
+        public void RiseCentre_EntersStraightAndExitsTurned45Degrees()
+        {
+            var startDirection = (SlopeShowcase.RiseCentre(0.02f) - SlopeShowcase.RiseCentre(0f)).normalized;
+            var endDirection = (SlopeShowcase.RiseCentre(1f) - SlopeShowcase.RiseCentre(0.98f)).normalized;
+
+            Assert.That(Vector2.Angle(startDirection, Vector2.up), Is.LessThan(2f));
+            Assert.That(Vector2.Angle(endDirection, Vector2.up), Is.EqualTo(45f).Within(2f));
+            var area = SlopeShowcase.Pads[^1].Area;
+            Assert.That(SlopeShowcase.RiseCentre(1f).x, Is.InRange(0f, area.width));
+            Assert.That(SlopeShowcase.RiseCentre(1f).y, Is.InRange(0f, area.height));
         }
 
         [TestCase(1)]
