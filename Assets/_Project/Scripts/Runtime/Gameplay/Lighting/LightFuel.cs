@@ -42,6 +42,12 @@ namespace Emberhold.Gameplay.Lighting
         }
 
         /// <summary>
+        /// Во сколько раз расход в ночь номер night (с 1) больше, чем в первую: растёт на growthPerNight за каждую ночь.
+        /// </summary>
+        public static float NightBurnFactor(int night, float growthPerNight) =>
+            1f + Mathf.Max(0f, growthPerNight) * Mathf.Max(0, night - 1);
+
+        /// <summary>
         /// Доля полного радиуса при запасе amount: 1, пока топлива не меньше lowFuel, дальше сжимается
         /// до minFactor, без топлива 0 — огонь погас.
         /// </summary>

@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using Emberhold.Gameplay.Enemies;
 using Emberhold.Gameplay.Lighting;
+using Emberhold.Gameplay.Trees;
 using Emberhold.Gameplay.Workers;
 using Emberhold.World;
 using Emberhold.World.Editing;
+using Emberhold.World.Trees;
 using Emberhold.World.Voxels;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -18,7 +20,7 @@ namespace Emberhold.Gameplay.Building
         Build,
         /// <summary>Чертёж: блок ставят рабочие, принеся ресурс.</summary>
         Blueprint,
-        /// <summary>Приказ копать: блок выкапывают рабочие.</summary>
+        /// <summary>Приказ копать: блок выкапывают рабочие. По дереву — приказ рубить.</summary>
         DigOrder,
     }
 
@@ -28,7 +30,7 @@ namespace Emberhold.Gameplay.Building
     /// а когда ХП кончились, блок исчезает целиком;
     /// 2 — «Убрать» сразу; 3 — «Строить» сразу: блок встаёт за гранью под курсором, рядом виден его предпросмотр.
     /// 4 — «Чертёж» и 5 — «Поручить копать»: то же самое делают рабочие (<see cref="WorkerCrew"/>);
-    /// повторный клик по тому же месту снимает чертёж или приказ.
+    /// клик инструментом 5 по дереву поручает его срубить; повторный клик по тому же месту снимает чертёж или приказ.
     /// При стройке и чертеже G — следующая форма, T — материал, щелчок ПКМ — поворот, [ и ] — высота полублока.
     /// ПКМ с перетаскиванием по-прежнему вращает камеру: поворот блока срабатывает, только если мышь
     /// между нажатием и отпусканием почти не сдвинулась. Камера занимает ПКМ (удержание), СКМ, колесо
@@ -55,6 +57,8 @@ namespace Emberhold.Gameplay.Building
         [SerializeField] private BuildZone buildZone;
         [Tooltip("Рабочие для чертежей и приказов копать. Если пусто — инструменты 4 и 5 недоступны (песочницы).")]
         [SerializeField] private WorkerCrew workers;
+        [Tooltip("Лес: инструмент 5 по дереву поручает его срубить. Если пусто — деревья не выбираются.")]
+        [SerializeField] private ForestView forest;
 
         private InputActionMap map;
         private InputAction point;
@@ -100,6 +104,9 @@ namespace Emberhold.Gameplay.Building
 
         /// <summary>Блок под курсором в этом кадре, если он есть.</summary>
         public BlockHit? Hovered { get; private set; }
+
+        /// <summary>Дерево под курсором при инструменте 5, если оно ближе блока.</summary>
+        public TreeStand HoveredTree { get; private set; }
 
         /// <summary>Что ставит инструмент «Строить».</summary>
         public BuildSelection Selection { get; } = new();
@@ -214,9 +221,15 @@ namespace Emberhold.Gameplay.Building
             if (PlacesBlocks)
                 ReadBuildInput();
 
-            Hovered = Pick(point.ReadValue<Vector2>());
+            HoveredTree = PickTree(point.ReadValue<Vector2>());
+            Hovered = HoveredTree == null ? Pick(point.ReadValue<Vector2>()) : null;
             UpdatePlan();
-            if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
+            if (HoveredTree is { } tree && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
+            {
+                if (!ApplyToTree(tree))
+                    blockedMessageUntil = Time.unscaledTime + settings.BlockedMessageSeconds;
+            }
+            else if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
                 if (!CanApply(hit))
                     blockedMessageUntil = Time.unscaledTime + settings.BlockedMessageSeconds;
@@ -316,6 +329,20 @@ namespace Emberhold.Gameplay.Building
         }
 
         /// <summary>
+        /// Инструмент 5 по дереву: поручить срубить или снять приказ. Поручить можно только в свете, снять — везде.
+        /// true — приказ поставлен или снят.
+        /// </summary>
+        public bool ApplyToTree(TreeStand tree)
+        {
+            if (workers == null || tree == null || Tool != BlockTool.DigOrder)
+                return false;
+            var order = workers.Orders.At(tree.Cell);
+            if (!CanEdit(tree.Cell) && order is not { Kind: WorkKind.Chop })
+                return false;
+            return workers.ToggleChop(tree);
+        }
+
+        /// <summary>
         /// Блок в клетке поставили или убрали (игрок или рабочий): сообщить виду, уронить блоки без опоры
         /// вместе с их уроном и показать падение. Результат — в <see cref="LastFalls"/>.
         /// </summary>
@@ -352,6 +379,20 @@ namespace Emberhold.Gameplay.Building
         /// <summary>Блок освещён (центр блока внутри света) или зона застройки не задана.</summary>
         public bool CanEdit(Vector3Int block) =>
             buildZone == null || buildZone.Contains(worldView.transform.TransformPoint(block + new Vector3(0.5f, 0.5f, 0.5f)));
+
+        /// <summary>Дерево под курсором при инструменте 5, если луч попадает в него раньше, чем в землю.</summary>
+        private TreeStand PickTree(Vector2 screenPosition)
+        {
+            if (forest == null || workers == null || Tool != BlockTool.DigOrder)
+                return null;
+            var ray = targetCamera.ScreenPointToRay(screenPosition);
+            if (!forest.Raycast(ray, settings.MaxRayDistance, out var tree, out var distance))
+                return null;
+            if (Physics.Raycast(ray, out var ground, settings.MaxRayDistance, settings.GroundMask, QueryTriggerInteraction.Ignore)
+                && ground.distance < distance)
+                return null;
+            return tree;
+        }
 
         private BlockHit? Pick(Vector2 screenPosition)
         {
@@ -397,6 +438,11 @@ namespace Emberhold.Gameplay.Building
 
         private void UpdateOutline()
         {
+            if (HoveredTree is { } tree)
+            {
+                ShowTreeOutline(tree);
+                return;
+            }
             if (Hovered is not { } hit || PlacesBlocks && plan == null)
             {
                 outline.SetActive(false);
@@ -429,6 +475,23 @@ namespace Emberhold.Gameplay.Building
                 _ => settings.RemoveColor,
             };
             outlineProperties.SetColor(BaseColorId, color);
+            outlineRenderer.SetPropertyBlock(outlineProperties);
+            outline.SetActive(true);
+        }
+
+        /// <summary>Рамка вокруг дерева под курсором: цвет приказа, вне света — запрета.</summary>
+        private void ShowTreeOutline(TreeStand tree)
+        {
+            var (min, max) = forest.LocalBounds(tree);
+            // Рамку дерева строим каждый кадр: деревьев под курсором немного, а форма блока потом перестроится заново.
+            outlineShape = null;
+            BlockOutlineMesh.Build(min, max, Vector3Int.zero, settings.OutlinePadding, outlineVertices, outlineIndices);
+            outlineMesh.Clear();
+            outlineMesh.SetVertices(outlineVertices);
+            outlineMesh.SetIndices(outlineIndices, MeshTopology.Lines, 0);
+            outlineMesh.RecalculateBounds();
+            PlaceInWorld(outline.transform, tree.Cell);
+            outlineProperties.SetColor(BaseColorId, CanEdit(tree.Cell) ? settings.DigOrderColor : settings.BlockedColor);
             outlineRenderer.SetPropertyBlock(outlineProperties);
             outline.SetActive(true);
         }
@@ -496,10 +559,10 @@ namespace Emberhold.Gameplay.Building
                 BlockTool.Remove => "Убрать",
                 BlockTool.Build => "Строить",
                 BlockTool.Blueprint => "Чертёж",
-                _ => "Поручить копать",
+                _ => "Поручить копать и рубить",
             };
             var keys = workers != null
-                ? "1 — копать, 2 — убрать сразу, 3 — строить сразу, 4 — чертёж, 5 — поручить копать, ЛКМ — применить"
+                ? "1 — копать, 2 — убрать сразу, 3 — строить сразу, 4 — чертёж, 5 — поручить копать или рубить дерево, ЛКМ — применить"
                 : "1 — копать, 2 — убрать сразу, 3 — строить, ЛКМ — применить";
             GUI.Label(new Rect(10, 10, 900, 22), $"Инструмент: {name}   ({keys})");
             if (Time.unscaledTime < blockedMessageUntil)

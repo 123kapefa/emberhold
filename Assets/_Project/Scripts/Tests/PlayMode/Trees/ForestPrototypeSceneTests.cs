@@ -1,0 +1,150 @@
+using System;
+using System.Collections;
+using Emberhold.Core;
+using Emberhold.Gameplay.Building;
+using Emberhold.Gameplay.DayNight;
+using Emberhold.Gameplay.Items;
+using Emberhold.Gameplay.Lighting;
+using Emberhold.Gameplay.Trees;
+using Emberhold.Gameplay.Workers;
+using Emberhold.World;
+using Emberhold.World.Trees;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.TestTools;
+using Object = UnityEngine.Object;
+
+namespace Emberhold.Tests.PlayMode.Trees
+{
+    public sealed class ForestPrototypeSceneTests
+    {
+        [UnityTest]
+        public IEnumerator PrototypeScene_FartherZonesGrowBiggerTrees()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var forest = Object.FindAnyObjectByType<ForestView>().Forest;
+            var campfire = Object.FindAnyObjectByType<BuildZone>().Sources[0];
+            var view = Object.FindAnyObjectByType<VoxelWorldView>();
+            Assert.That(forest, Is.Not.Null);
+            Assert.That(forest.Trees.Count, Is.GreaterThan(50), "Лес посажен");
+
+            var fire = view.transform.InverseTransformPoint(campfire.transform.position);
+            var nearYield = 0;
+            var farYield = 0;
+            foreach (var tree in forest.Trees)
+            {
+                var distance = new Vector2(tree.Cell.x + 0.5f - fire.x, tree.Cell.z + 0.5f - fire.z).magnitude;
+                Assert.That(distance, Is.GreaterThan(5f), "У костра место свободно");
+                if (distance < 20f)
+                    nearYield = Mathf.Max(nearYield, tree.Species.WoodYield);
+                else if (distance > 40f)
+                    farYield = Mathf.Max(farYield, tree.Species.WoodYield);
+            }
+            Assert.That(nearYield, Is.GreaterThan(0), "У костра есть что рубить");
+            Assert.That(farYield, Is.GreaterThan(nearYield), "Дальше растут деревья крупнее");
+        }
+
+        [UnityTest]
+        public IEnumerator PrototypeScene_WorkersChopTreeAndFeedCampfire()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var editor = Object.FindAnyObjectByType<BlockEditController>();
+            var crew = Object.FindAnyObjectByType<WorkerCrew>();
+            var forestView = Object.FindAnyObjectByType<ForestView>();
+            var view = Object.FindAnyObjectByType<VoxelWorldView>();
+            var dropped = Object.FindAnyObjectByType<DroppedItemsView>();
+            var campfire = Object.FindAnyObjectByType<BuildZone>().Sources[0];
+            var forest = forestView.Forest;
+
+            // Своя берёза в четырёх блоках от костра: лес вокруг зависит от seed.
+            var ground = SurfaceBlock(view, campfire.transform.position + new Vector3(4f, 0f, 0.5f));
+            var cell = ground + Vector3Int.up;
+            var column = new Vector2Int(cell.x, cell.z);
+            if (forest.At(column) is { } old)
+                forest.Fell(view.World, old);
+            while (dropped.Items.Items.Count > 0)
+                dropped.Items.Remove(dropped.Items.Items[0]);
+            var birch = TreeSpecies.Create("Берёза", 75f, 3);
+            try
+            {
+                var tree = forest.Plant(cell, birch);
+                Assert.That(tree, Is.Not.Null);
+
+                var start = campfire.Fuel.Amount;
+                Assert.That(start, Is.LessThan(campfire.Fuel.Capacity - 1f));
+                Assert.That(HasFuelOrder(crew), Is.True, "Костёр ждёт поленья");
+
+                editor.Tool = BlockTool.DigOrder;
+                Assert.That(editor.ApplyToTree(tree), Is.True);
+                Assert.That(crew.Orders.At(cell)?.Kind, Is.EqualTo(WorkKind.Chop));
+                Assert.That(editor.ApplyToTree(tree), Is.True);
+                Assert.That(crew.Orders.At(cell), Is.Null, "Повторный клик снимает приказ");
+                Assert.That(editor.ApplyToTree(tree), Is.True);
+
+                var timeScale = Time.timeScale;
+                Time.timeScale = 4f;
+                try
+                {
+                    var began = Time.realtimeSinceStartup;
+                    while ((tree.IsStanding || campfire.Fuel.Amount < start + 3f - 0.01f) && Time.realtimeSinceStartup - began < 40f)
+                        yield return null;
+                }
+                finally
+                {
+                    Time.timeScale = timeScale;
+                }
+
+                Assert.That(tree.IsStanding, Is.False, "Рабочие срубили берёзу");
+                Assert.That(campfire.Fuel.Amount, Is.EqualTo(start + 3f).Within(0.01f), "Все три полена в костре");
+                Assert.That(dropped.Items.Items, Is.Empty);
+            }
+            finally
+            {
+                Object.Destroy(birch);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator PrototypeScene_CampfireBurnsFasterEveryNight()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var cycle = Object.FindAnyObjectByType<DayNightCycle>();
+            var campfire = Object.FindAnyObjectByType<BuildZone>().Sources[0];
+            Assert.That(campfire.Night, Is.EqualTo(1));
+            var first = campfire.BurnPerSecond;
+            Assert.That(first, Is.GreaterThan(0f));
+
+            // Четыре фазы — следующие сутки, вторая ночь.
+            for (var i = 0; i < 4; i++)
+                cycle.SkipToNextPhase();
+            Assert.That(campfire.Night, Is.EqualTo(2));
+            Assert.That(campfire.BurnPerSecond, Is.EqualTo(first * 1.25f).Within(1e-5f), "Вторая ночь на четверть дороже");
+        }
+
+        private static bool HasFuelOrder(WorkerCrew crew)
+        {
+            foreach (var order in crew.Orders.Orders)
+            {
+                if (order.Kind == WorkKind.Fuel)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Верхний блок под точкой сцены.</summary>
+        private static Vector3Int SurfaceBlock(VoxelWorldView view, Vector3 point)
+        {
+            if (!Physics.Raycast(new Vector3(point.x, 200f, point.z), Vector3.down, out var raycast, 400f, Layers.GroundMask)
+                || !view.TryGetBlock(raycast.collider, raycast.triangleIndex, out var block))
+                throw new InvalidOperationException($"Нет земли под {point}");
+            return block;
+        }
+    }
+}

@@ -37,3 +37,11 @@ MonoBehaviour:
       Deep: 3
       Bed: 2
     WaterLevel: 0
+  forest:
+    density: 0.03
+    growsOnStone: 1
+    species:
+    - species: {fileID: 11400000, guid: ef6a73afa52244d9a1661a05a5ae5e57, type: 2}
+      weight: 0.7
+    - species: {fileID: 11400000, guid: 411ea2ddf30a4b128b3cba21055fcff6, type: 2}
+      weight: 0.3

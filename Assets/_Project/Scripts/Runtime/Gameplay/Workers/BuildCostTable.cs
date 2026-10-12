@@ -6,8 +6,7 @@ namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
     /// Сколько стоит блок по чертежу: какой ресурс и сколько единиц рабочие должны принести.
-    /// Материалы, которых нет в таблице, строятся бесплатно (в прототипе трава, земля и дерево:
-    /// дерева пока не добыть).
+    /// Материалы, которых нет в таблице, строятся бесплатно (в прототипе трава и земля).
     /// </summary>
     [CreateAssetMenu(fileName = "BuildCosts", menuName = "Emberhold/Build Costs")]
     public sealed class BuildCostTable : ScriptableObject

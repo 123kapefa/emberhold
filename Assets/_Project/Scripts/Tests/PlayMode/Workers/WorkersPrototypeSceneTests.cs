@@ -44,9 +44,9 @@ namespace Emberhold.Tests.PlayMode.Workers
             while (editor.Selection.Material != BlockMaterials.Dirt)
                 editor.Selection.NextMaterial();
             Assert.That(editor.Apply(dirtHit), Is.True);
-            Assert.That(crew.Orders.Orders, Has.Count.EqualTo(1));
+            Assert.That(crew.Orders.At(dirtHit.Block + Vector3Int.up), Is.Not.Null);
             Assert.That(editor.Apply(dirtHit), Is.True);
-            Assert.That(crew.Orders.Orders, Is.Empty, "Повторный клик снимает чертёж");
+            Assert.That(HasBlueprints(crew), Is.False, "Повторный клик снимает чертёж");
             Assert.That(editor.Apply(dirtHit), Is.True);
             var dirtCell = dirtHit.Block + Vector3Int.up;
             Assert.That(view.World.GetBlock(dirtCell).IsAir, Is.True, "Чертёж — ещё не блок");
@@ -64,7 +64,7 @@ namespace Emberhold.Tests.PlayMode.Workers
             try
             {
                 var start = Time.realtimeSinceStartup;
-                while (crew.Orders.Orders.Count > 0 && Time.realtimeSinceStartup - start < 30f)
+                while (HasBlueprints(crew) && Time.realtimeSinceStartup - start < 30f)
                     yield return null;
             }
             finally
@@ -72,10 +72,21 @@ namespace Emberhold.Tests.PlayMode.Workers
                 Time.timeScale = timeScale;
             }
 
-            Assert.That(crew.Orders.Orders, Is.Empty, "Рабочие не достроили чертежи");
+            Assert.That(HasBlueprints(crew), Is.False, "Рабочие не достроили чертежи");
             Assert.That(view.World.GetBlock(dirtCell).Material, Is.EqualTo(BlockMaterials.Dirt));
             Assert.That(view.World.GetBlock(stoneCell).Material, Is.EqualTo(BlockMaterials.Stone));
             Assert.That(dropped.Items.Items, Is.Empty, "Камень ушёл в блок");
+        }
+
+        /// <summary>Остались чертежи (задачи топлива для костра висят всегда, пока в нём есть место).</summary>
+        private static bool HasBlueprints(WorkerCrew crew)
+        {
+            foreach (var order in crew.Orders.Orders)
+            {
+                if (order.Kind == WorkKind.Build)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>Верхний блок под точкой сцены (x, z) и попадание по его верхней грани.</summary>

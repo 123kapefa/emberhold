@@ -2,13 +2,14 @@ using System;
 using System.Collections.Generic;
 using Emberhold.World.Editing;
 using Emberhold.World.Items;
+using Emberhold.World.Trees;
 using Emberhold.World.Voxels;
 using UnityEngine;
 
 namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
-    /// Всё, с чем работают рабочие одного отряда: мир, задачи, ресурсы на земле, урон блоков, устойчивость
+    /// Всё, с чем работают рабочие одного отряда: мир, задачи, ресурсы на земле, деревья, урон блоков, устойчивость
     /// и где светло. Без Unity-объектов, чтобы EditMode-тесты гоняли рабочих на маленьком мире.
     /// </summary>
     public sealed class WorkerContext
@@ -18,9 +19,10 @@ namespace Emberhold.Gameplay.Workers
 
         public WorkerContext(VoxelWorld world, WorkOrders orders, DroppedItems items, BlockDamage damage,
             BlockStability stability, WorkerSettings settings, Func<Vector2Int, bool> isLit, Func<bool> hasAnyLight = null,
-            Action<Vector3Int> worldChanged = null)
+            Action<Vector3Int> worldChanged = null, Forest forest = null)
         {
             this.worldChanged = worldChanged;
+            Forest = forest;
             World = world;
             Orders = orders;
             Items = items;
@@ -39,6 +41,9 @@ namespace Emberhold.Gameplay.Workers
         public BlockDamage Damage { get; }
         public BlockStability Stability { get; }
         public WorkerSettings Settings { get; }
+
+        /// <summary>Деревья, которые рубят рабочие; null — рубить нечего.</summary>
+        public Forest Forest { get; }
 
         /// <summary>Столбец освещён: рабочие ходят и работают только там.</summary>
         public Func<Vector2Int, bool> IsLit { get; }

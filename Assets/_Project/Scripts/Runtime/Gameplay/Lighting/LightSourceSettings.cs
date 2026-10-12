@@ -32,9 +32,12 @@ namespace Emberhold.Gameplay.Lighting
         [Tooltip("Сколько поленьев в начале игры.")]
         [Min(0f)]
         [SerializeField] private float startFuel = 5f;
-        [Tooltip("Сколько поленьев сгорает за минуту ночи (времени суток). Днём, в сумерки и на рассвете не тратится.")]
+        [Tooltip("Сколько поленьев сгорает за минуту первой ночи (времени суток). Днём, в сумерки и на рассвете не тратится.")]
         [Min(0f)]
         [SerializeField] private float burnPerNightMinute = 2f;
+        [Tooltip("На сколько растёт расход с каждой следующей ночью, доля расхода первой ночи: 0.25 — вторая ночь +25%, пятая вдвое.")]
+        [Min(0f)]
+        [SerializeField] private float burnGrowthPerNight = 0.25f;
         [Tooltip("Когда поленьев меньше, радиус начинает сжиматься.")]
         [Min(0.01f)]
         [SerializeField] private float lowFuel = 2f;
@@ -50,7 +53,12 @@ namespace Emberhold.Gameplay.Lighting
         public bool UsesFuel => usesFuel;
         public float FuelCapacity => fuelCapacity;
         public float StartFuel => startFuel;
+        /// <summary>Расход в первую ночь, поленьев в секунду времени суток.</summary>
         public float BurnPerSecond => burnPerNightMinute / 60f;
+        public float BurnGrowthPerNight => burnGrowthPerNight;
+
+        /// <summary>Расход в ночь номер night (с 1), поленьев в секунду времени суток.</summary>
+        public float BurnPerSecondOnNight(int night) => BurnPerSecond * LightFuel.NightBurnFactor(night, burnGrowthPerNight);
         public float LowFuel => lowFuel;
         public float MinRadiusFraction => minRadiusFraction;
     }

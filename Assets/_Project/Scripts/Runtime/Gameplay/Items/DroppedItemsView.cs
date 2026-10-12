@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Emberhold.Gameplay.Building;
 using Emberhold.World;
@@ -20,8 +21,18 @@ namespace Emberhold.Gameplay.Items
         [SerializeField] private BlockEditController editor;
         [SerializeField] private VoxelWorldView worldView;
         [SerializeField] private BlockDropTable drops;
-        [Tooltip("Материал кубика ресурса.")]
+        [Serializable]
+        private struct ItemLook
+        {
+            [Tooltip("Id ресурса, например wood.")]
+            public string itemId;
+            public Material material;
+        }
+
+        [Tooltip("Материал кубика ресурса, если для него нет своего в списке ниже.")]
         [SerializeField] private Material itemMaterial;
+        [Tooltip("Свои материалы ресурсов: поленья не похожи на камень.")]
+        [SerializeField] private ItemLook[] itemLooks = Array.Empty<ItemLook>();
         [Tooltip("Размер кубика ресурса в блоках.")]
         [Range(0.05f, 1f)]
         [SerializeField] private float itemSize = 0.35f;
@@ -41,6 +52,20 @@ namespace Emberhold.Gameplay.Items
 
         /// <summary>Лежащие на земле ресурсы; рабочие потом будут забирать их отсюда.</summary>
         public DroppedItems Items { get; private set; }
+
+        /// <summary>Материал кубика ресурса itemId (им же рабочие показывают ношу).</summary>
+        public Material MaterialFor(string itemId)
+        {
+            if (itemLooks != null)
+            {
+                foreach (var look in itemLooks)
+                {
+                    if (look.itemId == itemId && look.material != null)
+                        return look.material;
+                }
+            }
+            return itemMaterial;
+        }
 
         private void Awake()
         {
@@ -106,6 +131,10 @@ namespace Emberhold.Gameplay.Items
                     if (shown == visuals.Count)
                         visuals.Add(CreateVisual());
                     var visual = visuals[shown];
+                    var material = MaterialFor(item.Drop.ItemId);
+                    var renderer = visual.GetComponent<MeshRenderer>();
+                    if (material != null && renderer.sharedMaterial != material)
+                        renderer.sharedMaterial = material;
                     var local = new Vector3(item.Position.x, ShownHeight(item), item.Position.z)
                                 + Vector3.up * (itemSize * (k + 0.5f));
                     visual.transform.SetPositionAndRotation(space.TransformPoint(local), space.rotation);

@@ -21,5 +21,6 @@ MonoBehaviour:
   fuelCapacity: 10
   startFuel: 5
   burnPerNightMinute: 2
+  burnGrowthPerNight: 0.25
   lowFuel: 2
   minRadiusFraction: 0.4

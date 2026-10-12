@@ -44,6 +44,7 @@ namespace Emberhold.World
         private bool missingMaterialReported;
         /// <summary>Куда кладутся чанки: сам вид в Play, временный объект предпросмотра вне Play.</summary>
         private Transform chunkParent;
+        private List<TerrainZoneArea> zones = new();
 
         /// <summary>Имя временного объекта с чанками предпросмотра.</summary>
         public const string PreviewName = "Предпросмотр (не сохраняется)";
@@ -51,6 +52,12 @@ namespace Emberhold.World
         private const HideFlags PreviewFlags = HideFlags.DontSave | HideFlags.NotEditable;
 
         public VoxelWorld World { get; private set; }
+
+        /// <summary>Настройки рельефа, по которым построен мир; null, если мир передали через Show.</summary>
+        public TerrainSettings Terrain => terrain;
+
+        /// <summary>Зоны местности, с которыми сгенерирован мир при старте (по ним рассаживается лес).</summary>
+        public IReadOnlyList<TerrainZoneArea> Zones => zones;
 
         /// <summary>Сглаженное освещение склонов; при переключении весь мир перестраивается.</summary>
         public bool SmoothShading
@@ -79,7 +86,11 @@ namespace Emberhold.World
                 Show(Generate());
         }
 
-        private VoxelWorld Generate() => terrain.Generate(CollectZones(terrain.SizeInChunks * ChunkData.Size));
+        private VoxelWorld Generate()
+        {
+            zones = CollectZones(terrain.SizeInChunks * ChunkData.Size);
+            return terrain.Generate(zones);
+        }
 
         /// <summary>
         /// Вне Play: сгенерировать рельеф по настройкам и зонам сцены, как при старте, и показать его во временном
@@ -162,12 +173,12 @@ namespace Emberhold.World
         /// <summary>Зоны местности сцены в координатах сетки мира, который встанет на место этого вида.</summary>
         private List<TerrainZoneArea> CollectZones(Vector3Int sizeInBlocks)
         {
-            var zones = new List<TerrainZoneArea>();
+            var result = new List<TerrainZoneArea>();
             var origin = centerOnOrigin ? WorldOrigin(sizeInBlocks) : transform.position;
             foreach (var zone in FindObjectsByType<TerrainZone>())
                 if (zone.TryGetArea(origin, out var area))
-                    zones.Add(area);
-            return zones;
+                    result.Add(area);
+            return result;
         }
 
         /// <summary>Где окажется угол (0, 0) сетки мира, если центр мира в начале координат.</summary>

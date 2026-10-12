@@ -15,16 +15,17 @@ namespace Emberhold.Gameplay.Workers
         PickingUp,
         /// <summary>Идёт к задаче (с ресурсом, если он нужен).</summary>
         ToSite,
-        /// <summary>Ставит блок или копает.</summary>
+        /// <summary>Ставит блок, копает или рубит.</summary>
         Working,
         /// <summary>Оказался в темноте и уходит к ближайшему свету.</summary>
         Fleeing,
     }
 
     /// <summary>
-    /// Рабочий: сам берёт ближайшую свободную задачу из <see cref="WorkOrders"/>. Для чертежа приносит ресурс
-    /// из ближайшей кучки и ставит блок, для приказа копать бьёт блок через <see cref="Emberhold.World.Editing.BlockDamage"/>,
-    /// один удар за анимацию копки. Ходит и работает только на освещённых столбцах; если свет ушёл
+    /// Рабочий: сам берёт свободную задачу из <see cref="WorkOrders"/> — сначала самую важную (топливо для огня),
+    /// среди равных ближайшую. Для чертежа приносит ресурс из ближайшей кучки и ставит блок, для топлива приносит
+    /// поленья и кладёт в огонь, для приказа копать бьёт блок через <see cref="Emberhold.World.Editing.BlockDamage"/>,
+    /// для приказа рубить бьёт дерево; один удар за анимацию копки. Ходит и работает только на освещённых столбцах; если свет ушёл
     /// из-под ног, бросает задачу и ношу и уходит к ближайшему свету.
     /// Чистая логика: положение — в координатах мира блоков, вид рисует <see cref="WorkerCrew"/>.
     /// </summary>
@@ -137,9 +138,11 @@ namespace Emberhold.Gameplay.Workers
             DroppedItem bestPile = null;
             var bestStand = default(Vector2Int);
             var bestCost = float.PositiveInfinity;
+            var bestPriority = int.MinValue;
             foreach (var order in context.Orders.Orders)
             {
-                if (order.Worker != null || !WorkOrders.IsValid(context.World, order)
+                if (order.Worker != null || order.Priority < bestPriority || !WorkOrders.IsValid(context.World, order)
+                    || order.Kind == WorkKind.Chop && context.Forest == null
                     || !context.TryStandSpot(order.Cell, false, out var stand, out var cost))
                     continue;
                 DroppedItem source = null;
@@ -151,9 +154,10 @@ namespace Emberhold.Gameplay.Workers
                     // Путь от кучки до чертежа оцениваем по прямой: точный разлив для каждой пары дорог.
                     cost = toPile + Vector2.Distance(new Vector2(source.Cell.x, source.Cell.z), new Vector2(order.Cell.x, order.Cell.z));
                 }
-                if (cost >= bestCost)
+                if (order.Priority == bestPriority && cost >= bestCost)
                     continue;
                 best = order;
+                bestPriority = order.Priority;
                 bestPile = source;
                 bestStand = stand;
                 bestCost = cost;
@@ -219,10 +223,15 @@ namespace Emberhold.Gameplay.Workers
                     timer = context.Settings.PickUpSeconds;
                     break;
                 case WorkerState.ToSite:
-                    if (Order.Kind == WorkKind.Dig)
+                    if (Order.Kind is WorkKind.Dig or WorkKind.Chop)
                     {
                         State = WorkerState.Working;
                         timer = context.Settings.DigHitSeconds;
+                        break;
+                    }
+                    if (Order.Kind == WorkKind.Fuel)
+                    {
+                        FeedFire();
                         break;
                     }
                     if (Carrying is { } carried && carried.ItemId == Order.ItemId)
@@ -251,6 +260,15 @@ namespace Emberhold.Gameplay.Workers
             if (timer > 0f)
                 return;
 
+            if (Order.Kind == WorkKind.Chop)
+            {
+                // Урон копится на дереве, даже если рабочий уйдёт; срубленное дерево само кладёт поленья.
+                timer += context.Settings.DigHitSeconds;
+                if (context.Forest.Hit(context.World, Order.Tree, context.Settings.DigHitDamage))
+                    Finish();
+                return;
+            }
+
             if (Order.Kind == WorkKind.Dig)
             {
                 // Один удар за анимацию копки; снятые ХП остаются у блока, даже если рабочий уйдёт.
@@ -273,6 +291,24 @@ namespace Emberhold.Gameplay.Workers
             // Новый блок начинает с целой прочностью.
             context.Damage.Forget(Order.Cell);
             context.Settle(Order.Cell);
+            Finish();
+        }
+
+        /// <summary>
+        /// Положить принесённые поленья в огонь. Что не поместилось (огонь успели подкормить), остаётся лежать у ног.
+        /// Задача на одну ходку: если место ещё есть, отряд заведёт новую.
+        /// </summary>
+        private void FeedFire()
+        {
+            if (Carrying is { } carried && carried.ItemId == Order.ItemId)
+            {
+                var accepted = Order.FuelTarget.AddFuel(carried.Count);
+                // Полено, принятое хоть частично, сгорает целиком.
+                var used = Mathf.Clamp(Mathf.CeilToInt(accepted - 1e-4f), 0, carried.Count);
+                Order.Delivered += used;
+                Carrying = used < carried.Count ? new ItemDrop(carried.ItemId, carried.Count - used) : null;
+                DropCarried();
+            }
             Finish();
         }
 
