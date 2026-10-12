@@ -12,6 +12,8 @@ namespace Emberhold.Gameplay.Items
     /// Ресурсы на земле: слушает разрушение блоков копанием (<see cref="BlockDamage.Destroyed"/>),
     /// по таблице BlockDrops кладёт выпавший ресурс на место блока и показывает кучку стопкой кубиков.
     /// Каждый кадр кладёт предметы на опору заново, чтобы они не висели в воздухе, когда блок под ними выкопали.
+    /// Если задан <see cref="BlockFallView"/>, опустившаяся кучка падает с тем же ускорением, что и блоки,
+    /// поэтому ресурс на упавшем блоке летит вместе с ним; данные (<see cref="DroppedItems"/>) меняются сразу.
     /// </summary>
     public sealed class DroppedItemsView : MonoBehaviour
     {
@@ -26,8 +28,14 @@ namespace Emberhold.Gameplay.Items
         [Tooltip("Сколько кубиков в стопке показывать у одной кучки, не больше.")]
         [Min(1)]
         [SerializeField] private int maxStack = 5;
+        [Tooltip("Падение блоков: с его ускорением падают и кучки, потерявшие опору. Пусто — кучки переставляются сразу.")]
+        [SerializeField] private BlockFallView blockFalls;
 
         private readonly List<GameObject> visuals = new();
+        private readonly Dictionary<DroppedItem, float> heightsBefore = new();
+        // Падающие кучки: с какой высоты и когда начали падать.
+        private readonly Dictionary<DroppedItem, (float from, float start)> falling = new();
+        private readonly List<DroppedItem> landed = new();
         private int shownVersion = -1;
         private BlockDamage damage;
 
@@ -76,8 +84,14 @@ namespace Emberhold.Gameplay.Items
         {
             if (worldView.World == null)
                 return;
+            heightsBefore.Clear();
+            foreach (var item in Items.Items)
+                heightsBefore[item] = item.Position.y;
             Items.Settle(worldView.World);
-            if (shownVersion == Items.Version)
+            var animating = falling.Count > 0;
+            if (blockFalls != null)
+                StartFalls();
+            if (shownVersion == Items.Version && !animating && falling.Count == 0)
                 return;
             shownVersion = Items.Version;
 
@@ -92,7 +106,8 @@ namespace Emberhold.Gameplay.Items
                     if (shown == visuals.Count)
                         visuals.Add(CreateVisual());
                     var visual = visuals[shown];
-                    var local = item.Position + Vector3.up * (itemSize * (k + 0.5f));
+                    var local = new Vector3(item.Position.x, ShownHeight(item), item.Position.z)
+                                + Vector3.up * (itemSize * (k + 0.5f));
                     visual.transform.SetPositionAndRotation(space.TransformPoint(local), space.rotation);
                     visual.transform.localScale = space.lossyScale * itemSize;
                     visual.SetActive(true);
@@ -100,6 +115,50 @@ namespace Emberhold.Gameplay.Items
             }
             for (var i = shown; i < visuals.Count; i++)
                 visuals[i].SetActive(false);
+        }
+
+        /// <summary>Кучки, которые Settle опустил в этом кадре, начинают падать с той высоты, где их видно сейчас.</summary>
+        private void StartFalls()
+        {
+            foreach (var item in Items.Items)
+            {
+                if (!heightsBefore.TryGetValue(item, out var before))
+                    continue;
+                var height = item.Position.y;
+                if (height < before - 0.001f)
+                    falling[item] = (falling.ContainsKey(item) ? ShownHeight(item) : before, Time.time);
+                else if (height > before + 0.001f)
+                    falling.Remove(item);
+            }
+
+            // Долетевшие и исчезнувшие (слились с другой кучкой, подобраны) больше не падают.
+            landed.Clear();
+            foreach (var item in falling.Keys)
+            {
+                if (!Contains(item) || ShownHeight(item) <= item.Position.y)
+                    landed.Add(item);
+            }
+            foreach (var item in landed)
+                falling.Remove(item);
+        }
+
+        private bool Contains(DroppedItem item)
+        {
+            foreach (var other in Items.Items)
+            {
+                if (other == item)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Высота, на которой кучку видно сейчас: в полёте — выше точки опоры.</summary>
+        private float ShownHeight(DroppedItem item)
+        {
+            if (blockFalls == null || !falling.TryGetValue(item, out var fall))
+                return item.Position.y;
+            var drop = FallMotion.Drop(fall.from - item.Position.y, Time.time - fall.start, blockFalls.Gravity);
+            return Mathf.Max(item.Position.y, fall.from - drop);
         }
 
         private GameObject CreateVisual()

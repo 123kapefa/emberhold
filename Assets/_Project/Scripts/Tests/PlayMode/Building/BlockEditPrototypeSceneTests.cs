@@ -130,5 +130,103 @@ namespace Emberhold.Tests.PlayMode.Building
             Assert.That(world.GetBlock(middle).IsAir, Is.False, "Верх столба лёг на основание");
             Assert.That(view.World.DirtyCount, Is.Zero, "Меш перестроен в том же кадре");
         }
+
+        [UnityTest]
+        public IEnumerator PrototypeScene_FallingBlockFliesDownWhileWorldIsAlreadyUpdated()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var editor = Object.FindAnyObjectByType<BlockEditController>();
+            var view = Object.FindAnyObjectByType<VoxelWorldView>();
+            var fallView = Object.FindAnyObjectByType<BlockFallView>();
+            Assert.That(fallView, Is.Not.Null, "В сцене Prototype нет BlockFallView");
+            Assert.That(fallView.enabled, Is.True);
+            Assert.That(Physics.Raycast(new Vector3(0.5f, 200f, 0.5f), Vector3.down, out var raycast, 400f, Layers.GroundMask), Is.True);
+            Assert.That(view.TryGetBlock(raycast.collider, raycast.triangleIndex, out var surface), Is.True);
+            var world = view.World;
+            var bottom = surface + Vector3Int.up;
+            var middle = bottom + Vector3Int.up;
+            var top = middle + Vector3Int.up;
+            Assume.That(world.GetBlock(bottom).IsAir && world.GetBlock(middle).IsAir && world.GetBlock(top).IsAir, Is.True);
+
+            // Столб из трёх блоков; убираем середину — верх падает на основание.
+            editor.Tool = BlockTool.Build;
+            Assert.That(editor.Apply(new BlockHit(surface, Vector3Int.up)), Is.True);
+            Assert.That(editor.Apply(new BlockHit(bottom, Vector3Int.up)), Is.True);
+            Assert.That(editor.Apply(new BlockHit(middle, Vector3Int.up)), Is.True);
+            editor.Tool = BlockTool.Remove;
+            Assert.That(editor.Apply(new BlockHit(middle, Vector3Int.right)), Is.True);
+            Assert.That(editor.LastFalls, Has.Count.EqualTo(1));
+            yield return null;
+
+            // Данные уже новые, а картинка — ещё в полёте: чанк прячет блок в новой клетке, коллайдер его видит.
+            Assert.That(world.GetBlock(middle).IsAir, Is.False);
+            Assert.That(world.GetBlock(top).IsAir, Is.True);
+            Assert.That(fallView.FlightCount, Is.EqualTo(1));
+            Assert.That(view.IsHidden(middle), Is.True);
+            var column = view.transform.TransformPoint(new Vector3(surface.x + 0.5f, 200f, surface.z + 0.5f));
+            Assert.That(Physics.Raycast(column, Vector3.down, out var onFallen, 400f, Layers.GroundMask), Is.True);
+            Assert.That(view.TryGetBlock(onFallen.collider, onFallen.triangleIndex, out var picked), Is.True);
+            Assert.That(picked, Is.EqualTo(middle), "Луч мыши уже попадает в блок на новом месте");
+
+            // После падения и подскока блок снова рисует чанк.
+            var wait = fallView.Duration(1) + 0.2f;
+            var until = Time.time + wait;
+            while (Time.time < until)
+                yield return null;
+            Assert.That(fallView.FlightCount, Is.Zero);
+            Assert.That(view.IsHidden(middle), Is.False);
+            Assert.That(view.World.DirtyCount, Is.Zero, "Меш перестроен в том же кадре");
+        }
+
+        [UnityTest]
+        public IEnumerator PrototypeScene_EditDuringFlightReleasesCellAndRefallKeepsFlying()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var editor = Object.FindAnyObjectByType<BlockEditController>();
+            var view = Object.FindAnyObjectByType<VoxelWorldView>();
+            var fallView = Object.FindAnyObjectByType<BlockFallView>();
+            Assert.That(Physics.Raycast(new Vector3(0.5f, 200f, 0.5f), Vector3.down, out var raycast, 400f, Layers.GroundMask), Is.True);
+            Assert.That(view.TryGetBlock(raycast.collider, raycast.triangleIndex, out var surface), Is.True);
+            var world = view.World;
+            var c1 = surface + Vector3Int.up;
+            var c2 = c1 + Vector3Int.up;
+            var c3 = c2 + Vector3Int.up;
+            var c4 = c3 + Vector3Int.up;
+            Assume.That(world.GetBlock(c1).IsAir && world.GetBlock(c2).IsAir && world.GetBlock(c3).IsAir && world.GetBlock(c4).IsAir, Is.True);
+
+            editor.Tool = BlockTool.Build;
+            Assert.That(editor.Apply(new BlockHit(surface, Vector3Int.up)), Is.True);
+            Assert.That(editor.Apply(new BlockHit(c1, Vector3Int.up)), Is.True);
+            Assert.That(editor.Apply(new BlockHit(c2, Vector3Int.up)), Is.True);
+            Assert.That(editor.Apply(new BlockHit(c3, Vector3Int.up)), Is.True);
+
+            // Убрали второй блок: два верхних летят на клетку вниз одной группой.
+            editor.Tool = BlockTool.Remove;
+            Assert.That(editor.Apply(new BlockHit(c2, Vector3Int.right)), Is.True);
+            yield return null;
+            Assert.That(fallView.FlightCount, Is.EqualTo(1));
+            Assert.That(view.IsHidden(c2) && view.IsHidden(c3), Is.True);
+
+            // Пока группа летит, убрали блок, который летит в c2: его клетка сразу открыта,
+            // а верхний блок упал дальше и летит отдельно, не дожидаясь конца прошлого полёта.
+            Assert.That(editor.Apply(new BlockHit(c2, Vector3Int.right)), Is.True);
+            yield return null;
+            Assert.That(world.GetBlock(c2).IsAir, Is.False, "Верхний блок лёг на c2");
+            Assert.That(world.GetBlock(c3).IsAir, Is.True);
+            Assert.That(fallView.FlightCount, Is.EqualTo(1), "Прошлая группа опустела, летит только верхний блок");
+            Assert.That(view.IsHidden(c2), Is.True);
+            Assert.That(view.IsHidden(c3), Is.False);
+
+            var until = Time.time + fallView.Duration(2) + 0.2f;
+            while (Time.time < until)
+                yield return null;
+            Assert.That(fallView.FlightCount, Is.Zero);
+            Assert.That(view.IsHidden(c2), Is.False);
+            Assert.That(view.World.DirtyCount, Is.Zero);
+        }
     }
 }
