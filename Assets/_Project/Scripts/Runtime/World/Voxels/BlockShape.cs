@@ -16,8 +16,11 @@ namespace Emberhold.World.Voxels
         private const int BitsPerCorner = 5;
         private const uint CornerMask = (1u << BitsPerCorner) - 1;
         private const int FormShift = 4 * BitsPerCorner;
-        private const int FormBits = 3;
+        private const int FormBits = 5;
         private const int RotationShift = FormShift + FormBits;
+
+        /// <summary>Наибольший номер фигурной формы, который помещается в упаковку.</summary>
+        public const int MaxForm = (1 << FormBits) - 1;
 
         public readonly byte C00;
         public readonly byte C10;
@@ -63,7 +66,8 @@ namespace Emberhold.World.Voxels
         public bool IsEmpty => !IsCatalog && C00 == 0 && C10 == 0 && C01 == 0 && C11 == 0;
 
         /// <summary>
-        /// Закрывает ли форма весь пол ячейки. Нет — если у простой формы половина верха лежит на полу
+        /// Закрывает ли форма весь пол ячейки. Нет — у фигурных форм уже ячейки (столб, балка, полуарка)
+        /// и если у простой формы половина верха лежит на полу
         /// (внешний угол ската): там у формы нет объёма, и верх блока под ней должен быть виден.
         /// Половины верха — те же, что у меша: диагональ между углами с меньшим перепадом.
         /// </summary>
@@ -72,7 +76,7 @@ namespace Emberhold.World.Voxels
             get
             {
                 if (IsCatalog)
-                    return true;
+                    return BlockForms.CoversFloor(Form);
                 if (IsEmpty)
                     return false;
                 if (C00 + C11 == C10 + C01)
@@ -86,6 +90,12 @@ namespace Emberhold.World.Voxels
         /// <summary>Наибольшая высота формы, 0..16.</summary>
         public int Top => IsCatalog ? BlockForms.Top(Form) : Math.Max(Math.Max(C00, C10), Math.Max(C01, C11));
 
+        /// <summary>
+        /// Коробка в шестнадцатых, в которую помещается форма: у простой формы — вся ячейка до <see cref="Top"/>,
+        /// у фигурной — с учётом поворота (столб уже ячейки, балка лежит поверху).
+        /// </summary>
+        public FormBox Extent => IsCatalog ? BlockForms.Extent(Form, Rotation) : new FormBox(0, 0, 0, MaxHeight, Top, MaxHeight);
+
         /// <summary>Заполнение ячейки 0..1: объём формы. У простой формы — средняя высота углов.</summary>
         public float Fill => IsCatalog ? BlockForms.Fill(Form) : (C00 + C10 + C01 + C11) / (4f * MaxHeight);
 
@@ -96,7 +106,7 @@ namespace Emberhold.World.Voxels
         public BlockShape RotatedQuarter() =>
             IsCatalog ? new BlockShape(Form, Rotation + 1) : new BlockShape(C01, C00, C11, C10);
 
-        /// <summary>Упаковка в 25 бит (по 5 на угол, 3 на форму, 2 на поворот) — ключ для палитры форм чанка.</summary>
+        /// <summary>Упаковка в 27 бит (по 5 на угол, 5 на форму, 2 на поворот) — ключ для палитры форм чанка.</summary>
         public uint Pack() =>
             C00 | (uint)C10 << BitsPerCorner | (uint)C01 << (2 * BitsPerCorner) | (uint)C11 << (3 * BitsPerCorner)
             | (uint)Form << FormShift | (uint)Rotation << RotationShift;

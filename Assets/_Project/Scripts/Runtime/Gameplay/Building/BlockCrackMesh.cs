@@ -27,9 +27,14 @@ namespace Emberhold.Gameplay.Building
         /// <param name="height">Высота блока в долях (0..1].</param>
         /// <param name="offset">На сколько трещины вынесены наружу от граней, чтобы не мерцать.</param>
         public static void Append(Vector3 origin, float height, int stage, int seed, float offset,
+            List<Vector3> vertices, List<int> indices) =>
+            Append(origin, Vector3.zero, new Vector3(1f, height, 1f), stage, seed, offset, vertices, indices);
+
+        /// <summary>Трещины на гранях коробки от boxMin до boxMax внутри ячейки (по размеру формы блока).</summary>
+        public static void Append(Vector3 origin, Vector3 boxMin, Vector3 boxMax, int stage, int seed, float offset,
             List<Vector3> vertices, List<int> indices)
         {
-            if (stage <= 0 || height <= 0f)
+            if (stage <= 0 || boxMax.x <= boxMin.x || boxMax.y <= boxMin.y || boxMax.z <= boxMin.z)
                 return;
             stage = Mathf.Min(stage, MaxStages);
 
@@ -57,15 +62,15 @@ namespace Emberhold.Gameplay.Building
                         angle += bends[i];
                         var next = point + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * lengths[i];
                         next = new Vector2(Mathf.Clamp01(next.x), Mathf.Clamp01(next.y));
-                        AddStrip(face, point, next, origin, height, offset, vertices, indices);
+                        AddStrip(face, point, next, origin, boxMin, boxMax, offset, vertices, indices);
                         point = next;
                     }
                 }
             }
         }
 
-        private static void AddStrip(Vector3Int face, Vector2 a, Vector2 b, Vector3 origin, float height, float offset,
-            List<Vector3> vertices, List<int> indices)
+        private static void AddStrip(Vector3Int face, Vector2 a, Vector2 b, Vector3 origin, Vector3 min, Vector3 max,
+            float offset, List<Vector3> vertices, List<int> indices)
         {
             var along = b - a;
             if (along.sqrMagnitude < 1e-8f)
@@ -73,10 +78,10 @@ namespace Emberhold.Gameplay.Building
             var side = new Vector2(-along.y, along.x).normalized * (Width * 0.5f);
 
             var first = vertices.Count;
-            vertices.Add(origin + OnFace(face, Clamp(a - side), height, offset));
-            vertices.Add(origin + OnFace(face, Clamp(a + side), height, offset));
-            vertices.Add(origin + OnFace(face, Clamp(b + side), height, offset));
-            vertices.Add(origin + OnFace(face, Clamp(b - side), height, offset));
+            vertices.Add(origin + OnFace(face, Clamp(a - side), min, max, offset));
+            vertices.Add(origin + OnFace(face, Clamp(a + side), min, max, offset));
+            vertices.Add(origin + OnFace(face, Clamp(b + side), min, max, offset));
+            vertices.Add(origin + OnFace(face, Clamp(b - side), min, max, offset));
 
             // Обход выбираем так, чтобы полоска смотрела наружу грани (обратные грани не рисуются).
             var normal = Vector3.Cross(vertices[first + 1] - vertices[first], vertices[first + 2] - vertices[first]);
@@ -95,19 +100,22 @@ namespace Emberhold.Gameplay.Building
 
         private static Vector2 Clamp(Vector2 uv) => new(Mathf.Clamp01(uv.x), Mathf.Clamp01(uv.y));
 
-        /// <summary>Точка грани по координатам (u, v) в 0..1; по вертикали грань занимает высоту блока.</summary>
-        private static Vector3 OnFace(Vector3Int face, Vector2 uv, float height, float offset)
+        /// <summary>Точка грани коробки по координатам (u, v) в 0..1 вдоль двух других осей грани.</summary>
+        private static Vector3 OnFace(Vector3Int face, Vector2 uv, Vector3 min, Vector3 max, float offset)
         {
+            var x = Mathf.Lerp(min.x, max.x, uv.x);
+            var z = Mathf.Lerp(min.z, max.z, uv.y);
             if (face == Vector3Int.up)
-                return new Vector3(uv.x, height + offset, uv.y);
-            var y = uv.y * height;
+                return new Vector3(x, max.y + offset, z);
+            var y = Mathf.Lerp(min.y, max.y, uv.y);
+            var along = Mathf.Lerp(min.z, max.z, uv.x);
             if (face == Vector3Int.right)
-                return new Vector3(1f + offset, y, uv.x);
+                return new Vector3(max.x + offset, y, along);
             if (face == Vector3Int.left)
-                return new Vector3(-offset, y, uv.x);
+                return new Vector3(min.x - offset, y, along);
             if (face == Vector3Int.forward)
-                return new Vector3(uv.x, y, 1f + offset);
-            return new Vector3(uv.x, y, -offset);
+                return new Vector3(x, y, max.z + offset);
+            return new Vector3(x, y, min.z - offset);
         }
 
         private static float Range(System.Random random, float min, float max) =>

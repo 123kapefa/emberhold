@@ -58,6 +58,24 @@ namespace Emberhold.Tests.EditMode.Building
             }
         }
 
+        [Test]
+        public void Append_CracksStayOnFormExtent()
+        {
+            var vertices = new List<Vector3>();
+            var indices = new List<int>();
+            var min = new Vector3(0.25f, 0f, 0.25f);
+            var max = new Vector3(0.75f, 1f, 0.75f);
+            BlockCrackMesh.Append(Vector3.zero, min, max, BlockCrackMesh.MaxStages, seed: 7, offset: 0.01f, vertices, indices);
+
+            Assert.That(vertices, Is.Not.Empty);
+            foreach (var v in vertices)
+            {
+                Assert.That(v.x, Is.InRange(0.239f, 0.761f));
+                Assert.That(v.y, Is.InRange(0f, 1.011f));
+                Assert.That(v.z, Is.InRange(0.239f, 0.761f));
+            }
+        }
+
         private static (List<Vector3>, List<int>) Build(int stage, float height = 1f, Vector3 origin = default)
         {
             var vertices = new List<Vector3>();

@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Emberhold.Gameplay.Building
 {
     /// <summary>
-    /// Рамка подсветки блока для меша из линий (MeshTopology.Lines): 12 рёбер блока по его высоте
+    /// Рамка подсветки блока для меша из линий (MeshTopology.Lines): 12 рёбер коробки формы
     /// и квадрат поменьше на грани под курсором. Координаты — от угла ячейки блока, в единицах блока.
     /// </summary>
     public static class BlockOutlineMesh
@@ -12,13 +12,19 @@ namespace Emberhold.Gameplay.Building
         /// <summary>Доля грани, которую занимает квадрат-метка.</summary>
         public const float FaceMarkScale = 0.6f;
 
-        public static void Build(float height, Vector3Int face, float padding, List<Vector3> vertices, List<int> indices)
+        /// <summary>Рамка на всю ячейку до высоты height.</summary>
+        public static void Build(float height, Vector3Int face, float padding, List<Vector3> vertices, List<int> indices) =>
+            Build(Vector3.zero, new Vector3(1f, height, 1f), face, padding, vertices, indices);
+
+        /// <summary>Рамка вокруг коробки от boxMin до boxMax внутри ячейки (столб уже ячейки, балка лежит поверху).</summary>
+        public static void Build(Vector3 boxMin, Vector3 boxMax, Vector3Int face, float padding,
+            List<Vector3> vertices, List<int> indices)
         {
             vertices.Clear();
             indices.Clear();
 
-            var min = new Vector3(-padding, -padding, -padding);
-            var max = new Vector3(1f + padding, height + padding, 1f + padding);
+            var min = boxMin - Vector3.one * padding;
+            var max = boxMax + Vector3.one * padding;
             for (var i = 0; i < 8; i++)
                 vertices.Add(new Vector3((i & 1) == 0 ? min.x : max.x, (i & 2) == 0 ? min.y : max.y, (i & 4) == 0 ? min.z : max.z));
             // Рёбра соединяют углы, отличающиеся одним битом.
