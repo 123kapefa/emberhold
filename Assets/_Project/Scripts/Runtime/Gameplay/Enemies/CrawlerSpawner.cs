@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Emberhold.Gameplay.DayNight;
+using Emberhold.Gameplay.Fog;
 using Emberhold.Gameplay.Lighting;
 using Emberhold.World;
 using UnityEngine;
@@ -10,11 +11,18 @@ namespace Emberhold.Gameplay.Enemies
     /// <summary>
     /// Выпускает ползунов ночью: каждые несколько секунд ночи (время суток из DayNightCycle) один ползун
     /// появляется в тумане за границей света горящего огня. Каждая следующая ночь чуть опаснее.
-    /// С рассветом все ползуны растворяются. В углу экрана — сколько их и сколько уже у огня.
+    /// С рассветом все ползуны растворяются. В углу экрана — сколько их и сколько уже у огня, а для проверки —
+    /// кнопки «выпустить ползуна» и «выключить туман» (чтобы видеть, где они появляются и как ползут).
     /// </summary>
     public sealed class CrawlerSpawner : MonoBehaviour
     {
         private const int SpawnAttempts = 12;
+        // Кнопки для проверки в правом верхнем углу экрана (координаты GUI: от левого верхнего угла).
+        private const float ButtonsRight = 410f;
+        private const float ButtonsTop = 78f;
+        private const float ButtonWidth = 150f;
+        private const float ButtonHeight = 22f;
+        private const float ButtonGap = 10f;
 
         [SerializeField] private CrawlerSettings settings;
         [SerializeField] private Crawler prefab;
@@ -25,7 +33,12 @@ namespace Emberhold.Gameplay.Enemies
         [Tooltip("Смена дня и ночи. Если пусто — первая в сцене.")]
         [SerializeField] private DayNightCycle dayNight;
 
+        // Спаунер, чьи кнопки сейчас на экране: щелчок по ним не должен копать блок за ними.
+        private static CrawlerSpawner shown;
+
         private readonly List<Crawler> crawlers = new();
+        private CrawlerPaths paths;
+        private LightFog fog;
         private float nightTime;
         private float nextSpawnAt;
 
@@ -51,6 +64,8 @@ namespace Emberhold.Gameplay.Enemies
                 zone = FindAnyObjectByType<BuildZone>();
             if (dayNight == null)
                 dayNight = FindAnyObjectByType<DayNightCycle>();
+            if (fog == null)
+                fog = FindAnyObjectByType<LightFog>(FindObjectsInactive.Include);
             if (dayNight != null)
             {
                 dayNight.TimePassed += OnTimePassed;
@@ -61,10 +76,13 @@ namespace Emberhold.Gameplay.Enemies
                 Debug.LogWarning("[Crawlers] В сцене нет DayNightCycle: ползуны сами не появятся.", this);
             }
             StartNight();
+            shown = this;
         }
 
         private void OnDisable()
         {
+            if (shown == this)
+                shown = null;
             if (dayNight != null)
             {
                 dayNight.TimePassed -= OnTimePassed;
@@ -136,7 +154,9 @@ namespace Emberhold.Gameplay.Enemies
         public Crawler Spawn(Vector3 point)
         {
             var crawler = Instantiate(prefab, point, Quaternion.identity, transform);
-            crawler.Init(settings, worldView, zone);
+            if (paths == null || paths.World != worldView.World)
+                paths = new CrawlerPaths(worldView.World, settings.MaxStep);
+            crawler.Init(settings, worldView, zone, paths);
             crawler.Died += OnDied;
             crawlers.Add(crawler);
             Spawned?.Invoke(crawler);
@@ -148,6 +168,18 @@ namespace Emberhold.Gameplay.Enemies
             crawler.Died -= OnDied;
             crawlers.Remove(crawler);
         }
+
+        /// <summary>Указатель (экранные координаты ввода, от левого нижнего угла) над кнопками спаунера.</summary>
+        public static bool IsOverButtons(Vector2 pointer)
+        {
+            if (shown == null)
+                return false;
+            var gui = new Vector2(pointer.x, Screen.height - pointer.y);
+            return ButtonRect(0).Contains(gui) || ButtonRect(1).Contains(gui);
+        }
+
+        private static Rect ButtonRect(int index) =>
+            new(Screen.width - ButtonsRight + index * (ButtonWidth + ButtonGap), ButtonsTop, ButtonWidth, ButtonHeight);
 
         private LightSource RandomLitSource()
         {
@@ -164,6 +196,12 @@ namespace Emberhold.Gameplay.Enemies
 
         private void OnGUI()
         {
+            // Кнопки для проверки: туман выключается целиком (компонент LightFog), ползун выходит сразу.
+            if (fog != null && GUI.Button(ButtonRect(0), fog.enabled ? "Туман: выключить" : "Туман: включить"))
+                fog.enabled = !fog.enabled;
+            if (GUI.Button(ButtonRect(1), "Выпустить ползуна"))
+                TrySpawn();
+
             if (crawlers.Count == 0)
                 return;
             var atFire = 0;
