@@ -217,6 +217,136 @@ namespace Emberhold.World.Meshing
                     AddBoxFace(output, material, index, p, b, face);
                 }
             }
+
+            foreach (var prism in BlockForms.Prisms(s.Form))
+                AddPrism(output, material, index, p, prism, s.Rotation, sideClosed);
+        }
+
+        /// <summary>
+        /// Призма из каталога: стенка на каждое ребро профиля и два торца веером из первой точки профиля.
+        /// Соседние стенки с изломом меньше <see cref="SmoothAngle"/> получают общую нормаль в вершине —
+        /// круглый столб и изгиб полуарки освещаются гладко. Грань на стороне ячейки не рисуется,
+        /// если сторону закрывает полный блок соседа.
+        /// </summary>
+        private static void AddPrism(ChunkMeshData output, byte material, int index, Vector3 p, FormPrism prism,
+            int rotation, ReadOnlySpan<bool> sideClosed)
+        {
+            var profile = prism.Profile;
+            var count = profile.Length;
+            var clockwise = prism.SignedArea < 0f;
+
+            Span<Vector3> edgeNormals = stackalloc Vector3[count];
+            for (var i = 0; i < count; i++)
+            {
+                var d = profile[(i + 1) % count] - profile[i];
+                var outward = clockwise ? new Vector2(-d.y, d.x) : new Vector2(d.y, -d.x);
+                edgeNormals[i] = RotateVector(prism.Point(outward.normalized, 0f), rotation);
+            }
+
+            for (var i = 0; i < count; i++)
+            {
+                var next = (i + 1) % count;
+                var a0 = PrismPoint(p, prism, profile[i], prism.From, rotation);
+                var a1 = PrismPoint(p, prism, profile[i], prism.To, rotation);
+                var b0 = PrismPoint(p, prism, profile[next], prism.From, rotation);
+                var b1 = PrismPoint(p, prism, profile[next], prism.To, rotation);
+                var normal = edgeNormals[i];
+                var side = CellSide(p, normal, a0, a1, b0);
+                if (side >= 0 && sideClosed[side])
+                    continue;
+                var na = SmoothedNormal(normal, edgeNormals[(i + count - 1) % count]);
+                var nb = SmoothedNormal(normal, edgeNormals[next]);
+                AddFacingTriangle(output, material, index, normal, a0, a1, b1, na, na, nb);
+                AddFacingTriangle(output, material, index, normal, a0, b1, b0, na, nb, nb);
+            }
+
+            var axis = RotateVector(prism.Point(Vector2.zero, 1f), rotation);
+            AddPrismCap(output, material, index, p, prism, prism.From, -axis, rotation, sideClosed);
+            AddPrismCap(output, material, index, p, prism, prism.To, axis, rotation, sideClosed);
+        }
+
+        private const float SmoothAngle = 30f;
+
+        private static void AddPrismCap(ChunkMeshData output, byte material, int index, Vector3 p, FormPrism prism,
+            int at, Vector3 normal, int rotation, ReadOnlySpan<bool> sideClosed)
+        {
+            var profile = prism.Profile;
+            var first = PrismPoint(p, prism, profile[0], at, rotation);
+            var side = CellSide(p, normal, first, PrismPoint(p, prism, profile[1], at, rotation),
+                PrismPoint(p, prism, profile[2], at, rotation));
+            if (side >= 0 && sideClosed[side])
+                return;
+            for (var i = 1; i < profile.Length - 1; i++)
+            {
+                var b = PrismPoint(p, prism, profile[i], at, rotation);
+                var c = PrismPoint(p, prism, profile[i + 1], at, rotation);
+                AddFacingTriangle(output, material, index, normal, first, b, c, normal, normal, normal);
+            }
+        }
+
+        /// <summary>Точка призмы в координатах чанка: профиль → ячейка (шестнадцатые) → поворот → единицы блока.</summary>
+        private static Vector3 PrismPoint(Vector3 p, FormPrism prism, Vector2 point, float at, int rotation)
+        {
+            const float n = BlockShape.MaxHeight;
+            var v = prism.Point(point, at);
+            for (var i = 0; i < (rotation & 3); i++)
+                v = new Vector3(n - v.z, v.y, v.x);
+            return p + v * Sixteenth;
+        }
+
+        /// <summary>Поворот направления на четверти против часовой стрелки (вид сверху), как у точек ячейки.</summary>
+        private static Vector3 RotateVector(Vector3 v, int rotation)
+        {
+            for (var i = 0; i < (rotation & 3); i++)
+                v = new Vector3(-v.z, v.y, v.x);
+            return v;
+        }
+
+        /// <summary>
+        /// Сторона ячейки (+X, −X, +Y, −Y, +Z, −Z → 0..5), на которой лежит плоская грань с нормалью normal
+        /// и точками a, b, c; −1 — грань не на стороне ячейки.
+        /// </summary>
+        private static int CellSide(Vector3 p, Vector3 normal, Vector3 a, Vector3 b, Vector3 c)
+        {
+            const float e = 1e-4f;
+            for (var axis = 0; axis < 3; axis++)
+            {
+                if (Mathf.Abs(Mathf.Abs(normal[axis]) - 1f) > e)
+                    continue;
+                var plane = normal[axis] > 0f ? p[axis] + 1f : p[axis];
+                if (Mathf.Abs(a[axis] - plane) > e || Mathf.Abs(b[axis] - plane) > e || Mathf.Abs(c[axis] - plane) > e)
+                    return -1;
+                return axis * 2 + (normal[axis] > 0f ? 0 : 1);
+            }
+            return -1;
+        }
+
+        /// <summary>Нормаль вершины на стыке двух стенок: общая при пологом изломе, своя при остром.</summary>
+        private static Vector3 SmoothedNormal(Vector3 own, Vector3 neighbour) =>
+            Vector3.Angle(own, neighbour) < SmoothAngle ? (own + neighbour).normalized : own;
+
+        /// <summary>Треугольник лицом в сторону faceNormal: при обратном обходе вершины b и c меняются местами.</summary>
+        private static void AddFacingTriangle(ChunkMeshData output, byte material, int index, Vector3 faceNormal,
+            Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc)
+        {
+            if (Vector3.Dot(Vector3.Cross(b - a, c - a), faceNormal) < 0f)
+            {
+                (b, c) = (c, b);
+                (nb, nc) = (nc, nb);
+            }
+            output.AddTriangle(material, index, a, b, c, na, nb, nc,
+                SurfaceUv(a, faceNormal), SurfaceUv(b, faceNormal), SurfaceUv(c, faceNormal));
+        }
+
+        /// <summary>UV по главной оси нормали — как у граней коробок: верх/низ — XZ, стороны X — ZY, стороны Z — XY.</summary>
+        private static Vector2 SurfaceUv(Vector3 v, Vector3 normal)
+        {
+            var ax = Mathf.Abs(normal.x);
+            var ay = Mathf.Abs(normal.y);
+            var az = Mathf.Abs(normal.z);
+            if (ay >= ax && ay >= az)
+                return new Vector2(v.x, v.z);
+            return ax >= az ? new Vector2(v.z, v.y) : new Vector2(v.x, v.y);
         }
 
         /// <summary>Закрыта ли грань face коробки i вплотную прилегающей другой коробкой целиком.</summary>

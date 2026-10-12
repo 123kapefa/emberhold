@@ -15,6 +15,11 @@ namespace Emberhold.Tests.EditMode.Building
             Assert.That(BuildSelection.Shape(BuildForm.OuterCorner, 0, 8), Is.EqualTo(new BlockShape(0, 0, 0, 16)));
             Assert.That(BuildSelection.Shape(BuildForm.InnerCorner, 0, 8), Is.EqualTo(new BlockShape(0, 16, 16, 16)));
             Assert.That(BuildSelection.Shape(BuildForm.Stairs, 0, 8), Is.EqualTo(BlockShape.Catalog(BlockForm.Stairs, 0)));
+            Assert.That(BuildSelection.Shape(BuildForm.SquarePillar, 0, 8), Is.EqualTo(BlockShape.Catalog(BlockForm.SquarePillar, 0)));
+            Assert.That(BuildSelection.Shape(BuildForm.RoundPillar, 0, 8), Is.EqualTo(BlockShape.Catalog(BlockForm.RoundPillar, 0)));
+            Assert.That(BuildSelection.Shape(BuildForm.Beam, 0, 8), Is.EqualTo(BlockShape.Catalog(BlockForm.Beam, 0)));
+            Assert.That(BuildSelection.Shape(BuildForm.Bracket, 0, 8), Is.EqualTo(BlockShape.Catalog(BlockForm.Bracket, 0)));
+            Assert.That(BuildSelection.Shape(BuildForm.HalfArch, 0, 8), Is.EqualTo(BlockShape.Catalog(BlockForm.HalfArch, 0)));
         }
 
         [Test]
@@ -22,6 +27,7 @@ namespace Emberhold.Tests.EditMode.Building
         {
             Assert.That(BuildSelection.Shape(BuildForm.Ramp, 1, 8), Is.EqualTo(new BlockShape(0, 0, 16, 16).RotatedQuarter()));
             Assert.That(BuildSelection.Shape(BuildForm.Stairs, 3, 8), Is.EqualTo(BlockShape.Catalog(BlockForm.Stairs, 3)));
+            Assert.That(BuildSelection.Shape(BuildForm.HalfArch, 2, 8), Is.EqualTo(BlockShape.Catalog(BlockForm.HalfArch, 2)));
             // Плоские формы от поворота не меняются.
             Assert.That(BuildSelection.Shape(BuildForm.Slab, 2, 8), Is.EqualTo(BlockShape.Flat(8)));
         }

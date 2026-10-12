@@ -26,6 +26,21 @@ namespace Emberhold.Tests.EditMode.Building
         }
 
         [Test]
+        public void Build_BoxFollowsFormExtent()
+        {
+            BlockOutlineMesh.Build(new Vector3(0.25f, 0f, 0.25f), new Vector3(0.75f, 1f, 0.75f), Vector3Int.right, 0f,
+                vertices, indices);
+
+            var bounds = new Bounds(vertices[0], Vector3.zero);
+            foreach (var v in vertices)
+                bounds.Encapsulate(v);
+            Assert.That(bounds.min, Is.EqualTo(new Vector3(0.25f, 0f, 0.25f)));
+            Assert.That(bounds.max, Is.EqualTo(new Vector3(0.75f, 1f, 0.75f)));
+            for (var i = 8; i < 12; i++)
+                Assert.That(vertices[i].x, Is.EqualTo(0.75f).Within(1e-5f));
+        }
+
+        [Test]
         public void Build_FaceMarkLiesOnHoveredFace()
         {
             BlockOutlineMesh.Build(0.75f, Vector3Int.up, 0f, vertices, indices);

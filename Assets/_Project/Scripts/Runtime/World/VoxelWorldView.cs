@@ -12,6 +12,8 @@ namespace Emberhold.World
     /// <summary>
     /// Показывает воксельный мир в сцене: на каждый чанк один GameObject с мешем и коллайдером на слое Ground.
     /// В Awake генерирует рельеф по настройкам и зонам местности сцены; каждый кадр перестраивает только изменённые чанки.
+    /// Вне Play тот же рельеф строится по кнопке инспектора (<see cref="BuildPreview"/>) во временные объекты,
+    /// которые не сохраняются в сцену.
     /// Отдельные блоки можно спрятать из картинки (<see cref="HideBlock"/>), пока их показывает кто-то другой,
     /// например падающий блок: данные мира и коллайдер при этом не меняются.
     /// </summary>
@@ -40,6 +42,13 @@ namespace Emberhold.World
         private ChunkMeshData colliderData;
         private readonly SurfaceNormals surfaceNormals = new();
         private bool missingMaterialReported;
+        /// <summary>Куда кладутся чанки: сам вид в Play, временный объект предпросмотра вне Play.</summary>
+        private Transform chunkParent;
+
+        /// <summary>Имя временного объекта с чанками предпросмотра.</summary>
+        public const string PreviewName = "Предпросмотр (не сохраняется)";
+        /// <summary>Предпросмотр не сохраняется и не правится руками: его нельзя случайно сдвинуть или унести из-под мира.</summary>
+        private const HideFlags PreviewFlags = HideFlags.DontSave | HideFlags.NotEditable;
 
         public VoxelWorld World { get; private set; }
 
@@ -56,10 +65,98 @@ namespace Emberhold.World
             }
         }
 
+        /// <summary>Есть ли настройки рельефа, по которым можно построить предпросмотр.</summary>
+        public bool CanGenerate => terrain != null;
+
+        /// <summary>Построен ли предпросмотр вне Play (в том числе оставшийся после перекомпиляции скриптов).</summary>
+        public bool HasPreview => FindPreviewRoot() != null;
+
         private void Awake()
         {
+            // Предпросмотр мог остаться в сцене, если Play запустили в обход редактора.
+            ClearPreview();
             if (terrain != null)
-                Show(terrain.Generate(CollectZones(terrain.SizeInChunks * ChunkData.Size)));
+                Show(Generate());
+        }
+
+        private VoxelWorld Generate() => terrain.Generate(CollectZones(terrain.SizeInChunks * ChunkData.Size));
+
+        /// <summary>
+        /// Вне Play: сгенерировать рельеф по настройкам и зонам сцены, как при старте, и показать его во временном
+        /// объекте. Сам вид не сдвигается, сцена не меняется. Повторный вызов перестраивает предпросмотр.
+        /// </summary>
+        public void BuildPreview()
+        {
+            if (Application.isPlaying)
+                return;
+            ClearPreview();
+            if (terrain == null)
+                return;
+
+            var world = Generate();
+            var root = new GameObject(PreviewName) { hideFlags = PreviewFlags };
+            root.transform.SetParent(transform, false);
+            if (centerOnOrigin)
+                root.transform.position = WorldOrigin(world.SizeInBlocks);
+            Display(world, root.transform);
+        }
+
+        /// <summary>Убрать предпросмотр вне Play. В Play ничего не делает с показанным миром.</summary>
+        public void ClearPreview()
+        {
+            var root = FindPreviewRoot();
+            if (root == null)
+                return;
+            if (chunkParent == root)
+            {
+                ClearChunkViews();
+                World = null;
+                chunkParent = null;
+            }
+            ReleasePreview(root);
+        }
+
+        /// <summary>
+        /// Убрать все предпросмотры в открытых сценах, в том числе оставшиеся без вида (компонент удалили,
+        /// объект мира выключен). Редактор зовёт перед запуском Play.
+        /// </summary>
+        public static void ClearAllPreviews()
+        {
+            foreach (var view in FindObjectsByType<VoxelWorldView>(FindObjectsInactive.Include))
+                view.ClearPreview();
+            foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
+                if (t != null && IsPreviewRoot(t) && t.gameObject.scene.IsValid())
+                    ReleasePreview(t);
+        }
+
+        private Transform FindPreviewRoot()
+        {
+            foreach (Transform child in transform)
+                if (IsPreviewRoot(child))
+                    return child;
+            return null;
+        }
+
+        private static bool IsPreviewRoot(Transform t) =>
+            t.name == PreviewName && (t.hideFlags & HideFlags.DontSaveInEditor) != 0;
+
+        /// <summary>Удалить объект предпросмотра с мешами: после перекомпиляции скриптов словарь чанков пуст, а объекты остались.</summary>
+        private static void ReleasePreview(Transform root)
+        {
+            foreach (var filter in root.GetComponentsInChildren<MeshFilter>(true))
+                Release(filter.sharedMesh);
+            Release(root.gameObject);
+        }
+
+        /// <summary>Destroy в Play, DestroyImmediate вне Play (там Destroy не работает).</summary>
+        private static void Release(Object obj)
+        {
+            if (obj == null)
+                return;
+            if (Application.isPlaying)
+                Destroy(obj);
+            else
+                DestroyImmediate(obj);
         }
 
         /// <summary>Зоны местности сцены в координатах сетки мира, который встанет на место этого вида.</summary>
@@ -80,15 +177,22 @@ namespace Emberhold.World
         /// <summary>Показать мир: старые чанки убираются, все чанки нового мира строятся сразу.</summary>
         public void Show(VoxelWorld world)
         {
+            ClearPreview();
+            if (centerOnOrigin)
+            {
+                transform.position = WorldOrigin(world.SizeInBlocks);
+            }
+            Display(world, transform);
+        }
+
+        private void Display(VoxelWorld world, Transform parent)
+        {
             ClearChunkViews();
             hiddenBlocks.Clear();
             visualDirty.Clear();
             HiddenVersion++;
             World = world;
-            if (centerOnOrigin)
-            {
-                transform.position = WorldOrigin(World.SizeInBlocks);
-            }
+            chunkParent = parent;
 
             meshData ??= new ChunkMeshData();
             if (sharedMaterials.Count == 0)
@@ -109,10 +213,10 @@ namespace Emberhold.World
         {
             foreach (var view in chunkViews.Values)
             {
-                Destroy(view.Mesh);
+                Release(view.Mesh);
                 if (view.ColliderMesh != null)
-                    Destroy(view.ColliderMesh);
-                Destroy(view.Collider.gameObject);
+                    Release(view.ColliderMesh);
+                Release(view.Collider.gameObject);
             }
             chunkViews.Clear();
             viewsByCollider.Clear();
@@ -279,8 +383,9 @@ namespace Emberhold.World
             var go = new GameObject($"Chunk {chunk.x},{chunk.y},{chunk.z}")
             {
                 layer = Layers.Ground,
+                hideFlags = chunkParent.hideFlags,
             };
-            go.transform.SetParent(transform, false);
+            go.transform.SetParent(chunkParent, false);
             go.transform.localPosition = chunk * ChunkData.Size;
 
             var mesh = NewChunkMesh(go.name);
