@@ -29,6 +29,9 @@ namespace Emberhold.Gameplay.Building
         [SerializeField] private Color digColor = new(1f, 0.75f, 0.2f);
         [SerializeField] private Color removeColor = new(1f, 0.25f, 0.2f);
         [SerializeField] private Color buildColor = new(0.35f, 0.9f, 0.45f);
+        [Tooltip("Рамка под курсором у инструментов «Чертёж» и «Поручить копать».")]
+        [SerializeField] private Color blueprintColor = new(0.35f, 0.75f, 1f);
+        [SerializeField] private Color digOrderColor = new(1f, 0.45f, 0.15f);
         [Tooltip("Рамка блока вне света: здесь править нельзя.")]
         [SerializeField] private Color blockedColor = new(0.45f, 0.55f, 0.7f);
         [Tooltip("Сколько секунд показывать подсказку после клика вне света.")]
@@ -48,6 +51,8 @@ namespace Emberhold.Gameplay.Building
         public Color DigColor => digColor;
         public Color RemoveColor => removeColor;
         public Color BuildColor => buildColor;
+        public Color BlueprintColor => blueprintColor;
+        public Color DigOrderColor => digOrderColor;
         public Color BlockedColor => blockedColor;
         public float BlockedMessageSeconds => blockedMessageSeconds;
         public float OutlinePadding => outlinePadding;

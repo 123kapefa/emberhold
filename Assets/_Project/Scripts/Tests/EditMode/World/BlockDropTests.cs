@@ -177,6 +177,39 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(items.Version, Is.GreaterThan(version));
         }
 
+        [Test]
+        public void DropItem_LiesOnGroundAndStacks()
+        {
+            var world = ColumnWorld(BlockMaterials.Stone);
+            var items = new DroppedItems(table);
+
+            // Рабочий бросил ношу в воздухе над столбиком: она ложится на верх столбика.
+            var pile = items.Drop(world, Column + new Vector3Int(0, 6, 0), new ItemDrop("stone", 1));
+            Assert.That(pile.Position, Is.EqualTo(new Vector3(3.5f, 4f, 2.5f)));
+            Assert.That(items.Drop(world, Column + new Vector3Int(0, 4, 0), new ItemDrop("stone", 2)), Is.SameAs(pile));
+            Assert.That(pile.Drop.Count, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void TakeFromPile_LeavesRestAndRemovesEmptyPile()
+        {
+            var world = ColumnWorld(BlockMaterials.Stone);
+            var items = new DroppedItems(table);
+            var pile = items.Drop(world, Column + new Vector3Int(0, 4, 0), new ItemDrop("stone", 3));
+            var version = items.Version;
+
+            Assert.That(items.Take(pile, 1, out var taken), Is.True);
+            Assert.That(taken, Is.EqualTo(new ItemDrop("stone", 1)));
+            Assert.That(pile.Drop.Count, Is.EqualTo(2));
+            Assert.That(items.Version, Is.GreaterThan(version));
+
+            // Берут больше, чем есть: достаётся остаток, кучка исчезает.
+            Assert.That(items.Take(pile, 5, out taken), Is.True);
+            Assert.That(taken, Is.EqualTo(new ItemDrop("stone", 2)));
+            Assert.That(items.Items, Is.Empty);
+            Assert.That(items.Take(pile, 1, out _), Is.False, "Кучки уже нет");
+        }
+
         /// <summary>Столбик из 4 полных блоков y = 0..3 в мире из одного чанка.</summary>
         private static VoxelWorld ColumnWorld(byte material)
         {

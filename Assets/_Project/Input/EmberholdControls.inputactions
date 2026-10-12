@@ -1365,6 +1365,24 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "ToolBlueprint",
+                    "type": "Button",
+                    "id": "6e8e4a87-5d90-4940-b85f-b9a54d18ac60",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "ToolDigOrder",
+                    "type": "Button",
+                    "id": "058d64ad-44aa-4d99-99ac-edc372103557",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "NextForm",
                     "type": "Button",
                     "id": "2a0d6eda-0503-4fee-b9d3-28b1d3363070",
@@ -1463,6 +1481,28 @@
                     "processors": "",
                     "groups": "Keyboard&Mouse",
                     "action": "ToolBuild",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "08bf5a0f-b24a-4deb-930f-73d916837ce9",
+                    "path": "<Keyboard>/4",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "ToolBlueprint",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "75bed740-1e29-4b97-a081-600e381b3d19",
+                    "path": "<Keyboard>/5",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "ToolDigOrder",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
