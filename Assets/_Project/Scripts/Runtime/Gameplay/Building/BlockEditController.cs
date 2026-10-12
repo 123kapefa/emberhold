@@ -26,6 +26,7 @@ namespace Emberhold.Gameplay.Building
     /// между нажатием и отпусканием почти не сдвинулась. Камера занимает ПКМ (удержание), СКМ, колесо
     /// и WASD/QE/RF. Ввод берётся из карты «Building» в EmberholdControls.
     /// Править можно только внутри света (BuildZone); снаружи рамка другого цвета и клик даёт подсказку.
+    /// После каждой правки блоки, потерявшие опору, падают (<see cref="BlockStability"/>).
     /// </summary>
     public sealed class BlockEditController : MonoBehaviour
     {
@@ -79,6 +80,7 @@ namespace Emberhold.Gameplay.Building
         private BlockGhost ghost;
         private Vector2 rotatePressPosition;
         private BlockPlacement.Plan? plan;
+        private readonly List<BlockFall> falls = new();
 
         public BlockTool Tool { get; set; } = BlockTool.Dig;
 
@@ -93,6 +95,12 @@ namespace Emberhold.Gameplay.Building
 
         /// <summary>Урон начатых блоков. Рабочие потом будут копать через него же.</summary>
         public BlockDamage Damage { get; private set; }
+
+        /// <summary>Проверка опоры после правок; разрушения от врагов потом пойдут через неё же.</summary>
+        public BlockStability Stability { get; } = new();
+
+        /// <summary>Блоки, упавшие после последней правки.</summary>
+        public IReadOnlyList<BlockFall> LastFalls => falls;
 
         private void Awake()
         {
@@ -235,24 +243,39 @@ namespace Emberhold.Gameplay.Building
         /// </summary>
         public bool Apply(BlockHit hit)
         {
+            falls.Clear();
             if (!CanEdit(TargetCell(hit)))
                 return false;
+
+            Vector3Int changed;
             switch (Tool)
             {
                 case BlockTool.Dig:
-                    return Damage.Hit(worldView.World, hit.Block, settings.HitDamage);
+                    if (!Damage.Hit(worldView.World, hit.Block, settings.HitDamage))
+                        return false;
+                    changed = hit.Block;
+                    break;
                 case BlockTool.Remove:
-                    return BlockEdits.Remove(worldView.World, hit.Block);
+                    if (!BlockEdits.Remove(worldView.World, hit.Block))
+                        return false;
+                    changed = hit.Block;
+                    break;
                 case BlockTool.Build:
                     if (!BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p))
                         return false;
                     BlockPlacement.Apply(worldView.World, p);
                     // Досыпанный блок начинает с целой прочностью.
                     Damage.Forget(p.Cell);
-                    return true;
+                    changed = p.Cell;
+                    break;
                 default:
                     return false;
             }
+
+            // Блоки без опоры падают, их урон падает вместе с ними.
+            if (Stability.Settle(worldView.World, changed, falls) > 0)
+                Damage.Move(falls);
+            return true;
         }
 
         /// <summary>Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, иначе — блок под курсором.</summary>

@@ -92,5 +92,43 @@ namespace Emberhold.Tests.PlayMode.Building
             Assert.That(view.TryGetBlock(onStairs.collider, onStairs.triangleIndex, out var picked), Is.True);
             Assert.That(picked, Is.EqualTo(above));
         }
+
+        [UnityTest]
+        public IEnumerator PrototypeScene_BlocksWithoutSupportFall()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var editor = Object.FindAnyObjectByType<BlockEditController>();
+            var view = Object.FindAnyObjectByType<VoxelWorldView>();
+            Assert.That(Physics.Raycast(new Vector3(0.5f, 200f, 0.5f), Vector3.down, out var raycast, 400f, Layers.GroundMask), Is.True);
+            Assert.That(view.TryGetBlock(raycast.collider, raycast.triangleIndex, out var surface), Is.True);
+            var world = view.World;
+            var bottom = surface + Vector3Int.up;
+            var middle = bottom + Vector3Int.up;
+            var top = middle + Vector3Int.up;
+            var arm = top + Vector3Int.right;
+            Assume.That(world.GetBlock(bottom).IsAir && world.GetBlock(middle).IsAir && world.GetBlock(top).IsAir && world.GetBlock(arm).IsAir, Is.True);
+
+            // Столб из трёх полных блоков и вынос вбок от его верха.
+            editor.Tool = BlockTool.Build;
+            Assert.That(editor.Apply(new BlockHit(surface, Vector3Int.up)), Is.True);
+            Assert.That(editor.Apply(new BlockHit(bottom, Vector3Int.up)), Is.True);
+            Assert.That(editor.Apply(new BlockHit(middle, Vector3Int.up)), Is.True);
+            Assert.That(editor.Apply(new BlockHit(top, Vector3Int.right)), Is.True);
+            Assert.That(editor.LastFalls, Is.Empty, "Вынос держится за столб");
+            var placed = world.GetBlock(arm);
+            Assert.That(placed.IsAir, Is.False);
+
+            // Убрали середину: верх и вынос потеряли опору и упали.
+            editor.Tool = BlockTool.Remove;
+            Assert.That(editor.Apply(new BlockHit(middle, Vector3Int.right)), Is.True);
+            yield return null;
+            Assert.That(editor.LastFalls, Is.Not.Empty);
+            Assert.That(world.GetBlock(top).IsAir, Is.True);
+            Assert.That(world.GetBlock(arm).IsAir, Is.True);
+            Assert.That(world.GetBlock(middle).IsAir, Is.False, "Верх столба лёг на основание");
+            Assert.That(view.World.DirtyCount, Is.Zero, "Меш перестроен в том же кадре");
+        }
     }
 }
