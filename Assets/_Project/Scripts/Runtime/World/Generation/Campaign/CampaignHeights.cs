@@ -60,9 +60,9 @@ namespace Emberhold.World.Generation
             Parallel.For(0, sizeZ + 1, z =>
             {
                 var floors = new float[locations.Length];
-                var inside = new float[locations.Length];
+                var distances = new float[locations.Length];
                 for (var x = 0; x <= sizeX; x++)
-                    result.Compute(layout.Ridge, locations, gorges, noise, x, z, sizeX, sizeZ, maxHeight, floors, inside);
+                    result.Compute(layout.Ridge, locations, gorges, noise, x, z, sizeX, sizeZ, maxHeight, floors, distances);
             });
             return result;
         }
