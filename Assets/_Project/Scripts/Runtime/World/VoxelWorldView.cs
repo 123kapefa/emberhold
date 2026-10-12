@@ -39,6 +39,8 @@ namespace Emberhold.World
         private readonly List<(Vector3Int block, Block value)> hiddenNearChunk = new();
         // Чанки, у которых изменилась только картинка (спрятали или вернули блок): коллайдер у них прежний.
         private readonly HashSet<Vector3Int> visualDirty = new();
+        private readonly List<Color> groundColors = new();
+        private Color? rockColor;
         private ChunkMeshData meshData;
         private ChunkMeshData colliderData;
         private readonly SurfaceNormals surfaceNormals = new();
@@ -471,6 +473,13 @@ namespace Emberhold.World
             mesh.SetVertices(data.Vertices);
             mesh.SetNormals(data.Normals);
             mesh.SetUVs(0, data.Uvs);
+            // Гладкая земля смешивает цвет травы с цветом камня: вес в UV3, цвет камня — в цвете вершин.
+            mesh.SetUVs(3, data.Blends);
+            groundColors.Clear();
+            var rock = RockColor();
+            for (var i = 0; i < data.Vertices.Count; i++)
+                groundColors.Add(rock);
+            mesh.SetColors(groundColors);
 
             // Подмеш на каждый материал, даже пустой: у рендерера всегда один и тот же список материалов.
             // Если список менять при каждой перестройке, GPU Resident Drawer может остаться со старым
@@ -480,6 +489,20 @@ namespace Emberhold.World
                 mesh.SetTriangles(data.Triangles[subMesh + 1], subMesh, false);
             mesh.RecalculateBounds();
         }
+
+        /// <summary>Цвет камня для перехода гладкой земли из травы в камень: основной цвет материала камня.</summary>
+        private Color RockColor()
+        {
+            if (rockColor.HasValue)
+                return rockColor.Value;
+            var stone = blockMaterials != null && BlockMaterials.Stone < blockMaterials.Length ? blockMaterials[BlockMaterials.Stone] : null;
+            var color = stone != null && stone.HasProperty(BaseColorId) ? stone.GetColor(BaseColorId) : Color.gray;
+            // Цвет материала Unity переводит в линейное пространство сам, цвет вершин — нет.
+            rockColor = QualitySettings.activeColorSpace == ColorSpace.Linear ? color.linear : color;
+            return rockColor.Value;
+        }
+
+        private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
         /// <summary>Материалы для подмешей: подмеш i — материал блока i + 1 (воздух не рисуется).</summary>
         private void BuildSharedMaterials()

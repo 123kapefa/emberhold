@@ -28,6 +28,7 @@ namespace Emberhold.World.Meshing
             var data = world.GetChunk(chunk);
             var origin = chunk * ChunkData.Size;
             smoothNormals?.Prepare(world, chunk);
+            var surface = world.Surface;
 
             for (var y = 0; y < ChunkData.Size; y++)
             for (var z = 0; z < ChunkData.Size; z++)
@@ -41,6 +42,19 @@ namespace Emberhold.World.Meshing
                 var material = block.Material;
                 var index = ChunkData.Index(x, y, z);
                 var p = new Vector3(x, y, z);
+
+                // Земля нетронутого столбца рисуется гладкой поверхностью, а не гранями блоков.
+                if (surface != null && surface.IsNatural(origin.x + x, origin.z + z))
+                {
+                    var top = surface.TopY(origin.x + x, origin.z + z);
+                    if (origin.y + y < top)
+                        continue;
+                    if (origin.y + y == top)
+                    {
+                        AddSurface(output, world, surface, material, index, p, origin + new Vector3Int(x, y, z));
+                        continue;
+                    }
+                }
 
                 if (s.IsCatalog)
                 {
@@ -68,6 +82,64 @@ namespace Emberhold.World.Meshing
                 AddSide(output, material, index, p, Side.Back, s.C00, s.C10, n.C01, n.C11);
             }
         }
+
+        /// <summary>
+        /// Гладкая поверхность нетронутого столбца (<see cref="TerrainSurface"/>): верх по высотам углов
+        /// поверхности с нормалями по соседним углам и весом камня в вершинах, а к тронутым соседям — стенки от дна мира до края
+        /// поверхности (стенки ям и подкопов). Треугольники принадлежат верхнему блоку земли столбца.
+        /// </summary>
+        private static void AddSurface(ChunkMeshData output, VoxelWorld world, TerrainSurface surface, byte material,
+            int index, Vector3 p, Vector3Int block)
+        {
+            int gx = block.x, gz = block.z;
+            var floor = block.y * BlockShape.MaxHeight;
+            int h00 = surface.Corner(gx, gz) - floor, h10 = surface.Corner(gx + 1, gz) - floor;
+            int h01 = surface.Corner(gx, gz + 1) - floor, h11 = surface.Corner(gx + 1, gz + 1) - floor;
+            var c00 = p + new Vector3(0, h00 * Sixteenth, 0);
+            var c10 = p + new Vector3(1, h10 * Sixteenth, 0);
+            var c01 = p + new Vector3(0, h01 * Sixteenth, 1);
+            var c11 = p + new Vector3(1, h11 * Sixteenth, 1);
+            Vector3 n00 = surface.Normal(gx, gz), n10 = surface.Normal(gx + 1, gz);
+            Vector3 n01 = surface.Normal(gx, gz + 1), n11 = surface.Normal(gx + 1, gz + 1);
+            var uv00 = new Vector2(p.x, p.z);
+            var uv10 = new Vector2(p.x + 1, p.z);
+            var uv01 = new Vector2(p.x, p.z + 1);
+            var uv11 = new Vector2(p.x + 1, p.z + 1);
+            // Вся гладкая земля — в подмеше травы: её материал смешивает траву с камнем по весу в вершинах.
+            float r00 = surface.Rock(gx, gz), r10 = surface.Rock(gx + 1, gz);
+            float r01 = surface.Rock(gx, gz + 1), r11 = surface.Rock(gx + 1, gz + 1);
+            const byte top = BlockMaterials.Grass;
+            if (Mathf.Abs(h00 - h11) <= Mathf.Abs(h10 - h01))
+            {
+                output.AddTriangle(top, index, c00, c01, c11, n00, n01, n11, uv00, uv01, uv11, r00, r01, r11);
+                output.AddTriangle(top, index, c00, c11, c10, n00, n11, n10, uv00, uv11, uv10, r00, r11, r10);
+            }
+            else
+            {
+                output.AddTriangle(top, index, c01, c11, c10, n01, n11, n10, uv01, uv11, uv10, r01, r11, r10);
+                output.AddTriangle(top, index, c01, c10, c00, n01, n10, n00, uv01, uv10, uv00, r01, r10, r00);
+            }
+
+            // Стенки к тронутым соседям: под ними подкоп или яма, и землю под поверхностью видно сбоку.
+            // Стенка — из того, что под верхом: трава бывает только сверху, под ней земля.
+            var below = world.GetBlock(block + Vector3Int.down);
+            var wall = below.IsAir ? material : below.Material;
+            if (wall == BlockMaterials.Grass)
+                wall = BlockMaterials.Dirt;
+            var bottom = -floor;
+            if (!IsSurfaceNeighbour(surface, gx + 1, gz))
+                AddSideQuad(output, wall, index, p, Side.Right, (0f, bottom), (0f, h10), (1f, h11), (1f, bottom));
+            if (!IsSurfaceNeighbour(surface, gx - 1, gz))
+                AddSideQuad(output, wall, index, p, Side.Left, (0f, bottom), (0f, h00), (1f, h01), (1f, bottom));
+            if (!IsSurfaceNeighbour(surface, gx, gz + 1))
+                AddSideQuad(output, wall, index, p, Side.Forward, (0f, bottom), (0f, h01), (1f, h11), (1f, bottom));
+            if (!IsSurfaceNeighbour(surface, gx, gz - 1))
+                AddSideQuad(output, wall, index, p, Side.Back, (0f, bottom), (0f, h00), (1f, h10), (1f, bottom));
+        }
+
+        /// <summary>Сосед тоже рисуется поверхностью или это край мира: стенка к нему не нужна.</summary>
+        private static bool IsSurfaceNeighbour(TerrainSurface surface, int x, int z) =>
+            !surface.Contains(x, z) || surface.IsNatural(x, z);
 
         /// <summary>
         /// Сосед по локальной координате: внутри чанка — напрямую, снаружи — через мир.

@@ -15,6 +15,7 @@ MonoBehaviour:
   ridgeMinHeight: 36
   ridgeMaxHeight: 46
   ridgeGrassLine: 30
+  smoothSurface: 1
   ridgeProfile: {fileID: 11400000, guid: e1b4646b657448c9bfbd8144d1f15603, type: 2}
   locations:
   - id: pass

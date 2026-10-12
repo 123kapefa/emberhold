@@ -14,6 +14,12 @@ namespace Emberhold.World.Generation
         /// <summary>Горный хребет: всё, что не локация и не ущелье.</summary>
         public CampaignRidge Ridge = CampaignRidge.Default;
 
+        /// <summary>
+        /// Гладкая поверхность (<see cref="Voxels.TerrainSurface"/>): склоны любой крутизны по высотам карты,
+        /// без террас; нетронутая земля рисуется сплошной поверхностью. false — склоны из скосов до 45° и террасы.
+        /// </summary>
+        public bool SmoothSurface;
+
         public readonly List<CampaignLocationShape> Locations = new();
         public readonly List<CampaignGorgeShape> Gorges = new();
     }

@@ -62,12 +62,13 @@ namespace Emberhold.World.Generation
                 var floors = new float[locations.Length];
                 var distances = new float[locations.Length];
                 for (var x = 0; x <= sizeX; x++)
-                    result.Compute(layout.Ridge, locations, gorges, noise, x, z, sizeX, sizeZ, maxHeight, floors, distances);
+                    result.Compute(layout.Ridge, layout.SmoothSurface, locations, gorges, noise, x, z, sizeX, sizeZ, maxHeight,
+                        floors, distances);
             });
             return result;
         }
 
-        private void Compute(CampaignRidge ridge, PreparedLocation[] locations, PreparedGorge[] gorges, CampaignNoise noise,
+        private void Compute(CampaignRidge ridge, bool smooth, PreparedLocation[] locations, PreparedGorge[] gorges, CampaignNoise noise,
             int xi, int zi, int sizeX, int sizeZ, float maxHeight, float[] floors, float[] distances)
         {
             float x = xi, z = zi;
@@ -100,7 +101,12 @@ namespace Emberhold.World.Generation
                 var d = location.Distance(x, z, ux, uz, vx, vz);
                 if (d > LocationReach)
                     continue;
-                var wall = 0.75f + 0.7f * noise.Fbm(x * 0.05f + 5f, z * 0.05f, 3);
+                // Крутизна стенок котловины, блоков на блок. У гладкой поверхности разброс шире:
+                // пологие холмы и местами крутые скальные участки.
+                var wall = smooth
+                    ? 0.3f + 0.7f * noise.Fbm(x * 0.04f + 5f, z * 0.04f, 3)
+                      + 1.6f * CampaignNoise.SmoothStep(0.55f, 0.75f, noise.Fbm(x * 0.025f + 33f, z * 0.025f, 3))
+                    : 0.75f + 0.7f * noise.Fbm(x * 0.05f + 5f, z * 0.05f, 3);
                 distances[i] = d;
                 floors[i] = location.Floor(x, z, noise);
                 h = CampaignNoise.SmoothMin(h, floors[i] + Math.Max(d, 0f) * wall, 5f);

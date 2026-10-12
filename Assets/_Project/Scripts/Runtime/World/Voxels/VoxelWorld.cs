@@ -17,6 +17,11 @@ namespace Emberhold.World.Voxels
         public Vector3Int SizeInChunks { get; }
         public Vector3Int SizeInBlocks => SizeInChunks * ChunkData.Size;
 
+        /// <summary>
+        /// Гладкая поверхность нетронутой земли, если её построил генератор; null — мир рисуется только блоками.
+        /// </summary>
+        public TerrainSurface Surface { get; set; }
+
         /// <summary>Растёт при каждой смене блока через SetBlock: по нему кэши (например, пути) узнают, что мир изменился.</summary>
         public int Version { get; private set; }
 
@@ -66,6 +71,11 @@ namespace Emberhold.World.Voxels
             data.Set(local.x, local.y, local.z, value);
             Version++;
 
+            // Тронули землю нетронутого столбца: он и соседи (у них появляются стенки к нему) перерисовываются целиком.
+            if (Surface != null && Surface.IsNatural(block.x, block.z) && block.y <= Surface.TopY(block.x, block.z)
+                && Surface.MarkEdited(block.x, block.z))
+                MarkColumnsAround(block.x, block.z);
+
             MarkDirty(chunk);
             const int last = ChunkData.Size - 1;
             if (local.x == 0) MarkDirty(chunk + Vector3Int.left);
@@ -80,6 +90,23 @@ namespace Emberhold.World.Voxels
         {
             if (IsInsideChunks(chunk))
                 dirtyChunks.Add(chunk);
+        }
+
+        /// <summary>Пометить чанки всех слоёв под столбцом (x, z) и его соседями по сторонам.</summary>
+        private void MarkColumnsAround(int x, int z)
+        {
+            for (var dz = -1; dz <= 1; dz++)
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                if (dx != 0 && dz != 0)
+                    continue;
+                var cx = Math.DivRem(x + dx, ChunkData.Size, out var rx);
+                var cz = Math.DivRem(z + dz, ChunkData.Size, out var rz);
+                if (rx < 0 || rz < 0)
+                    continue;
+                for (var y = 0; y < SizeInChunks.y; y++)
+                    MarkDirty(new Vector3Int(cx, y, cz));
+            }
         }
 
         public void MarkAllDirty()

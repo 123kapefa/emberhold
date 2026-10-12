@@ -148,6 +148,12 @@ namespace Emberhold.World.Generation
             for (var i = 0; i < profiles.Length; i++)
                 profiles[i].Materials.Validate();
 
+            if (layout.SmoothSurface)
+            {
+                FillCampaignSmooth(world, layout, heights, profiles, seed);
+                return heights;
+            }
+
             var corners = new int[size.x + 1, size.z + 1];
             var cliffs = new bool[size.x + 1, size.z + 1];
             var levels = new int[size.x + 1, size.z + 1];
@@ -189,6 +195,71 @@ namespace Emberhold.World.Generation
                 profiles[0].CliffFootRounding);
             return heights;
         }
+
+        /// <summary>
+        /// Карта кампании с гладкой поверхностью (<see cref="TerrainSurface"/>): высоты идут в поверхность как есть,
+        /// без террас и без срезания склонов до 45°, блоки строятся под ней. Где круче полутора блоков на блок
+        /// (с разбросом по шуму) — камень; на хребте трава до границы травы, выше камень.
+        /// </summary>
+        private static void FillCampaignSmooth(VoxelWorld world, CampaignLayout layout, CampaignHeights heights,
+            TerrainProfileParameters[] profiles, int seed)
+        {
+            var size = world.SizeInBlocks;
+            var corners = new int[size.x + 1, size.z + 1];
+            for (var z = 0; z <= size.z; z++)
+            for (var x = 0; x <= size.x; x++)
+                corners[x, z] = CornerTerrain.Quantize(heights.Heights[x, z], 1, size.y);
+
+            // Каменность каждого угла: круто — камень, на хребте выше границы травы — камень, у каменных
+            // локаций — камень. Переход плавный: по нему материал гладкой земли смешивает траву с камнем.
+            var grassNoise = new CampaignNoise(seed + 1);
+            var rockNoise = new CampaignNoise(seed + 3);
+            var rockWeights = new byte[size.x + 1, size.z + 1];
+            for (var z = 0; z <= size.z; z++)
+            for (var x = 0; x <= size.x; x++)
+            {
+                var gx = (corners[Mathf.Min(x + 1, size.x), z] - corners[Mathf.Max(x - 1, 0), z]) * 0.5f / BlockShape.MaxHeight;
+                var gz = (corners[x, Mathf.Min(z + 1, size.z)] - corners[x, Mathf.Max(z - 1, 0)]) * 0.5f / BlockShape.MaxHeight;
+                var slope = Mathf.Sqrt(gx * gx + gz * gz) + (rockNoise.Fbm(x * 0.1f, z * 0.1f, 2) - 0.5f) * 0.6f;
+                var weight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(SteepRock - 0.3f, SteepRock + 0.3f, slope));
+                var owner = heights.Owners[x, z];
+                if (owner == CampaignHeights.Ridge)
+                {
+                    if (layout.Ridge.GrassLine > 0f)
+                    {
+                        var line = layout.Ridge.GrassLine + (grassNoise.Fbm(x * 0.05f, z * 0.05f, 3) - 0.5f) * 8f;
+                        var height = corners[x, z] / (float)BlockShape.MaxHeight;
+                        weight = Mathf.Max(weight, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(line - 2.5f, line + 2.5f, height)));
+                    }
+                    else if (layout.Ridge.Profile.Materials.Surface == BlockMaterials.Stone)
+                        weight = 1f;
+                }
+                else if (profiles[owner].Materials.Surface == BlockMaterials.Stone)
+                    weight = 1f;
+                rockWeights[x, z] = (byte)Mathf.RoundToInt(weight * 255f);
+            }
+
+            // Блоки столбца: камень, если углы в среднем больше чем наполовину каменные.
+            var grass = TerrainMaterials.Default;
+            var rock = layout.Ridge.Profile.Materials;
+            var materials = new TerrainMaterials[size.x, size.z];
+            var bedLevels = new int[size.x, size.z];
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+            {
+                var p = profiles[heights.ColumnOwner(x, z)];
+                bedLevels[x, z] = Mathf.RoundToInt(p.WaterLevel * BlockShape.MaxHeight);
+                var weight = rockWeights[x, z] + rockWeights[x + 1, z] + rockWeights[x, z + 1] + rockWeights[x + 1, z + 1];
+                if (weight > 2 * 255)
+                    materials[x, z] = p.Materials.Surface == BlockMaterials.Stone ? p.Materials : rock;
+                else
+                    materials[x, z] = p.Materials.Surface == BlockMaterials.Stone ? grass : p.Materials;
+            }
+            CornerTerrain.FillSmooth(world, corners, materials, bedLevels).SetRock(rockWeights);
+        }
+
+        /// <summary>С какой крутизны (блоков подъёма на блок) гладкая земля становится каменной.</summary>
+        private const float SteepRock = 1.25f;
 
         /// <summary>
         /// Веса профилей в точке карты (в блоках сетки): weights[0] — фон, weights[i + 1] — зона i, сумма 1.
