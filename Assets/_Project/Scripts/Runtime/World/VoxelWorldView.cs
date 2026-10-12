@@ -34,6 +34,8 @@ namespace Emberhold.World
         // Спрятанные блоки и сколько раз каждый спрятан: один и тот же блок могут прятать двое.
         private readonly Dictionary<Vector3Int, int> hiddenBlocks = new();
         private readonly List<(Vector3Int block, Block value)> hiddenNearChunk = new();
+        // Чанки, у которых изменилась только картинка (спрятали или вернули блок): коллайдер у них прежний.
+        private readonly HashSet<Vector3Int> visualDirty = new();
         private ChunkMeshData meshData;
         private ChunkMeshData colliderData;
         private readonly SurfaceNormals surfaceNormals = new();
@@ -80,6 +82,8 @@ namespace Emberhold.World
         {
             ClearChunkViews();
             hiddenBlocks.Clear();
+            visualDirty.Clear();
+            HiddenVersion++;
             World = world;
             if (centerOnOrigin)
             {
@@ -95,7 +99,7 @@ namespace Emberhold.World
 
         private void LateUpdate()
         {
-            if (World != null && World.DirtyCount > 0)
+            if (World != null && (World.DirtyCount > 0 || visualDirty.Count > 0))
                 RebuildDirtyChunks();
         }
 
@@ -119,7 +123,13 @@ namespace Emberhold.World
             dirtyBuffer.Clear();
             World.TakeDirtyChunks(dirtyBuffer);
             foreach (var chunk in dirtyBuffer)
-                RebuildChunk(chunk);
+            {
+                visualDirty.Remove(chunk);
+                RebuildChunk(chunk, true);
+            }
+            foreach (var chunk in visualDirty)
+                RebuildChunk(chunk, false);
+            visualDirty.Clear();
         }
 
         /// <summary>
@@ -150,18 +160,28 @@ namespace Emberhold.World
 
         public bool IsHidden(Vector3Int block) => hiddenBlocks.ContainsKey(block);
 
-        /// <summary>Чанк блока и соседние: у соседей могли открыться или закрыться грани.</summary>
+        /// <summary>Номер изменения набора спрятанных блоков: растёт, когда блок спрятали или вернули.</summary>
+        public int HiddenVersion { get; private set; }
+
+        /// <summary>Перерисовать чанк блока и соседние (у соседей могли открыться или закрыться грани).</summary>
         private void MarkAround(Vector3Int block)
         {
+            HiddenVersion++;
             if (World == null)
                 return;
-            World.MarkDirty(ChunkOf(block));
-            World.MarkDirty(ChunkOf(block + Vector3Int.left));
-            World.MarkDirty(ChunkOf(block + Vector3Int.right));
-            World.MarkDirty(ChunkOf(block + Vector3Int.down));
-            World.MarkDirty(ChunkOf(block + Vector3Int.up));
-            World.MarkDirty(ChunkOf(block + Vector3Int.back));
-            World.MarkDirty(ChunkOf(block + Vector3Int.forward));
+            MarkVisualDirty(ChunkOf(block));
+            MarkVisualDirty(ChunkOf(block + Vector3Int.left));
+            MarkVisualDirty(ChunkOf(block + Vector3Int.right));
+            MarkVisualDirty(ChunkOf(block + Vector3Int.down));
+            MarkVisualDirty(ChunkOf(block + Vector3Int.up));
+            MarkVisualDirty(ChunkOf(block + Vector3Int.back));
+            MarkVisualDirty(ChunkOf(block + Vector3Int.forward));
+        }
+
+        private void MarkVisualDirty(Vector3Int chunk)
+        {
+            if (World.IsInsideChunks(chunk))
+                visualDirty.Add(chunk);
         }
 
         private static Vector3Int ChunkOf(Vector3Int block) => new(
@@ -169,30 +189,51 @@ namespace Emberhold.World
             Mathf.FloorToInt(block.y / (float)ChunkData.Size),
             Mathf.FloorToInt(block.z / (float)ChunkData.Size));
 
-        private void RebuildChunk(Vector3Int chunk)
+        /// <param name="rebuildCollider">Изменились данные мира; false — только картинка, коллайдер прежний.</param>
+        private void RebuildChunk(Vector3Int chunk, bool rebuildCollider)
         {
             // Спрятанные блоки на время меширования картинки становятся воздухом прямо в данных чанка
             // (без пометки чанков), затем возвращаются. Коллайдер строится по настоящему миру.
             var hidden = TakeHiddenNear(chunk);
-            ChunkMesher.Build(World, chunk, meshData, smoothShading ? surfaceNormals : null);
-            if (hidden)
+            try
             {
-                RestoreHidden();
+                ChunkMesher.Build(World, chunk, meshData, smoothShading ? surfaceNormals : null);
+            }
+            finally
+            {
+                if (hidden)
+                    RestoreHidden();
+            }
+
+            var separateCollider = rebuildCollider && hidden;
+            if (separateCollider)
+            {
                 colliderData ??= new ChunkMeshData();
                 ChunkMesher.Build(World, chunk, colliderData);
             }
 
-            var collider = hidden ? colliderData : meshData;
             if (!chunkViews.TryGetValue(chunk, out var view))
             {
-                if (collider.IsEmpty)
+                // Спрятать можно только настоящий блок, а у чанка с блоками вид уже есть.
+                if (!rebuildCollider || (separateCollider ? colliderData : meshData).IsEmpty)
                     return;
                 view = CreateChunkView(chunk);
                 chunkViews.Add(chunk, view);
                 viewsByCollider.Add(view.Collider, view);
             }
 
-            ApplyMesh(view, hidden);
+            // Перерисовываем только картинку, а коллайдер стоит на том же меше: отдаём ему этот меш целиком,
+            // а картинку пишем во второй, иначе коллайдер и номера его треугольников разойдутся.
+            if (!rebuildCollider && view.Collider.sharedMesh == view.Mesh)
+            {
+                (view.Mesh, view.ColliderMesh) = (view.ColliderMesh != null ? view.ColliderMesh : NewChunkMesh(view.Mesh.name), view.Mesh);
+                view.Filter.sharedMesh = view.Mesh;
+            }
+            FillMesh(view.Mesh, meshData);
+            ReportUnmappedMaterials();
+            view.Renderer.enabled = !meshData.IsEmpty;
+            if (rebuildCollider)
+                ApplyCollider(view, separateCollider);
         }
 
         /// <summary>
@@ -242,21 +283,24 @@ namespace Emberhold.World
             go.transform.SetParent(transform, false);
             go.transform.localPosition = chunk * ChunkData.Size;
 
-            var mesh = new Mesh { name = go.name };
-            mesh.MarkDynamic();
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var mesh = NewChunkMesh(go.name);
+            var filter = go.AddComponent<MeshFilter>();
+            filter.sharedMesh = mesh;
             var renderer = go.AddComponent<MeshRenderer>();
             renderer.SetSharedMaterials(sharedMaterials);
-            return new ChunkView(chunk, mesh, renderer, go.AddComponent<MeshCollider>());
+            return new ChunkView(chunk, mesh, filter, renderer, go.AddComponent<MeshCollider>());
+        }
+
+        private static Mesh NewChunkMesh(string name)
+        {
+            var mesh = new Mesh { name = name };
+            mesh.MarkDynamic();
+            return mesh;
         }
 
         /// <param name="separateCollider">Коллайдер строится по <see cref="colliderData"/>, а не по мешу картинки.</param>
-        private void ApplyMesh(ChunkView view, bool separateCollider)
+        private void ApplyCollider(ChunkView view, bool separateCollider)
         {
-            FillMesh(view.Mesh, meshData);
-            ReportUnmappedMaterials();
-            view.Renderer.enabled = !meshData.IsEmpty;
-
             var collider = separateCollider ? colliderData : meshData;
             view.TriangleBlocks.Clear();
             for (var subMesh = 0; subMesh < sharedMaterials.Count; subMesh++)
@@ -267,7 +311,8 @@ namespace Emberhold.World
             Mesh colliderMesh = view.Mesh;
             if (separateCollider)
             {
-                view.ColliderMesh ??= new Mesh { name = view.Mesh.name + " Collider" };
+                if (view.ColliderMesh == null)
+                    view.ColliderMesh = NewChunkMesh(view.Mesh.name);
                 FillMesh(view.ColliderMesh, colliderData);
                 colliderMesh = view.ColliderMesh;
             }
@@ -346,18 +391,24 @@ namespace Emberhold.World
         private sealed class ChunkView
         {
             public readonly Vector3Int Chunk;
-            public readonly Mesh Mesh;
+            /// <summary>Меш картинки (в MeshFilter).</summary>
+            public Mesh Mesh;
+            public readonly MeshFilter Filter;
             public readonly MeshRenderer Renderer;
             public readonly MeshCollider Collider;
-            /// <summary>Отдельный меш коллайдера, когда в чанке есть спрятанные блоки; иначе коллайдер берёт <see cref="Mesh"/>.</summary>
+            /// <summary>
+            /// Второй меш чанка: коллайдер берёт его, когда картинка отличается от мира (спрятаны блоки);
+            /// иначе коллайдер берёт <see cref="Mesh"/>, а этот лежит про запас.
+            /// </summary>
             public Mesh ColliderMesh;
             /// <summary>Индекс блока в чанке для каждого треугольника меша по порядку.</summary>
             public readonly List<int> TriangleBlocks = new();
 
-            public ChunkView(Vector3Int chunk, Mesh mesh, MeshRenderer renderer, MeshCollider collider)
+            public ChunkView(Vector3Int chunk, Mesh mesh, MeshFilter filter, MeshRenderer renderer, MeshCollider collider)
             {
                 Chunk = chunk;
                 Mesh = mesh;
+                Filter = filter;
                 Renderer = renderer;
                 Collider = collider;
             }

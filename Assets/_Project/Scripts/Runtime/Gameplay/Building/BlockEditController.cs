@@ -77,6 +77,7 @@ namespace Emberhold.Gameplay.Building
         private MeshRenderer cracksRenderer;
         private Mesh cracksMesh;
         private int cracksVersion = -1;
+        private int cracksHiddenVersion = -1;
         private float blockedMessageUntil = float.NegativeInfinity;
 
         private BlockGhost ghost;
@@ -106,6 +107,9 @@ namespace Emberhold.Gameplay.Building
 
         /// <summary>После правки упали блоки без опоры (тот же список, что <see cref="LastFalls"/>). Мир уже изменён.</summary>
         public event System.Action<IReadOnlyList<BlockFall>> BlocksFell;
+
+        /// <summary>Правка изменила блок в этой клетке (до проверки опоры и <see cref="BlocksFell"/>).</summary>
+        public event System.Action<Vector3Int> BlockChanged;
 
         private void Awake()
         {
@@ -281,6 +285,7 @@ namespace Emberhold.Gameplay.Building
                     return false;
             }
 
+            BlockChanged?.Invoke(changed);
             // Блоки без опоры падают, их урон падает вместе с ними.
             if (Stability.Settle(worldView.World, changed, falls) > 0)
             {
@@ -387,17 +392,24 @@ namespace Emberhold.Gameplay.Building
             PlaceInWorld(ghost.Transform, p.Cell);
         }
 
-        /// <summary>Трещины всех повреждённых блоков одним мешем; перестраиваем, только когда урон изменился.</summary>
+        /// <summary>
+        /// Трещины всех повреждённых блоков одним мешем; перестраиваем, только когда изменился урон
+        /// или набор блоков, которые чанк прячет на время падения.
+        /// </summary>
         private void UpdateCracks()
         {
-            if (cracksVersion == Damage.Version)
+            if (cracksVersion == Damage.Version && cracksHiddenVersion == worldView.HiddenVersion)
                 return;
             cracksVersion = Damage.Version;
+            cracksHiddenVersion = worldView.HiddenVersion;
 
             crackVertices.Clear();
             crackIndices.Clear();
             foreach (var (block, _) in Damage.Entries)
             {
+                // Блок ещё летит в эту клетку: трещины появятся, когда он долетит.
+                if (worldView.IsHidden(block))
+                    continue;
                 var height = (float)worldView.World.GetBlock(block).Shape.Top / BlockShape.MaxHeight;
                 var stage = BlockDamage.Stage(Damage.Fraction(worldView.World, block), settings.CrackStages);
                 BlockCrackMesh.Append(block, height, stage, block.GetHashCode(), settings.OutlinePadding * 0.5f,

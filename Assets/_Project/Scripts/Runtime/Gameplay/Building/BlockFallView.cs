@@ -4,6 +4,7 @@ using Emberhold.World.Editing;
 using Emberhold.World.Meshing;
 using Emberhold.World.Voxels;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Emberhold.Gameplay.Building
 {
@@ -13,6 +14,8 @@ namespace Emberhold.Gameplay.Building
     /// чанк не рисует его в новой клетке (<see cref="VoxelWorldView.HideBlock"/>), но луч мыши и логика его уже видят.
     /// Блоки, падающие на одно и то же расстояние, летят одинаково, поэтому каждая такая группа — один меш:
     /// обрушение из сотни блоков даёт несколько объектов, а не сотню.
+    /// Если клетку, куда летит блок, изменили или блок упал дальше, его вырезают из полёта группы:
+    /// изменённую клетку сразу рисует чанк, а упавший дальше блок продолжает лететь с той же высоты и скорости.
     /// </summary>
     public sealed class BlockFallView : MonoBehaviour
     {
@@ -30,10 +33,11 @@ namespace Emberhold.Gameplay.Building
 
         private readonly List<Flight> flights = new();
         private readonly Dictionary<int, List<BlockFall>> byDistance = new();
+        private readonly List<(BlockFall fall, float lift, float speed)> refalls = new();
+        private readonly List<BlockFall> single = new(1);
         private readonly List<Vector3Int> groupCells = new();
         private readonly List<Block> groupBlocks = new();
         private readonly List<Material> groupMaterials = new();
-        private readonly List<int> groupMaterialIds = new();
         private readonly ChunkMeshData meshData = new();
         private readonly ChunkMeshData scratch = new();
         private VoxelWorld flightsWorld;
@@ -45,7 +49,7 @@ namespace Emberhold.Gameplay.Building
         public int FlightCount => flights.Count;
 
         /// <summary>Сколько длится падение на distance блоков вместе с подскоком.</summary>
-        public float Duration(int distance) => FallMotion.FallSeconds(distance, gravity) + landingBounceSeconds;
+        public float Duration(float distance) => FallMotion.FallSeconds(distance, gravity) + landingBounceSeconds;
 
         private void OnEnable()
         {
@@ -55,14 +59,25 @@ namespace Emberhold.Gameplay.Building
                 enabled = false;
                 return;
             }
+            editor.BlockChanged += OnBlockChanged;
             editor.BlocksFell += OnBlocksFell;
         }
 
         private void OnDisable()
         {
             if (editor != null)
+            {
+                editor.BlockChanged -= OnBlockChanged;
                 editor.BlocksFell -= OnBlocksFell;
+            }
             LandAll();
+        }
+
+        /// <summary>Клетку, куда летит блок, изменили: её сразу рисует чанк, а блок из полёта убираем.</summary>
+        private void OnBlockChanged(Vector3Int cell)
+        {
+            if (worldView.World == flightsWorld && worldView.IsHidden(cell) && TryFindFlight(cell, out var flight, out var index))
+                Release(flight, index);
         }
 
         private void OnBlocksFell(IReadOnlyList<BlockFall> falls)
@@ -71,84 +86,112 @@ namespace Emberhold.Gameplay.Building
                 LandAll();
             flightsWorld = worldView.World;
 
-            // Блок, который ещё летел, упал дальше: прошлый полёт его группы заканчиваем сразу.
-            foreach (var fall in falls)
-            {
-                if (!worldView.IsHidden(fall.From))
-                    continue;
-                for (var i = flights.Count - 1; i >= 0; i--)
-                {
-                    if (flights[i].Cells.Contains(fall.From))
-                        Land(i);
-                }
-            }
-
             foreach (var list in byDistance.Values)
                 list.Clear();
+            refalls.Clear();
             foreach (var fall in falls)
             {
+                // Блок ещё летел и упал дальше: продолжаем его полёт с той высоты и скоростью, что видны сейчас.
+                if (worldView.IsHidden(fall.From) && TryFindFlight(fall.From, out var flight, out var index))
+                {
+                    var elapsed = Time.time - flight.Start;
+                    var height = flight.Distance + FallMotion.Offset(flight.Distance, elapsed, gravity,
+                        landingBounceSeconds, landingBounce);
+                    var speed = elapsed < FallMotion.FallSeconds(flight.Distance, gravity) ? gravity * elapsed : 0f;
+                    refalls.Add((fall, Mathf.Max(0f, height), speed));
+                    Release(flight, index);
+                    continue;
+                }
+
                 var distance = fall.From.y - fall.To.y;
                 if (!byDistance.TryGetValue(distance, out var list))
                     byDistance[distance] = list = new List<BlockFall>();
                 list.Add(fall);
             }
-            foreach (var (distance, list) in byDistance)
+
+            foreach (var list in byDistance.Values)
             {
                 if (list.Count > 0)
-                    StartFlight(distance, list);
+                    StartFlight(list, 0f, 0f);
+            }
+            foreach (var (fall, height, speed) in refalls)
+            {
+                // Падение со скоростью speed с высоты height — то же, что свободное падение, начатое
+                // speed / g секунд назад на speed² / 2g выше.
+                single.Clear();
+                single.Add(fall);
+                StartFlight(single, height + speed * speed / (2f * gravity), speed / gravity);
             }
         }
 
-        private void StartFlight(int distance, List<BlockFall> falls)
+        /// <param name="lift">На сколько блоков над клеткой From начинается полёт.</param>
+        /// <param name="startedAgo">Сколько секунд назад полёт начался бы с нулевой скоростью.</param>
+        private void StartFlight(List<BlockFall> falls, float lift, float startedAgo)
+        {
+            var go = new GameObject($"Falling Blocks ×{falls.Count}");
+            var mesh = new Mesh { name = go.name };
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = go.AddComponent<MeshRenderer>();
+            var flight = new Flight(falls[0].From.y - falls[0].To.y + lift, lift, Time.time - startedAgo, go, mesh, renderer);
+            foreach (var fall in falls)
+            {
+                flight.Falls.Add(fall);
+                worldView.HideBlock(fall.To);
+            }
+            BuildMesh(flight);
+            flights.Add(flight);
+            Place(flight, Time.time - flight.Start);
+        }
+
+        /// <summary>Меш группы по её блокам в исходных клетках.</summary>
+        private void BuildMesh(Flight flight)
         {
             groupCells.Clear();
             groupBlocks.Clear();
-            foreach (var fall in falls)
+            foreach (var fall in flight.Falls)
             {
                 groupCells.Add(fall.From);
                 groupBlocks.Add(fall.Block);
             }
-            var origin = BlockGroupMesher.Build(groupCells, groupBlocks, meshData, scratch);
+            flight.Origin = BlockGroupMesher.Build(groupCells, groupBlocks, meshData, scratch) + Vector3.up * flight.Lift;
 
-            var go = new GameObject($"Falling Blocks ×{falls.Count}");
-            var mesh = new Mesh { name = go.name };
-            mesh.indexFormat = meshData.Vertices.Count > ushort.MaxValue
-                ? UnityEngine.Rendering.IndexFormat.UInt32
-                : UnityEngine.Rendering.IndexFormat.UInt16;
+            var mesh = flight.Mesh;
+            mesh.Clear();
+            mesh.indexFormat = meshData.Vertices.Count > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16;
             mesh.SetVertices(meshData.Vertices);
             mesh.SetNormals(meshData.Normals);
             mesh.SetUVs(0, meshData.Uvs);
-            groupMaterialIds.Clear();
+            groupMaterials.Clear();
+            var subMesh = 0;
+            mesh.subMeshCount = CountMaterials(meshData);
             for (var material = 1; material < meshData.Triangles.Length; material++)
             {
-                if (meshData.Triangles[material].Count > 0)
-                    groupMaterialIds.Add(material);
-            }
-            mesh.subMeshCount = groupMaterialIds.Count;
-            groupMaterials.Clear();
-            for (var i = 0; i < groupMaterialIds.Count; i++)
-            {
-                mesh.SetTriangles(meshData.Triangles[groupMaterialIds[i]], i, false);
-                groupMaterials.Add(worldView.BlockMaterial((byte)groupMaterialIds[i]));
+                if (meshData.Triangles[material].Count == 0)
+                    continue;
+                mesh.SetTriangles(meshData.Triangles[material], subMesh++, false);
+                groupMaterials.Add(worldView.BlockMaterial((byte)material));
             }
             mesh.RecalculateBounds();
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
-            go.AddComponent<MeshRenderer>().SetSharedMaterials(groupMaterials);
+            flight.Renderer.SetSharedMaterials(groupMaterials);
+        }
 
-            var flight = new Flight(distance, Time.time, origin, go, mesh);
-            foreach (var fall in falls)
+        private static int CountMaterials(ChunkMeshData data)
+        {
+            var count = 0;
+            for (var material = 1; material < data.Triangles.Length; material++)
             {
-                flight.Cells.Add(fall.To);
-                worldView.HideBlock(fall.To);
+                if (data.Triangles[material].Count > 0)
+                    count++;
             }
-            flights.Add(flight);
-            Place(flight, 0f);
+            return count;
         }
 
         // В Update, а не в LateUpdate: вернувшийся в чанк блок перестроится в LateUpdate вида мира
         // в этом же кадре, и между исчезновением летящего меша и появлением блока не будет пустого кадра.
         private void Update()
         {
+            if (flights.Count > 0 && worldView.World != flightsWorld)
+                LandAll();
             for (var i = flights.Count - 1; i >= 0; i--)
             {
                 var flight = flights[i];
@@ -169,19 +212,57 @@ namespace Emberhold.Gameplay.Building
             flight.Object.transform.localScale = space.lossyScale;
         }
 
+        private bool TryFindFlight(Vector3Int to, out Flight flight, out int index)
+        {
+            foreach (var candidate in flights)
+            {
+                for (var i = 0; i < candidate.Falls.Count; i++)
+                {
+                    if (candidate.Falls[i].To != to)
+                        continue;
+                    flight = candidate;
+                    index = i;
+                    return true;
+                }
+            }
+            flight = null;
+            index = -1;
+            return false;
+        }
+
+        /// <summary>Убрать один блок из полёта группы: чанк снова рисует его клетку, меш группы — без него.</summary>
+        private void Release(Flight flight, int index)
+        {
+            worldView.ShowBlock(flight.Falls[index].To);
+            flight.Falls.RemoveAt(index);
+            if (flight.Falls.Count == 0)
+            {
+                flights.Remove(flight);
+                DestroyFlight(flight);
+                return;
+            }
+            BuildMesh(flight);
+            Place(flight, Time.time - flight.Start);
+        }
+
         private void Land(int index)
         {
             var flight = flights[index];
             flights.RemoveAt(index);
             if (worldView != null && worldView.World == flightsWorld)
             {
-                foreach (var cell in flight.Cells)
-                    worldView.ShowBlock(cell);
+                foreach (var fall in flight.Falls)
+                    worldView.ShowBlock(fall.To);
             }
+            DestroyFlight(flight);
+        }
+
+        private static void DestroyFlight(Flight flight)
+        {
             // При выгрузке сцены объект полёта может быть уже уничтожен.
             if (flight.Object != null)
-                Destroy(flight.Object);
-            Destroy(flight.Mesh);
+                Object.Destroy(flight.Object);
+            Object.Destroy(flight.Mesh);
         }
 
         private void LandAll()
@@ -192,21 +273,27 @@ namespace Emberhold.Gameplay.Building
 
         private sealed class Flight
         {
-            public readonly int Distance;
+            /// <summary>С какой высоты над клеткой назначения начинается полёт, в блоках.</summary>
+            public readonly float Distance;
+            /// <summary>На сколько блоков полёт начинается выше исходной клетки (продолжение прерванного полёта).</summary>
+            public readonly float Lift;
             public readonly float Start;
-            public readonly Vector3 Origin;
             public readonly GameObject Object;
             public readonly Mesh Mesh;
-            /// <summary>Куда легли блоки группы: там чанк их прячет до приземления.</summary>
-            public readonly HashSet<Vector3Int> Cells = new();
+            public readonly MeshRenderer Renderer;
+            /// <summary>Блоки группы; в клетках To чанк их прячет до приземления.</summary>
+            public readonly List<BlockFall> Falls = new();
+            /// <summary>Где в координатах мира блоков начало меша в момент старта.</summary>
+            public Vector3 Origin;
 
-            public Flight(int distance, float start, Vector3 origin, GameObject gameObject, Mesh mesh)
+            public Flight(float distance, float lift, float start, GameObject gameObject, Mesh mesh, MeshRenderer renderer)
             {
                 Distance = distance;
+                Lift = lift;
                 Start = start;
-                Origin = origin;
                 Object = gameObject;
                 Mesh = mesh;
+                Renderer = renderer;
             }
         }
     }
