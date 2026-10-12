@@ -14,10 +14,13 @@ namespace Emberhold.Gameplay.Workers
     public sealed class WorkerContext
     {
         private readonly List<BlockFall> falls = new();
+        private readonly Action<Vector3Int> worldChanged;
 
         public WorkerContext(VoxelWorld world, WorkOrders orders, DroppedItems items, BlockDamage damage,
-            BlockStability stability, WorkerSettings settings, Func<Vector2Int, bool> isLit, Func<bool> hasAnyLight = null)
+            BlockStability stability, WorkerSettings settings, Func<Vector2Int, bool> isLit, Func<bool> hasAnyLight = null,
+            Action<Vector3Int> worldChanged = null)
         {
+            this.worldChanged = worldChanged;
             World = world;
             Orders = orders;
             Items = items;
@@ -48,9 +51,17 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Один разлив на всех: рабочие обновляются по очереди и сразу забирают результат.</summary>
         public ColumnFlood Flood { get; }
 
-        /// <summary>Мир изменился в клетке: блоки без опоры падают, их урон едет вместе с ними.</summary>
+        /// <summary>
+        /// Мир изменился в клетке: блоки без опоры падают, их урон едет вместе с ними. В сцене это делает
+        /// редактор (worldChanged), чтобы падение было видно так же, как после правки игрока.
+        /// </summary>
         public void Settle(Vector3Int changed)
         {
+            if (worldChanged != null)
+            {
+                worldChanged(changed);
+                return;
+            }
             falls.Clear();
             if (Stability.Settle(World, changed, falls) > 0)
                 Damage.Move(falls);

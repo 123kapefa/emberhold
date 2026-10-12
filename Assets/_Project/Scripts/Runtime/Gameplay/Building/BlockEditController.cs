@@ -311,6 +311,17 @@ namespace Emberhold.Gameplay.Building
                     return false;
             }
 
+            OnWorldChanged(changed);
+            return true;
+        }
+
+        /// <summary>
+        /// Блок в клетке поставили или убрали (игрок или рабочий): сообщить виду, уронить блоки без опоры
+        /// вместе с их уроном и показать падение. Результат — в <see cref="LastFalls"/>.
+        /// </summary>
+        public void OnWorldChanged(Vector3Int changed)
+        {
+            falls.Clear();
             BlockChanged?.Invoke(changed);
             // Блоки без опоры падают, их урон падает вместе с ними.
             if (Stability.Settle(worldView.World, changed, falls) > 0)
@@ -318,7 +329,6 @@ namespace Emberhold.Gameplay.Building
                 Damage.Move(falls);
                 BlocksFell?.Invoke(falls);
             }
-            return true;
         }
 
         /// <summary>Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, иначе — блок под курсором.</summary>
