@@ -50,6 +50,17 @@ namespace Emberhold.Tests.PlayMode.DayNight
             Assert.That(RenderSettings.ambientLight.grayscale, Is.LessThan(dayAmbient * 0.5f), "Ночью темнее");
             Assert.That(fog.DensityAt(near), Is.Zero, "Костёр держит туман и ночью");
             Assert.That(fog.DensityAt(far), Is.GreaterThan(dayFogFar), "Ночью туман гуще");
+
+            // Туман стелется по низу: над его границей чисто, в особую ночь он поднимается выше.
+            var nightLook = fog.Look;
+            Assert.That(fog.DensityAt(new Vector3(far.x, nightLook.ClearAbove + 1f, far.z)), Is.Zero, "Над туманом чисто");
+            var edge = new Vector3(far.x, nightLook.ClearAbove - 1f, far.z);
+            var ordinary = fog.DensityAt(edge);
+            fog.SpecialNight = true;
+            Assert.That(fog.Look.ClearAbove, Is.GreaterThan(nightLook.ClearAbove), "Особая ночь поднимает туман");
+            Assert.That(fog.DensityAt(edge), Is.GreaterThan(ordinary));
+            fog.SpecialNight = false;
+            Assert.That(Shader.GetGlobalVector("_EmberholdFogHeight").y, Is.EqualTo(nightLook.ClearAbove), "Граница передана шейдеру");
             Assert.That(Shader.GetGlobalVector("_EmberholdFogParams").z, Is.EqualTo(1f), "Туман передан шейдеру");
             Assert.That(Shader.GetGlobalFloat("_EmberholdLightCount"), Is.EqualTo(1f));
 

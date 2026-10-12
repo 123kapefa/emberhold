@@ -18,3 +18,7 @@ MonoBehaviour:
   nightColor: {r: 0.03, g: 0.04, b: 0.065, a: 1}
   nightOpacity: 0.97
   nightFalloff: 5
+  denseBelow: 8
+  clearAbove: 16
+  nightRise: 6
+  specialNightRise: 8
