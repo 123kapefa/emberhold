@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1b721412a2cc40d7b3d1812fcaf84d13, type: 3}
+  m_Name: Pine
+  m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Trees.TreeSpecies
+  displayName: Сосна
+  durability: 150
+  itemId: wood
+  woodYield: 6
+  height: 5
+  trunkHeight: 1.6
+  trunkWidth: 0.3
+  crownWidth: 1.3
+  trunkColor: {r: 0.48, g: 0.32, b: 0.2, a: 1}
+  crownColor: {r: 0.17, g: 0.42, b: 0.24, a: 1}

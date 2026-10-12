@@ -42,6 +42,14 @@ namespace Emberhold.Gameplay.Workers
         [Tooltip("Сколько ХП снимает один удар рабочего. Прочность блоков — в BlockDurability.")]
         [Min(0.01f)]
         [SerializeField] private float digHitDamage = 25f;
+        [Header("Топливо")]
+        [Tooltip("Id ресурса, которым рабочие кормят огонь.")]
+        [SerializeField] private string fuelItemId = "wood";
+        [Tooltip("Сколько поленьев рабочий несёт в огонь за одну ходку, самое большее.")]
+        [Range(1, 10)]
+        [SerializeField] private int fuelPerTrip = 2;
+
+        [Header("Поиск задач")]
         [Tooltip("Как часто свободный рабочий ищет задачу, в секундах.")]
         [Range(0.05f, 5f)]
         [SerializeField] private float idleSearchSeconds = 0.5f;
@@ -57,5 +65,7 @@ namespace Emberhold.Gameplay.Workers
         public float DigHitSeconds => digHitSeconds;
         public float DigHitDamage => digHitDamage;
         public float IdleSearchSeconds => idleSearchSeconds;
+        public string FuelItemId => string.IsNullOrEmpty(fuelItemId) ? "wood" : fuelItemId;
+        public int FuelPerTrip => fuelPerTrip;
     }
 }

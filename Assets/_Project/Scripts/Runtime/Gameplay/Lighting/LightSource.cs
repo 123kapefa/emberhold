@@ -9,7 +9,7 @@ namespace Emberhold.Gameplay.Lighting
     /// Источник света: задаёт круг, внутри которого можно строить и копать. Отдельный компонент,
     /// а не часть постройки, — его можно повесить на костёр, башню или экспедицию.
     /// Ставится на землю под собой, светит точечным светом и рисует границу радиуса по рельефу.
-    /// Горит на топливе: ночью оно сгорает (время берётся из DayNightCycle), на последних крохах радиус
+    /// Горит на топливе: ночью оно сгорает (время берётся из DayNightCycle), и с каждой ночью быстрее; на последних крохах радиус
     /// сжимается, без топлива огонь гаснет — источник выпадает из зоны застройки и тумана.
     /// </summary>
     public sealed class LightSource : MonoBehaviour
@@ -77,10 +77,16 @@ namespace Emberhold.Gameplay.Lighting
             return drained;
         }
 
-        /// <summary>Сжечь топливо как за seconds секунд ночи.</summary>
+        /// <summary>Номер текущей ночи, с 1: ночь идёт в те же сутки (DayNightCycle.DayNumber). Без смены суток — 1.</summary>
+        public int Night => dayNight != null ? dayNight.DayNumber : 1;
+
+        /// <summary>Расход топлива сейчас, поленьев в секунду ночи: растёт с каждой следующей ночью.</summary>
+        public float BurnPerSecond => settings != null ? settings.BurnPerSecondOnNight(Night) : 0f;
+
+        /// <summary>Сжечь топливо как за seconds секунд ночи, с расходом текущей ночи.</summary>
         public void BurnFuel(float seconds)
         {
-            if (Fuel == null || Fuel.Burn(seconds, settings.BurnPerSecond) <= 0f)
+            if (Fuel == null || Fuel.Burn(seconds, BurnPerSecond) <= 0f)
                 return;
             ApplyFuel();
         }

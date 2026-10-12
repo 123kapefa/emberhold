@@ -4,8 +4,8 @@ using UnityEngine.InputSystem;
 namespace Emberhold.Gameplay.Lighting
 {
     /// <summary>
-    /// Топливо костра для игрока, пока его не носят рабочие: показывает запас в углу экрана,
-    /// клавиша L (карта ввода «Lighting», действие AddFuel) подбрасывает полено.
+    /// Топливо костра для игрока: показывает запас и расход в углу экрана. Поленья в костёр носят рабочие;
+    /// клавиша L (карта ввода «Lighting», действие AddFuel) подбрасывает полено из ниоткуда — только для отладки.
     /// </summary>
     public sealed class CampfireFuelControls : MonoBehaviour
     {
@@ -54,7 +54,8 @@ namespace Emberhold.Gameplay.Lighting
                 return;
             var fuel = source.Fuel;
             var state = source.IsLit ? $"Топливо костра: {fuel.Amount:0.0} / {fuel.Capacity:0}" : "Костёр погас";
-            GUI.Label(new Rect(Screen.width - 410f, 32f, 400f, 22f), $"{state}   (L — подбросить полено)");
+            var burn = source.BurnPerSecond * 60f;
+            GUI.Label(new Rect(Screen.width - 470f, 32f, 460f, 22f), $"{state}, ночь {source.Night}: {burn:0.#} в мин   (L — полено, отладка)");
         }
     }
 }

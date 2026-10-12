@@ -1,3 +1,4 @@
+using Emberhold.World.Trees;
 using UnityEngine;
 
 namespace Emberhold.World.Generation
@@ -32,6 +33,9 @@ namespace Emberhold.World.Generation
         public float BlendWidth;
 
         public TerrainProfileParameters Profile;
+
+        /// <summary>Лес профиля зоны; null — в зоне деревья не растут.</summary>
+        public ForestMix Forest;
 
         /// <summary>Половина размера по локальным осям; у круга — радиус по обеим.</summary>
         public Vector2 Extents => Shape == TerrainZoneShape.Circle

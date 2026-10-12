@@ -62,6 +62,7 @@ namespace Emberhold.World.Generation
                 Yaw = transform.eulerAngles.y,
                 BlendWidth = blendWidth,
                 Profile = profile.Parameters,
+                Forest = profile.Forest,
             };
             return true;
         }

@@ -22,4 +22,6 @@ MonoBehaviour:
   buildSeconds: 1.5
   digHitSeconds: 1
   digHitDamage: 25
+  fuelItemId: wood
+  fuelPerTrip: 2
   idleSearchSeconds: 0.5

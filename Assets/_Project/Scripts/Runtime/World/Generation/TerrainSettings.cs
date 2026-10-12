@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Emberhold.World.Trees;
 using Emberhold.World.Voxels;
 using UnityEngine;
 
@@ -18,6 +19,9 @@ namespace Emberhold.World.Generation
         public int Seed => seed;
         public Vector3Int SizeInChunks => sizeInChunks;
         public TerrainProfileParameters Profile => profile != null ? profile.Parameters : TerrainProfileParameters.Valley;
+
+        /// <summary>Лес фонового профиля; null — без профиля деревьев нет.</summary>
+        public ForestMix Forest => profile != null ? profile.Forest : null;
 
         /// <summary>Сгенерировать мир; zones — зоны местности поверх профиля (в координатах сетки блоков).</summary>
         public VoxelWorld Generate(IReadOnlyList<TerrainZoneArea> zones = null) =>

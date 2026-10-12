@@ -2,9 +2,11 @@ using System.Collections.Generic;
 using Emberhold.Gameplay.Building;
 using Emberhold.Gameplay.Items;
 using Emberhold.Gameplay.Lighting;
+using Emberhold.Gameplay.Trees;
 using Emberhold.World;
 using Emberhold.World.Editing;
 using Emberhold.World.Items;
+using Emberhold.World.Trees;
 using Emberhold.World.Voxels;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -13,8 +15,9 @@ namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
     /// Отряд рабочих в сцене: при старте ставит их у первого источника света, каждый кадр обновляет задачи
-    /// и рабочих, рисует рабочих (капсула, над головой — кубик ноши), рамки чертежей и приказов копать.
-    /// Чертежи и приказы ставит игрок инструментами BlockEditController (4 и 5).
+    /// и рабочих, рисует рабочих (капсула, над головой — кубик ноши), рамки чертежей и приказов копать и рубить.
+    /// Чертежи и приказы ставит игрок инструментами BlockEditController (4 и 5). Топливо для огней отряд заводит сам:
+    /// у каждого огня, в котором есть место хотя бы под одно полено, висит задача принести поленья.
     /// Урон блоков и устойчивость общие с BlockEditController, ресурсы на земле — из DroppedItemsView.
     /// </summary>
     public sealed class WorkerCrew : MonoBehaviour
@@ -29,6 +32,8 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private DroppedItemsView droppedItems;
         [Tooltip("Где светло. Если пусто — рабочие ходят везде (песочницы).")]
         [SerializeField] private BuildZone buildZone;
+        [Tooltip("Деревья для приказа рубить. Если пусто — рубить нечего.")]
+        [SerializeField] private ForestView forest;
 
         [Header("Вид")]
         [SerializeField] private Material workerMaterial;
@@ -42,7 +47,9 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private float outlinePadding = 0.03f;
 
         private readonly List<Worker> workers = new();
-        private readonly List<(Transform body, GameObject carry)> visuals = new();
+        private readonly List<(Transform body, MeshRenderer carry)> visuals = new();
+        private readonly Dictionary<LightSource, FuelTarget> fuelTargets = new();
+        private readonly List<LightSource> goneFires = new();
         private readonly LightZone litZone = new();
         private WorkerContext context;
 
@@ -69,7 +76,7 @@ namespace Emberhold.Gameplay.Workers
             }
 
             context = new WorkerContext(worldView.World, Orders, droppedItems.Items, editor.Damage, editor.Stability, settings, IsLit,
-                () => buildZone == null || litZone.Count > 0, editor.OnWorldChanged);
+                () => buildZone == null || litZone.Count > 0, editor.OnWorldChanged, forest != null ? forest.Forest : null);
             Orders.Cancelled += OnOrderCancelled;
             blueprintLines = CreateLines("Blueprints", blueprintColor);
             digLines = CreateLines("Dig Orders", digOrderColor);
@@ -94,8 +101,9 @@ namespace Emberhold.Gameplay.Workers
             if (context == null)
                 return;
             UpdateLight();
-            // Клетку чертежа могли занять, блок под приказом — выкопать вручную.
+            // Клетку чертежа могли занять, блок под приказом — выкопать вручную, дерево — уронить.
             Orders.Prune(worldView.World);
+            UpdateFuelOrders();
             var deltaTime = Time.deltaTime;
             foreach (var worker in workers)
                 worker.Tick(deltaTime);
@@ -113,7 +121,10 @@ namespace Emberhold.Gameplay.Workers
                 // Капсула 0.9 блока ростом стоит ногами на верхе столбца.
                 body.SetPositionAndRotation(space.TransformPoint(worker.Position + Vector3.up * 0.45f), space.rotation);
                 body.localScale = space.lossyScale.x * new Vector3(0.4f, 0.45f, 0.4f);
-                carry.SetActive(worker.Carrying != null);
+                carry.gameObject.SetActive(worker.Carrying != null);
+                // Ноша того же цвета, что кучка ресурса: поленья не спутать с камнем.
+                if (worker.Carrying is { } item && droppedItems.MaterialFor(item.ItemId) is { } material && carry.sharedMaterial != material)
+                    carry.sharedMaterial = material;
             }
             UpdateOrderLines();
         }
@@ -133,6 +144,66 @@ namespace Emberhold.Gameplay.Workers
             if (Orders.At(block) is { } existing)
                 return existing.Kind == WorkKind.Dig && Orders.Cancel(existing);
             return !worldView.World.GetBlock(block).IsAir && Orders.AddDig(block) != null;
+        }
+
+        /// <summary>Поручить срубить дерево или снять приказ. true — что-то изменилось.</summary>
+        public bool ToggleChop(TreeStand tree)
+        {
+            if (tree == null)
+                return false;
+            if (Orders.At(tree.Cell) is { } existing)
+                return existing.Kind == WorkKind.Chop && Orders.Cancel(existing);
+            return Orders.AddChop(tree) != null;
+        }
+
+        /// <summary>
+        /// Задачи топлива: у огня, в котором помещается хотя бы одно полено, — задача принести до FuelPerTrip поленьев.
+        /// Ещё никем не взятая задача снимается, если огонь успели накормить. Задача огня, который погасили насовсем
+        /// (выключен или удалён: тогда он и из зоны уходит) или сдвинули, снимается, даже если её уже несут: ноша остаётся на земле.
+        /// </summary>
+        private void UpdateFuelOrders()
+        {
+            if (buildZone == null)
+                return;
+            goneFires.Clear();
+            foreach (var source in fuelTargets.Keys)
+            {
+                if (source == null || !source.isActiveAndEnabled)
+                    goneFires.Add(source);
+            }
+            foreach (var source in goneFires)
+            {
+                CancelFuelOrder(fuelTargets[source]);
+                fuelTargets.Remove(source);
+            }
+
+            foreach (var source in buildZone.Sources)
+            {
+                if (source.Fuel == null)
+                    continue;
+                if (!fuelTargets.TryGetValue(source, out var target))
+                    fuelTargets[source] = target = new FuelTarget(source);
+                // Огонь стоит на земле; его клетка — пустая над ней, даже если под огнём скат или полублок.
+                var local = worldView.transform.InverseTransformPoint(source.transform.position);
+                var cell = new Vector3Int(Mathf.FloorToInt(local.x), Mathf.FloorToInt(local.y + 0.5f), Mathf.FloorToInt(local.z));
+                var space = Mathf.FloorToInt(source.Fuel.Space + 1e-4f);
+                if (target.Order != null && Orders.Contains(target.Order))
+                {
+                    if (target.Order.Cell != cell || target.Order.Worker == null && space < 1)
+                        CancelFuelOrder(target);
+                    continue;
+                }
+                target.Order = null;
+                if (space >= 1 && worldView.World.IsInsideBlocks(cell) && Orders.At(cell) == null)
+                    target.Order = Orders.AddFuel(cell, target, settings.FuelItemId, Mathf.Min(space, settings.FuelPerTrip));
+            }
+        }
+
+        private void CancelFuelOrder(FuelTarget target)
+        {
+            if (target.Order != null)
+                Orders.Cancel(target.Order);
+            target.Order = null;
         }
 
         private bool IsLit(Vector2Int column) =>
@@ -170,7 +241,7 @@ namespace Emberhold.Gameplay.Workers
             }
         }
 
-        private (Transform, GameObject) CreateVisual(int index)
+        private (Transform, MeshRenderer) CreateVisual(int index)
         {
             var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             body.name = $"Worker {index + 1}";
@@ -190,7 +261,7 @@ namespace Emberhold.Gameplay.Workers
             if (carryMaterial != null)
                 carry.GetComponent<MeshRenderer>().sharedMaterial = carryMaterial;
             carry.SetActive(false);
-            return (body.transform, carry);
+            return (body.transform, carry.GetComponent<MeshRenderer>());
         }
 
         private GameObject CreateLines(string name, Color color)
@@ -244,6 +315,13 @@ namespace Emberhold.Gameplay.Workers
             lineIndices.Clear();
             foreach (var order in Orders.Orders)
             {
+                // Приказы рубить рисуются вместе с приказами копать, рамкой вокруг дерева.
+                if (kind == WorkKind.Dig && order.Kind == WorkKind.Chop && forest != null)
+                {
+                    var (min, max) = forest.LocalBounds(order.Tree);
+                    BlockOutlineMesh.AppendBox(order.Cell + min, order.Cell + max, outlinePadding, lineVertices, lineIndices);
+                    continue;
+                }
                 if (order.Kind != kind)
                     continue;
                 // Чертёж — по форме будущего блока, приказ копать — по нынешнему блоку и чуть шире, чтобы не сливаться с рамкой курсора.
@@ -257,6 +335,21 @@ namespace Emberhold.Gameplay.Workers
             mesh.SetIndices(lineIndices, MeshTopology.Lines, 0);
             mesh.RecalculateBounds();
             lines.SetActive(lineIndices.Count > 0);
+        }
+
+        /// <summary>Огонь как цель для топлива рабочих.</summary>
+        private sealed class FuelTarget : IFuelTarget
+        {
+            private readonly LightSource source;
+
+            public FuelTarget(LightSource source) => this.source = source;
+
+            /// <summary>Задача топлива этого огня, если она сейчас есть.</summary>
+            public WorkOrder Order { get; set; }
+
+            public float FuelSpace => source.Fuel?.Space ?? 0f;
+
+            public float AddFuel(float amount) => source.AddFuel(amount);
         }
     }
 }

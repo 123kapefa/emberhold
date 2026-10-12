@@ -832,6 +832,7 @@ MonoBehaviour:
   outlineMaterial: {fileID: 2100000, guid: 23c00fcf84bdd4e26b0b5cba1c16e61c, type: 2}
   buildZone: {fileID: 1770339611}
   workers: {fileID: 1210000002}
+  forest: {fileID: 1310000002}
 --- !u!114 &1836935976
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -897,6 +898,9 @@ MonoBehaviour:
   worldView: {fileID: 520718230}
   drops: {fileID: 11400000, guid: 6f07bd270b3d480bbf8f9fe41843bbcc, type: 2}
   itemMaterial: {fileID: 2100000, guid: 273a4ded7a59b41aea0d0162bf49b3df, type: 2}
+  itemLooks:
+  - itemId: wood
+    material: {fileID: 2100000, guid: 932ae790c9e7a4b1480d98f70518d09f, type: 2}
   itemSize: 0.35
   maxStack: 5
   blockFalls: {fileID: 1836935976}
@@ -950,6 +954,7 @@ MonoBehaviour:
   worldView: {fileID: 520718230}
   droppedItems: {fileID: 1950212302}
   buildZone: {fileID: 1770339611}
+  forest: {fileID: 1310000002}
   workerMaterial: {fileID: 2100000, guid: 932ae790c9e7a4b1480d98f70518d09f, type: 2}
   carryMaterial: {fileID: 2100000, guid: 273a4ded7a59b41aea0d0162bf49b3df, type: 2}
   outlineMaterial: {fileID: 2100000, guid: 23c00fcf84bdd4e26b0b5cba1c16e61c, type: 2}
@@ -1020,6 +1025,151 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1310000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1310000003}
+  - component: {fileID: 1310000002}
+  m_Layer: 0
+  m_Name: Forest
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1310000002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1310000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5fb3317d60344e288ee01902daf09c2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Trees.ForestView
+  worldView: {fileID: 520718230}
+  droppedItems: {fileID: 1950212302}
+  clearAroundFire: 5
+  trunkMaterial: {fileID: 2100000, guid: 932ae790c9e7a4b1480d98f70518d09f, type: 2}
+  crownMaterial: {fileID: 2100000, guid: 932ae790c9e7a4b1480d98f70518d09f, type: 2}
+--- !u!4 &1310000003
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1310000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1320000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1320000003}
+  - component: {fileID: 1320000002}
+  m_Layer: 0
+  m_Name: Zone Hills (сосны)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1320000002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1320000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0232a65aef9ec48dba525ea99255a911, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.TerrainZone
+  shape: 0
+  size: {x: 40, y: 40}
+  profile: {fileID: 11400000, guid: e37f2c8a9d0f4d41886bebcb495a5437, type: 2}
+  blendWidth: 8
+--- !u!4 &1320000003
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1320000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 46}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1330000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1330000003}
+  - component: {fileID: 1330000002}
+  m_Layer: 0
+  m_Name: Zone Mountain (кедры)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1330000002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1330000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0232a65aef9ec48dba525ea99255a911, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.TerrainZone
+  shape: 0
+  size: {x: 44, y: 44}
+  profile: {fileID: 11400000, guid: b52ce70755dd421aa0370b1f7b18eaea, type: 2}
+  blendWidth: 8
+--- !u!4 &1330000003
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1330000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -40, y: 0, z: -42}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -1037,3 +1187,6 @@ SceneRoots:
   - {fileID: 625837801}
   - {fileID: 1210000003}
   - {fileID: 1530000003}
+  - {fileID: 1310000003}
+  - {fileID: 1320000003}
+  - {fileID: 1330000003}

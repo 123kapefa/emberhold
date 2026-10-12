@@ -28,6 +28,16 @@ namespace Emberhold.Tests.EditMode.Lighting
         }
 
         [Test]
+        public void NightBurnFactor_GrowsEveryNight()
+        {
+            Assert.That(LightFuel.NightBurnFactor(1, 0.25f), Is.EqualTo(1f));
+            Assert.That(LightFuel.NightBurnFactor(2, 0.25f), Is.EqualTo(1.25f).Within(1e-5f));
+            Assert.That(LightFuel.NightBurnFactor(5, 0.25f), Is.EqualTo(2f).Within(1e-5f), "Пятая ночь вдвое дороже первой");
+            Assert.That(LightFuel.NightBurnFactor(0, 0.25f), Is.EqualTo(1f), "До первой ночи — как в первую");
+            Assert.That(LightFuel.NightBurnFactor(7, 0f), Is.EqualTo(1f), "Без роста расход постоянный");
+        }
+
+        [Test]
         public void Burn_IgnoresNegativeTime()
         {
             var fuel = new LightFuel(10f, 5f);

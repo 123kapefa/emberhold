@@ -16,3 +16,6 @@ MonoBehaviour:
   - material: 3
     itemId: stone
     count: 1
+  - material: 4
+    itemId: wood
+    count: 1

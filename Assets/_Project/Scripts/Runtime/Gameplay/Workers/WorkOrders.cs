@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Emberhold.World.Items;
+using Emberhold.World.Trees;
 using Emberhold.World.Voxels;
 using UnityEngine;
 
@@ -12,6 +13,20 @@ namespace Emberhold.Gameplay.Workers
         Build,
         /// <summary>Приказ копать: рабочий разбивает блок ударами.</summary>
         Dig,
+        /// <summary>Приказ рубить: рабочий рубит дерево ударами, поленья падают у основания.</summary>
+        Chop,
+        /// <summary>Подбросить топливо: рабочий приносит поленья и кладёт их в огонь.</summary>
+        Fuel,
+    }
+
+    /// <summary>Куда рабочие носят топливо (костёр). Отдельно от LightSource, чтобы рабочих проверяли без сцены.</summary>
+    public interface IFuelTarget
+    {
+        /// <summary>Сколько топлива ещё помещается.</summary>
+        float FuelSpace { get; }
+
+        /// <summary>Подбросить топливо; возвращает, сколько принято.</summary>
+        float AddFuel(float amount);
     }
 
     /// <summary>
@@ -48,12 +63,21 @@ namespace Emberhold.Gameplay.Workers
 
         public bool NeedsItems => ItemId != null && Delivered < Needed;
 
+        /// <summary>Дерево под приказом рубить, иначе null.</summary>
+        public TreeStand Tree { get; internal set; }
+
+        /// <summary>Куда нести топливо (для <see cref="WorkKind.Fuel"/>), иначе null.</summary>
+        public IFuelTarget FuelTarget { get; internal set; }
+
+        /// <summary>Чем больше, тем раньше рабочие берут задачу: огонь важнее стройки и копки.</summary>
+        public int Priority => Kind == WorkKind.Fuel ? 1 : 0;
+
         /// <summary>Рабочий, который делает задачу, или null.</summary>
         public Worker Worker { get; internal set; }
     }
 
     /// <summary>
-    /// Общий список задач рабочих: чертежи и приказы копать, не больше одной задачи на клетку.
+    /// Общий список задач рабочих: чертежи, приказы копать и рубить, топливо для огня; не больше одной задачи на клетку.
     /// Рабочие сами берут ближайшую свободную. Задача, которую больше нельзя выполнить (клетку заняли,
     /// блок уже выкопали), убирается в <see cref="Prune"/>.
     /// </summary>
@@ -92,6 +116,25 @@ namespace Emberhold.Gameplay.Workers
             return Add(new WorkOrder(WorkKind.Dig, cell, Block.Air, false, null, 0));
         }
 
+        /// <summary>Поручить срубить дерево. Null, если клетка дерева уже занята задачей.</summary>
+        public WorkOrder AddChop(TreeStand tree)
+        {
+            if (tree == null || !tree.IsStanding || byCell.ContainsKey(tree.Cell))
+                return null;
+            return Add(new WorkOrder(WorkKind.Chop, tree.Cell, Block.Air, false, null, 0) { Tree = tree });
+        }
+
+        /// <summary>
+        /// Поручить принести count единиц топлива itemId в огонь target, стоящий в клетке cell.
+        /// Null, если клетка уже занята задачей.
+        /// </summary>
+        public WorkOrder AddFuel(Vector3Int cell, IFuelTarget target, string itemId, int count)
+        {
+            if (target == null || string.IsNullOrEmpty(itemId) || count <= 0 || byCell.ContainsKey(cell))
+                return null;
+            return Add(new WorkOrder(WorkKind.Fuel, cell, Block.Air, false, itemId, count) { FuelTarget = target });
+        }
+
         /// <summary>Отменить задачу (игрок передумал или её нельзя выполнить).</summary>
         public bool Cancel(WorkOrder order)
         {
@@ -121,10 +164,14 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>
         /// Можно ли ещё выполнить задачу: чертёж — клетка свободна (или там тот же неполный блок, который досыпаем),
-        /// приказ копать — блок на месте.
+        /// приказ копать — блок на месте, приказ рубить — дерево стоит. Топливо носить можно всегда.
         /// </summary>
         public static bool IsValid(VoxelWorld world, WorkOrder order)
         {
+            if (order.Kind == WorkKind.Fuel)
+                return true;
+            if (order.Kind == WorkKind.Chop)
+                return order.Tree.IsStanding;
             if (!world.IsInsideBlocks(order.Cell))
                 return false;
             var current = world.GetBlock(order.Cell);
