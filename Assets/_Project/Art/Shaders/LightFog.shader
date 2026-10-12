@@ -1,7 +1,7 @@
 // Туман за пределами света. Полноэкранный проход URP (Full Screen Pass Renderer Feature) перед
 // прозрачными объектами: по глубине восстанавливает точку мира, считает расстояние по горизонтали
-// до ближайшего круга света и накладывает цвет тумана. Параметры задаёт компонент LightFog;
-// формула плотности совпадает с FogLook.DensityAt.
+// до ближайшего круга света и высоту точки, накладывает цвет тумана. Параметры задаёт компонент LightFog;
+// формула плотности совпадает с FogLook.DensityAt(distanceOutside, height).
 Shader "Emberhold/Fog/LightFog"
 {
     SubShader
@@ -32,6 +32,8 @@ Shader "Emberhold/Fog/LightFog"
             // xy — центр круга в мире (x, z), z — радиус.
             float4 _EmberholdLightCircles[EMBERHOLD_MAX_LIGHTS];
             float _EmberholdLightCount;
+            // x — ниже этой высоты туман в полную силу, y — выше неё тумана нет.
+            float4 _EmberholdFogHeight;
 
             half4 Frag(Varyings input) : SV_Target
             {
@@ -49,11 +51,15 @@ Shader "Emberhold/Fog/LightFog"
                     bool sky = depth >= 1.0;
                 #endif
 
-                // Небо бесконечно далеко от любого огня: там туман самый густой.
+                // Небо бесконечно далеко от любого огня: там туман самый густой, высота не важна.
                 float outside = 1e6;
+                float heightFactor = 1.0;
                 if (!sky)
                 {
                     float3 world = ComputeWorldSpacePosition(uv, depth, UNITY_MATRIX_I_VP);
+                    // Как FogLook.HeightFactor: 1 ниже x, 0 выше y, между ними smoothstep.
+                    float t = saturate((_EmberholdFogHeight.y - world.y) / max(_EmberholdFogHeight.y - _EmberholdFogHeight.x, 1e-4));
+                    heightFactor = t * t * (3.0 - 2.0 * t);
                     int count = (int)_EmberholdLightCount;
                     for (int i = 0; i < EMBERHOLD_MAX_LIGHTS; i++)
                     {
@@ -64,7 +70,7 @@ Shader "Emberhold/Fog/LightFog"
                     }
                 }
 
-                float density = _EmberholdFogParams.x * (1.0 - exp(-max(outside, 0.0) * _EmberholdFogParams.y));
+                float density = _EmberholdFogParams.x * (1.0 - exp(-max(outside, 0.0) * _EmberholdFogParams.y)) * heightFactor;
                 return half4(_EmberholdFogColor.rgb, density);
             }
             ENDHLSL
