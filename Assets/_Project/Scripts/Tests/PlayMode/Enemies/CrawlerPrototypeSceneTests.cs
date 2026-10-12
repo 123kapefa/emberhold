@@ -16,6 +16,9 @@ namespace Emberhold.Tests.PlayMode.Enemies
     public sealed class CrawlerPrototypeSceneTests
     {
         private const float StepSeconds = 0.1f;
+        // Спаунер выбирает точку случайно, а из части точек на рельефе прототипа ползун застревает
+        // в ложбине (#49). Тесты берут одну и ту же точку, откуда путь до костра есть.
+        private const int SpawnSeed = 0;
 
         private DayNightCycle cycle;
         private CrawlerSpawner spawner;
@@ -47,6 +50,7 @@ namespace Emberhold.Tests.PlayMode.Enemies
             Assert.That(cycle.IsNight, Is.True);
             Assert.That(spawner.Crawlers, Is.Empty, "Не в первую же секунду ночи");
 
+            Random.InitState(SpawnSeed);
             cycle.Advance(spawner.Settings.FirstSpawnDelay + 0.1f);
             Assert.That(spawner.Crawlers.Count, Is.EqualTo(1), "Первый ползун вышел");
             var crawler = spawner.Crawlers[0];
@@ -71,7 +75,7 @@ namespace Emberhold.Tests.PlayMode.Enemies
         public IEnumerator Crawler_ReachesCampfire_DrainsFuel_AndDiesFromStrikes()
         {
             ToNight();
-            var crawler = spawner.TrySpawn();
+            var crawler = SpawnCrawler();
             Assert.That(crawler, Is.Not.Null);
             Assert.That(crawler.Target, Is.Null.Or.EqualTo(campfire));
 
@@ -105,7 +109,7 @@ namespace Emberhold.Tests.PlayMode.Enemies
         public IEnumerator Crawler_PutsOutCampfire_WhenNotStopped()
         {
             ToNight();
-            var crawler = spawner.TrySpawn();
+            var crawler = SpawnCrawler();
             var lit = true;
             campfire.LitChanged += isLit => lit = isLit;
             var maxSteps = (int)((campfire.Fuel.Capacity / spawner.Settings.DrainPerSecond + 120f) / StepSeconds);
@@ -122,7 +126,7 @@ namespace Emberhold.Tests.PlayMode.Enemies
         {
             ToNight();
             var view = Object.FindAnyObjectByType<VoxelWorldView>();
-            var crawler = spawner.TrySpawn();
+            var crawler = SpawnCrawler();
             Wall(view, campfire.transform.position, 3f, 4.5f, 3);
 
             for (var i = 0; i < 1500; i++)
@@ -132,6 +136,14 @@ namespace Emberhold.Tests.PlayMode.Enemies
             toFire.y = 0f;
             Assert.That(toFire.magnitude, Is.GreaterThan(3f), "Остался снаружи стены");
             yield return null;
+        }
+
+        private Crawler SpawnCrawler()
+        {
+            Random.InitState(SpawnSeed);
+            var crawler = spawner.TrySpawn();
+            Assert.That(crawler, Is.Not.Null);
+            return crawler;
         }
 
         private void ToNight()
