@@ -119,7 +119,24 @@ namespace Emberhold.Gameplay.Run
             Score.Finish();
             paused = true;
             Time.timeScale = 0f;
+            DisableGameInput();
             Defeated?.Invoke();
+        }
+
+        /// <summary>
+        /// Под экраном проигрыша игра не слушает клавиши и мышь (N, L, стройка, удары, камера) — только перезапуск.
+        /// Новая сцена включает свои карты ввода сама, в OnEnable компонентов.
+        /// </summary>
+        private void DisableGameInput()
+        {
+            var asset = actions != null ? actions : InputSystem.actions;
+            if (asset == null)
+                return;
+            foreach (var other in asset.actionMaps)
+            {
+                if (other != map)
+                    other.Disable();
+            }
         }
 
         /// <summary>Начать забег заново: снять паузу и загрузить сцену с начала.</summary>

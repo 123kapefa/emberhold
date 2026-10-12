@@ -5,6 +5,7 @@ using Emberhold.Gameplay.Lighting;
 using Emberhold.Gameplay.Run;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -61,6 +62,8 @@ namespace Emberhold.Tests.PlayMode.Run
             Assert.That(run.IsGameOver, Is.True, "Время вышло — проигрыш");
             Assert.That(defeated, Is.True);
             Assert.That(Time.timeScale, Is.Zero, "Игра на паузе");
+            Assert.That(InputSystem.actions.FindActionMap("DayNight").enabled, Is.False, "Клавиши игры не работают");
+            Assert.That(InputSystem.actions.FindActionMap("Run").enabled, Is.True, "Перезапуск работает");
             yield return null;
         }
 
@@ -108,6 +111,7 @@ namespace Emberhold.Tests.PlayMode.Run
             Assert.That(fresh.Score.CrawlersKilled, Is.Zero);
             Assert.That(fresh.Campfire.IsLit, Is.True, "Костёр снова горит");
             Assert.That(Time.timeScale, Is.EqualTo(1f), "Пауза снята");
+            Assert.That(InputSystem.actions.FindActionMap("DayNight").enabled, Is.True, "Клавиши игры снова работают");
         }
     }
 }
