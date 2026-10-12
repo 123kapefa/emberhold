@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Emberhold.World.Voxels;
 using UnityEngine;
 
@@ -11,14 +12,16 @@ namespace Emberhold.World.Generation
         [SerializeField] private int seed = 12345;
         [Tooltip("Размер мира в чанках 16×16×16 (X — ширина, Y — высота, Z — длина).")]
         [SerializeField] private Vector3Int sizeInChunks = new(8, 3, 8);
-        [Tooltip("Профиль местности. Пусто — долина по умолчанию.")]
+        [Tooltip("Фоновый профиль местности: там, где нет зон (TerrainZone). Пусто — долина по умолчанию.")]
         [SerializeField] private TerrainProfile profile;
 
         public int Seed => seed;
         public Vector3Int SizeInChunks => sizeInChunks;
         public TerrainProfileParameters Profile => profile != null ? profile.Parameters : TerrainProfileParameters.Valley;
 
-        public VoxelWorld Generate() => TerrainGenerator.Generate(Profile, seed, sizeInChunks);
+        /// <summary>Сгенерировать мир; zones — зоны местности поверх профиля (в координатах сетки блоков).</summary>
+        public VoxelWorld Generate(IReadOnlyList<TerrainZoneArea> zones = null) =>
+            TerrainGenerator.Generate(Profile, seed, sizeInChunks, zones);
 
         private void OnValidate() => sizeInChunks = Vector3Int.Max(sizeInChunks, Vector3Int.one);
     }

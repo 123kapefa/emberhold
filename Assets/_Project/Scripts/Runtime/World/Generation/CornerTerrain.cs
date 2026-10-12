@@ -40,6 +40,22 @@ namespace Emberhold.World.Generation
             int footRounding = 0, int bedLevel = 0)
         {
             var size = world.SizeInBlocks;
+            var columnMaterials = new TerrainMaterials[size.x, size.z];
+            var bedLevels = new int[size.x, size.z];
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+            {
+                columnMaterials[x, z] = materials;
+                bedLevels[x, z] = bedLevel;
+            }
+            Fill(world, corners, columnMaterials, bedLevels, edgeRounding, footRounding);
+        }
+
+        /// <summary>То же со своими материалами и уровнем дна у каждого столбца (размером ширина × длина мира).</summary>
+        public static void Fill(VoxelWorld world, int[,] corners, TerrainMaterials[,] materials, int[,] bedLevels,
+            int edgeRounding = 0, int footRounding = 0)
+        {
+            var size = world.SizeInBlocks;
             if (corners.GetLength(0) != size.x + 1 || corners.GetLength(1) != size.z + 1)
                 throw new ArgumentException($"Нужна сетка углов {size.x + 1}×{size.z + 1}", nameof(corners));
 
@@ -56,7 +72,7 @@ namespace Emberhold.World.Generation
 
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
-                WriteColumn(world, materials, bedLevel, x, z, topY[x, z], columns);
+                WriteColumn(world, materials[x, z], bedLevels[x, z], x, z, topY[x, z], columns);
         }
 
         // Углы столбца в массиве: 0 — C00, 1 — C10, 2 — C01, 3 — C11.
@@ -241,6 +257,15 @@ namespace Emberhold.World.Generation
         {
             if (levelSixteenths <= 0)
                 return;
+            SnapSteepToLevels(corners, null, levelSixteenths, cliffAllowed);
+        }
+
+        /// <summary>То же со своей высотой уровня у каждого угла (у зон местности террасы разные); 0 — угол не трогаем.</summary>
+        public static void SnapSteepToLevels(int[,] corners, int[,] levelSixteenths, bool[,] cliffAllowed = null) =>
+            SnapSteepToLevels(corners, levelSixteenths, 0, cliffAllowed);
+
+        private static void SnapSteepToLevels(int[,] corners, int[,] levels, int level, bool[,] cliffAllowed)
+        {
             var sizeX = corners.GetLength(0) - 1;
             var sizeZ = corners.GetLength(1) - 1;
             for (var pass = 0; pass < 64; pass++)
@@ -255,6 +280,9 @@ namespace Emberhold.World.Generation
                     for (var i = 0; i < 4; i++)
                     {
                         var (cx, cz) = (x + (i & 1), z + (i >> 1));
+                        var levelSixteenths = levels?[cx, cz] ?? level;
+                        if (levelSixteenths <= 0)
+                            continue;
                         var value = corners[cx, cz];
                         var snapped = Mathf.RoundToInt((float)value / levelSixteenths) * levelSixteenths;
                         // Ниже первого уровня не опускаем: у столбца должен остаться хотя бы один блок.
