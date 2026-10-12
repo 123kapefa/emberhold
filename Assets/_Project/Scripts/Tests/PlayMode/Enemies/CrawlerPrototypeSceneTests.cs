@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Emberhold.Gameplay.DayNight;
 using Emberhold.Gameplay.Enemies;
@@ -16,9 +17,10 @@ namespace Emberhold.Tests.PlayMode.Enemies
     public sealed class CrawlerPrototypeSceneTests
     {
         private const float StepSeconds = 0.1f;
-        // Спаунер выбирает точку случайно, а из части точек на рельефе прототипа ползун застревает
-        // в ложбине (#49). Тесты берут одну и ту же точку, откуда путь до костра есть.
+        // Спаунер выбирает точку случайно; тесты берут одну и ту же, чтобы результат не зависел от случая.
         private const int SpawnSeed = 0;
+        // Сколько точек появления проверить: раньше из 6 из 60 ползун застревал в ложбинах рельефа (#49).
+        private const int SpawnPointsChecked = 60;
 
         private DayNightCycle cycle;
         private CrawlerSpawner spawner;
@@ -103,6 +105,28 @@ namespace Emberhold.Tests.PlayMode.Enemies
             Assert.That(campfire.Fuel.Amount, Is.EqualTo(before), "Мёртвый не гасит");
             yield return new WaitForSeconds(spawner.Settings.DissolveSeconds + 0.2f);
             Assert.That(crawler == null, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator Crawler_ReachesCampfire_FromEverySpawnPoint()
+        {
+            ToNight();
+            var stuck = new List<string>();
+            for (var seed = 0; seed < SpawnPointsChecked; seed++)
+            {
+                Random.InitState(seed);
+                var crawler = spawner.TrySpawn();
+                Assert.That(crawler, Is.Not.Null, $"Ползун вышел (точка {seed})");
+                var spawnedAt = crawler.transform.position;
+                for (var i = 0; i < 2000 && !crawler.AtFire; i++)
+                    crawler.Step(StepSeconds);
+                if (!crawler.AtFire)
+                    stuck.Add($"точка {seed}: {spawnedAt} → застрял в {crawler.transform.position}");
+                crawler.Dissolve();
+                Object.Destroy(crawler.gameObject);
+            }
+            Assert.That(stuck, Is.Empty, "Из всех точек появления ползун доходит до костра");
+            yield return null;
         }
 
         [UnityTest]

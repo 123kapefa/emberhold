@@ -266,9 +266,15 @@ namespace Emberhold.Gameplay.Building
         private bool IsCameraDragging() =>
             (cameraOrbitHold != null && cameraOrbitHold.IsPressed()) || (cameraPanHold != null && cameraPanHold.IsPressed());
 
-        /// <summary>Щелчок пришёлся по ползуну: его бьёт CrawlerStrike, блок за ним не трогаем.</summary>
-        private bool IsStrikingCrawler() =>
-            Crawler.TryPick(targetCamera.ScreenPointToRay(point.ReadValue<Vector2>()), settings.MaxRayDistance, out _);
+        /// <summary>
+        /// Щелчок пришёлся по ползуну (его бьёт CrawlerStrike) или по кнопкам спаунера: блок за ними не трогаем.
+        /// </summary>
+        private bool IsStrikingCrawler()
+        {
+            var pointer = point.ReadValue<Vector2>();
+            return CrawlerSpawner.IsOverButtons(pointer)
+                || Crawler.TryPick(targetCamera.ScreenPointToRay(pointer), settings.MaxRayDistance, out _);
+        }
 
         /// <summary>
         /// Применить текущий инструмент к блоку; вне света ничего не делает, кроме снятия чертежа или приказа. Возвращает true, если мир изменился

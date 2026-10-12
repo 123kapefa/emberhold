@@ -1,5 +1,6 @@
 using System;
 using Emberhold.Gameplay.Lighting;
+using Emberhold.Gameplay.Workers;
 using Emberhold.World;
 using UnityEngine;
 
@@ -7,13 +8,16 @@ namespace Emberhold.Gameplay.Enemies
 {
     /// <summary>
     /// Ползун: мелкое быстрое существо из тумана. Ползёт по земле к ближайшему горящему огню и, добравшись,
-    /// гасит его — отнимает топливо, пока огонь не погаснет или ползуна не убьют. На уступ выше
-    /// <see cref="CrawlerSettings.MaxStep"/> не забирается: упёршись в стену, ползёт вдоль неё,
-    /// поэтому сплошная стена в два блока вокруг огня его останавливает.
+    /// гасит его — отнимает топливо, пока огонь не погаснет или ползуна не убьют. Путь ищет по столбцам блоков
+    /// (<see cref="CrawlerPaths"/>): забирается на уступ не выше <see cref="CrawlerSettings.MaxStep"/>, обходит стены
+    /// и ложбины. Если пути нет — сплошная стена в два блока вокруг огня, — ползёт к огню напрямую и, упёршись
+    /// в стену, вдоль неё, но за стену не попадает.
     /// Создаёт и убирает ползунов <see cref="CrawlerSpawner"/>; игрок бьёт их щелчком (<see cref="CrawlerStrike"/>).
     /// </summary>
     public sealed class Crawler : MonoBehaviour
     {
+        // Сколько раз за шаг ползун может свернуть на пути: дойдя до центра столбца, сразу ползёт к следующему.
+        private const int PathTurnsPerStep = 3;
         // Куда пробовать ползти, если прямо к огню нельзя: всё дальше в сторону, сначала в привычную.
         private static readonly float[] DetourAngles = { 0f, 45f, -45f, 90f, -90f, 135f, -135f };
         // Запас к дальности: подползая ровно на reach, ползун из-за округления никогда бы её не достиг.
@@ -23,6 +27,7 @@ namespace Emberhold.Gameplay.Enemies
 
         private VoxelWorldView worldView;
         private BuildZone zone;
+        private CrawlerPaths paths;
         private Collider body;
         private Vector3 baseScale = Vector3.one;
         private float footing;
@@ -49,13 +54,17 @@ namespace Emberhold.Gameplay.Enemies
         /// <summary>Ползун умер или начал растворяться (с рассветом). Он ещё в сцене, пока не растворится.</summary>
         public event Action<Crawler> Died;
 
-        /// <summary>Подготовить к работе в мире: ставит на землю под собой. Вызывает спаунер сразу после создания.</summary>
-        public void Init(CrawlerSettings crawlerSettings, VoxelWorldView view, BuildZone buildZone)
+        /// <summary>
+        /// Подготовить к работе в мире: ставит на землю под собой. Вызывает спаунер сразу после создания и отдаёт
+        /// общие для всех ползунов пути (crawlerPaths); без них ползун ищет пути сам.
+        /// </summary>
+        public void Init(CrawlerSettings crawlerSettings, VoxelWorldView view, BuildZone buildZone, CrawlerPaths crawlerPaths = null)
         {
             if (crawlerSettings != null)
                 settings = crawlerSettings;
             worldView = view;
             zone = buildZone;
+            paths = crawlerPaths ?? new CrawlerPaths(view.World, settings.MaxStep);
             Health = settings.Health;
             IsAlive = true;
             body = GetComponent<Collider>();
@@ -99,7 +108,9 @@ namespace Emberhold.Gameplay.Enemies
             }
 
             AtFire = false;
-            Crawl(toFire / distance, Mathf.Min(settings.Speed * dt, distance - settings.Reach));
+            var step = Mathf.Min(settings.Speed * dt, distance - settings.Reach);
+            if (!FollowPath(step))
+                Crawl(toFire / distance, step);
             SettleHeight(dt);
         }
 
@@ -160,6 +171,55 @@ namespace Emberhold.Gameplay.Enemies
             if (best != null)
                 Target = best;
         }
+
+        /// <summary>
+        /// Проползти distance по пути к огню: от центра столбца к центру следующего, в столбце огня — прямо к нему.
+        /// false — пути к огню нет (или шаг по нему не удался): тогда ползун ползёт напрямую с обходом.
+        /// </summary>
+        private bool FollowPath(float distance)
+        {
+            if (distance <= 0f)
+            {
+                IsBlocked = false;
+                return true;
+            }
+            var fire = WalkSurface.ColumnOf(ToLocal(Target.transform.position));
+            var moved = false;
+            for (var turn = 0; turn < PathTurnsPerStep && distance > 0.0001f; turn++)
+            {
+                var local = ToLocal(transform.position);
+                var column = WalkSurface.ColumnOf(local);
+                if (!paths.TryNext(fire, column, out var next))
+                    break;
+                var aim = next == column ? ToLocal(Target.transform.position) : ColumnCenter(next);
+                if (!TryMoveTowards(local, aim, ref distance)
+                    // Появившись у края столбца, ползун может задеть угол соседнего уступа — сперва к центру своего.
+                    && !TryMoveTowards(local, ColumnCenter(column), ref distance))
+                    break;
+                moved = true;
+            }
+            if (moved)
+                IsBlocked = false;
+            return moved;
+        }
+
+        private bool TryMoveTowards(Vector3 local, Vector3 aim, ref float distance)
+        {
+            var offset = aim - local;
+            offset.y = 0f;
+            var length = offset.magnitude;
+            if (length < 0.0001f)
+                return false;
+            var dir = offset / length;
+            var move = Mathf.Min(distance, length);
+            if (!TryMove(dir, move))
+                return false;
+            distance -= move;
+            Face(dir);
+            return true;
+        }
+
+        private static Vector3 ColumnCenter(Vector2Int column) => new(column.x + 0.5f, 0f, column.y + 0.5f);
 
         private void Crawl(Vector3 direction, float distance)
         {

@@ -17,6 +17,9 @@ namespace Emberhold.World.Voxels
         public Vector3Int SizeInChunks { get; }
         public Vector3Int SizeInBlocks => SizeInChunks * ChunkData.Size;
 
+        /// <summary>Растёт при каждой смене блока через SetBlock: по нему кэши (например, пути) узнают, что мир изменился.</summary>
+        public int Version { get; private set; }
+
         public VoxelWorld(Vector3Int sizeInChunks)
         {
             if (sizeInChunks.x <= 0 || sizeInChunks.y <= 0 || sizeInChunks.z <= 0)
@@ -61,6 +64,7 @@ namespace Emberhold.World.Voxels
             if (data.Get(local.x, local.y, local.z) == value)
                 return;
             data.Set(local.x, local.y, local.z, value);
+            Version++;
 
             MarkDirty(chunk);
             const int last = ChunkData.Size - 1;
