@@ -7,7 +7,8 @@
         "Emberhold.Core",
         "Emberhold.World",
         "Emberhold.Gameplay",
-        "Emberhold.CameraRig"
+        "Emberhold.CameraRig",
+        "Emberhold.Editor"
     ],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
