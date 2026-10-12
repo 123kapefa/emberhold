@@ -1666,6 +1666,34 @@
                     "isPartOfComposite": false
                 }
             ]
+        },
+        {
+            "name": "Run",
+            "id": "84b5ddb5-c06e-458c-a75b-6683068091e3",
+            "actions": [
+                {
+                    "name": "Restart",
+                    "type": "Button",
+                    "id": "d5f1abd6-fe5a-4950-ad43-00e97bcf9dad",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "e87c364d-6f6a-4c6c-b5b3-5d8cbefbfa83",
+                    "path": "<Keyboard>/enter",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Restart",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
         }
     ],
     "controlSchemes": [
