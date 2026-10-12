@@ -420,6 +420,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1424171518373693045}
   - component: {fileID: 2978219545329093532}
+  - component: {fileID: 5512836190452718801}
   m_Layer: 0
   m_Name: Campfire
   m_TagString: Untagged
@@ -465,6 +466,23 @@ MonoBehaviour:
   pointLight: {fileID: 916798796033287289}
   ring: {fileID: 7255296212899066109}
   snapToGround: 1
+  flame: {fileID: 8425182275553645590}
+  dayNight: {fileID: 0}
+--- !u!114 &5512836190452718801
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3092010812758814843}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35f6b90e4380442e9e2ffae2fd508cab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Lighting.CampfireFuelControls
+  source: {fileID: 2978219545329093532}
+  fuelPerPress: 1
+  actions: {fileID: 0}
 --- !u!1 &4249646006113242991
 GameObject:
   m_ObjectHideFlags: 0
