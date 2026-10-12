@@ -57,8 +57,7 @@ namespace Emberhold.Editor.World
             {
                 if (state != PlayModeStateChange.ExitingEditMode)
                     return;
-                foreach (var view in Object.FindObjectsByType<VoxelWorldView>())
-                    view.ClearPreview();
+                VoxelWorldView.ClearAllPreviews();
             };
     }
 }

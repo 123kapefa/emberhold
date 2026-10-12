@@ -1,5 +1,6 @@
 using Emberhold.World;
 using Emberhold.World.Generation;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -14,10 +15,19 @@ namespace Emberhold.Tests.EditMode.World
         private TerrainSettings terrain;
         private TerrainProfile flatProfile;
         private GameObject zoneObject;
+        /// <summary>Зоны открытой в редакторе сцены: на время теста выключены, чтобы не влиять на рельеф.</summary>
+        private readonly List<TerrainZone> sceneZones = new();
 
         [SetUp]
         public void SetUp()
         {
+            sceneZones.Clear();
+            foreach (var zone in Object.FindObjectsByType<TerrainZone>())
+            {
+                sceneZones.Add(zone);
+                zone.enabled = false;
+            }
+
             terrain = ScriptableObject.CreateInstance<TerrainSettings>();
             var settings = new SerializedObject(terrain);
             settings.FindProperty("sizeInChunks").vector3IntValue = new Vector3Int(2, 2, 2);
@@ -33,6 +43,12 @@ namespace Emberhold.Tests.EditMode.World
         [TearDown]
         public void TearDown()
         {
+            if (view != null)
+                view.ClearPreview();
+            VoxelWorldView.ClearAllPreviews();
+            foreach (var zone in sceneZones)
+                if (zone != null)
+                    zone.enabled = true;
             foreach (var obj in new Object[] { worldObject, zoneObject, terrain, flatProfile })
                 if (obj != null)
                     Object.DestroyImmediate(obj);
@@ -120,6 +136,30 @@ namespace Emberhold.Tests.EditMode.World
             view.BuildPreview();
 
             Assert.That(TopHeight(), Is.LessThan(before));
+        }
+
+        [Test]
+        public void Show_AfterPreview_ReplacesPreviewWithWorld()
+        {
+            view.BuildPreview();
+
+            view.Show(terrain.Generate());
+
+            Assert.That(PreviewRoot(), Is.Null);
+            Assert.That(worldObject.transform.childCount, Is.GreaterThan(0));
+            foreach (Transform chunk in worldObject.transform)
+                Assert.That(chunk.hideFlags, Is.EqualTo(HideFlags.None));
+        }
+
+        [Test]
+        public void ClearAllPreviews_RemovesPreviewLeftWithoutView()
+        {
+            view.BuildPreview();
+            Object.DestroyImmediate(view);
+
+            VoxelWorldView.ClearAllPreviews();
+
+            Assert.That(worldObject.transform.childCount, Is.Zero);
         }
 
         /// <summary>Верх рельефа предпросмотра по границам мешей чанков.</summary>

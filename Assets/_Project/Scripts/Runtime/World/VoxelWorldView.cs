@@ -39,6 +39,8 @@ namespace Emberhold.World
 
         /// <summary>Имя временного объекта с чанками предпросмотра.</summary>
         public const string PreviewName = "Предпросмотр (не сохраняется)";
+        /// <summary>Предпросмотр не сохраняется и не правится руками: его нельзя случайно сдвинуть или унести из-под мира.</summary>
+        private const HideFlags PreviewFlags = HideFlags.DontSave | HideFlags.NotEditable;
 
         public VoxelWorld World { get; private set; }
 
@@ -84,7 +86,7 @@ namespace Emberhold.World
                 return;
 
             var world = Generate();
-            var root = new GameObject(PreviewName) { hideFlags = HideFlags.DontSave };
+            var root = new GameObject(PreviewName) { hideFlags = PreviewFlags };
             root.transform.SetParent(transform, false);
             if (centerOnOrigin)
                 root.transform.position = WorldOrigin(world.SizeInBlocks);
@@ -103,18 +105,39 @@ namespace Emberhold.World
                 World = null;
                 chunkParent = null;
             }
-            // После перекомпиляции скриптов словарь чанков пуст, а объекты остались: убираем и их меши.
-            foreach (var filter in root.GetComponentsInChildren<MeshFilter>(true))
-                Release(filter.sharedMesh);
-            Release(root.gameObject);
+            ReleasePreview(root);
+        }
+
+        /// <summary>
+        /// Убрать все предпросмотры в открытых сценах, в том числе оставшиеся без вида (компонент удалили,
+        /// объект мира выключен). Редактор зовёт перед запуском Play.
+        /// </summary>
+        public static void ClearAllPreviews()
+        {
+            foreach (var view in FindObjectsByType<VoxelWorldView>(FindObjectsInactive.Include))
+                view.ClearPreview();
+            foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
+                if (t != null && IsPreviewRoot(t) && t.gameObject.scene.IsValid())
+                    ReleasePreview(t);
         }
 
         private Transform FindPreviewRoot()
         {
             foreach (Transform child in transform)
-                if (child.name == PreviewName && (child.hideFlags & HideFlags.DontSaveInEditor) != 0)
+                if (IsPreviewRoot(child))
                     return child;
             return null;
+        }
+
+        private static bool IsPreviewRoot(Transform t) =>
+            t.name == PreviewName && (t.hideFlags & HideFlags.DontSaveInEditor) != 0;
+
+        /// <summary>Удалить объект предпросмотра с мешами: после перекомпиляции скриптов словарь чанков пуст, а объекты остались.</summary>
+        private static void ReleasePreview(Transform root)
+        {
+            foreach (var filter in root.GetComponentsInChildren<MeshFilter>(true))
+                Release(filter.sharedMesh);
+            Release(root.gameObject);
         }
 
         /// <summary>Destroy в Play, DestroyImmediate вне Play (там Destroy не работает).</summary>
@@ -146,6 +169,7 @@ namespace Emberhold.World
         /// <summary>Показать мир: старые чанки убираются, все чанки нового мира строятся сразу.</summary>
         public void Show(VoxelWorld world)
         {
+            ClearPreview();
             if (centerOnOrigin)
             {
                 transform.position = WorldOrigin(world.SizeInBlocks);
