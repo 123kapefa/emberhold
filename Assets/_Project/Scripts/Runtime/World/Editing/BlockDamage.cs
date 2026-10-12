@@ -89,6 +89,25 @@ namespace Emberhold.World.Editing
                 Version++;
         }
 
+        /// <summary>
+        /// Блоки упали (<see cref="BlockStability"/>): урон едет вместе с блоком. Сначала снимаем урон со всех
+        /// старых мест, потом ставим на новые — блок может упасть в клетку, которую только что освободил другой.
+        /// </summary>
+        public void Move(IReadOnlyList<BlockFall> falls)
+        {
+            List<(Vector3Int to, float value)> moved = null;
+            foreach (var fall in falls)
+            {
+                if (taken.Remove(fall.From, out var value))
+                    (moved ??= new List<(Vector3Int, float)>()).Add((fall.To, value));
+            }
+            if (moved == null)
+                return;
+            foreach (var (to, value) in moved)
+                taken[to] = value;
+            Version++;
+        }
+
         /// <summary>Убрать записи о блоках, которых в мире уже нет.</summary>
         public void ForgetMissing(VoxelWorld world)
         {
