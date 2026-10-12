@@ -17,3 +17,9 @@ MonoBehaviour:
   lightIntensity: 6
   lightHeight: 1
   ringWidth: 0.12
+  usesFuel: 1
+  fuelCapacity: 10
+  startFuel: 5
+  burnPerNightMinute: 2
+  lowFuel: 2
+  minRadiusFraction: 0.4

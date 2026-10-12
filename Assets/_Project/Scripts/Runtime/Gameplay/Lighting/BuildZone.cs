@@ -30,12 +30,15 @@ namespace Emberhold.Gameplay.Lighting
             return zone.Contains(worldPoint);
         }
 
-        /// <summary>Заполнить target кругами активных источников на текущий момент (туман берёт их отсюда же).</summary>
+        /// <summary>Заполнить target кругами горящих источников на текущий момент (туман берёт их отсюда же).</summary>
         public void CollectCircles(LightZone target)
         {
             target.Clear();
             foreach (var source in sources)
-                target.Add(source.Circle);
+            {
+                if (source.IsLit)
+                    target.Add(source.Circle);
+            }
         }
     }
 }

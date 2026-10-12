@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Emberhold.Gameplay.Lighting
 {
-    /// <summary>Параметры типа источника света (костёр, позже фонарь, жаровня). Топливо — отдельная карточка.</summary>
+    /// <summary>Параметры типа источника света (костёр, позже фонарь, жаровня), включая топливо.</summary>
     [CreateAssetMenu(fileName = "LightSourceSettings", menuName = "Emberhold/Light Source Settings")]
     public sealed class LightSourceSettings : ScriptableObject
     {
@@ -23,10 +23,35 @@ namespace Emberhold.Gameplay.Lighting
         [Range(0.02f, 0.5f)]
         [SerializeField] private float ringWidth = 0.12f;
 
+        [Header("Топливо")]
+        [Tooltip("Источник горит на топливе. Без него светит всегда.")]
+        [SerializeField] private bool usesFuel = true;
+        [Tooltip("Сколько поленьев помещается.")]
+        [Min(0.1f)]
+        [SerializeField] private float fuelCapacity = 10f;
+        [Tooltip("Сколько поленьев в начале игры.")]
+        [Min(0f)]
+        [SerializeField] private float startFuel = 5f;
+        [Tooltip("Сколько поленьев сгорает за минуту ночи (времени суток). Днём, в сумерки и на рассвете не тратится.")]
+        [Min(0f)]
+        [SerializeField] private float burnPerNightMinute = 2f;
+        [Tooltip("Когда поленьев меньше, радиус начинает сжиматься.")]
+        [Min(0.01f)]
+        [SerializeField] private float lowFuel = 2f;
+        [Tooltip("Доля радиуса на последних крохах топлива, перед тем как огонь погаснет.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float minRadiusFraction = 0.4f;
+
         public float Radius => radius;
         public Color LightColor => lightColor;
         public float LightIntensity => lightIntensity;
         public float LightHeight => lightHeight;
         public float RingWidth => ringWidth;
+        public bool UsesFuel => usesFuel;
+        public float FuelCapacity => fuelCapacity;
+        public float StartFuel => startFuel;
+        public float BurnPerSecond => burnPerNightMinute / 60f;
+        public float LowFuel => lowFuel;
+        public float MinRadiusFraction => minRadiusFraction;
     }
 }

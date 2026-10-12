@@ -1550,6 +1550,34 @@
                     "isPartOfComposite": false
                 }
             ]
+        },
+        {
+            "name": "Lighting",
+            "id": "e2a40cf0-c29c-40d9-9d9f-006507da58c8",
+            "actions": [
+                {
+                    "name": "AddFuel",
+                    "type": "Button",
+                    "id": "19c42695-99b2-4ead-aaa4-b6f031cb1764",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "19915040-b40d-4de8-8e09-a8bb7994be97",
+                    "path": "<Keyboard>/l",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "AddFuel",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
         }
     ],
     "controlSchemes": [

@@ -29,6 +29,12 @@ namespace Emberhold.Gameplay.DayNight
         /// <summary>Фаза сменилась; аргумент — новая фаза. Подписчики отписываются в OnDisable.</summary>
         public event Action<DayPhase> PhaseChanged;
 
+        /// <summary>
+        /// Прошло время суток: фаза и сколько секунд в ней. Шаг через границу фаз приходит частями,
+        /// по одной на фазу, поэтому ночной расход (топливо) считается точно. Пропуск фазы клавишей N времени не тратит.
+        /// </summary>
+        public event Action<DayPhase, float> TimePassed;
+
         public DayCycle Cycle => cycle;
 
         /// <summary>Секунды от начала текущих суток.</summary>
@@ -104,9 +110,13 @@ namespace Emberhold.Gameplay.DayNight
                 if (remaining < toEnd)
                 {
                     TimeOfDay += remaining;
+                    TimePassed?.Invoke(Phase, remaining);
                     break;
                 }
-                remaining -= Mathf.Max(0f, toEnd);
+                var spent = Mathf.Max(0f, toEnd);
+                remaining -= spent;
+                if (spent > 0f)
+                    TimePassed?.Invoke(Phase, spent);
                 EnterPhase(DayCycle.Next(Phase));
             }
             Refresh();
