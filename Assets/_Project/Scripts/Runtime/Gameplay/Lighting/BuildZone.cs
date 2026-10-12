@@ -26,10 +26,16 @@ namespace Emberhold.Gameplay.Lighting
         public bool Contains(Vector3 worldPoint)
         {
             // Источник может двигаться (позже — экспедиции), поэтому круги собираем при каждом запросе.
-            zone.Clear();
-            foreach (var source in sources)
-                zone.Add(source.Circle);
+            CollectCircles(zone);
             return zone.Contains(worldPoint);
+        }
+
+        /// <summary>Заполнить target кругами активных источников на текущий момент (туман берёт их отсюда же).</summary>
+        public void CollectCircles(LightZone target)
+        {
+            target.Clear();
+            foreach (var source in sources)
+                target.Add(source.Circle);
         }
     }
 }

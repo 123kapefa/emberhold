@@ -34,6 +34,8 @@ namespace Emberhold.Gameplay.Lighting
 
         public int Count => circles.Count;
 
+        public IReadOnlyList<LightCircle> Circles => circles;
+
         public void Clear() => circles.Clear();
 
         public void Add(LightCircle circle) => circles.Add(circle);
@@ -46,6 +48,24 @@ namespace Emberhold.Gameplay.Lighting
                     return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Сколько метров по горизонтали от точки до ближайшего освещённого места: 0 внутри света,
+        /// бесконечность, если источников нет. По этому расстоянию густеет туман.
+        /// </summary>
+        public float DistanceOutside(Vector3 point)
+        {
+            var best = float.PositiveInfinity;
+            foreach (var circle in circles)
+            {
+                var dx = point.x - circle.Center.x;
+                var dz = point.z - circle.Center.z;
+                var outside = Mathf.Sqrt(dx * dx + dz * dz) - circle.Radius;
+                if (outside < best)
+                    best = outside;
+            }
+            return Mathf.Max(0f, best);
         }
     }
 }
