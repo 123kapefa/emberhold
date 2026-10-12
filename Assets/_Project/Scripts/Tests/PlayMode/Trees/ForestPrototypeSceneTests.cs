@@ -128,6 +128,38 @@ namespace Emberhold.Tests.PlayMode.Trees
             Assert.That(campfire.BurnPerSecond, Is.EqualTo(first * 1.25f).Within(1e-5f), "Вторая ночь на четверть дороже");
         }
 
+        [UnityTest]
+        public IEnumerator PrototypeScene_FuelOrderGoesAwayWithFire()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var crew = Object.FindAnyObjectByType<WorkerCrew>();
+            var campfire = Object.FindAnyObjectByType<BuildZone>().Sources[0];
+            Assert.That(HasFuelOrder(crew), Is.True, "Костёр ждёт поленья");
+            var order = FuelOrder(crew);
+            Assert.That(order.Cell.y, Is.GreaterThan(campfire.transform.position.y - 0.5f), "Задача в пустой клетке над землёй");
+
+            campfire.enabled = false;
+            yield return null;
+            Assert.That(HasFuelOrder(crew), Is.False, "У выключенного огня задачи топлива нет");
+
+            campfire.enabled = true;
+            yield return null;
+            Assert.That(HasFuelOrder(crew), Is.True, "Огонь вернулся — задача снова есть");
+        }
+
+        private static WorkOrder FuelOrder(WorkerCrew crew)
+        {
+            foreach (var order in crew.Orders.Orders)
+            {
+                if (order.Kind == WorkKind.Fuel)
+                    return order;
+            }
+            return null;
+        }
+
         private static bool HasFuelOrder(WorkerCrew crew)
         {
             foreach (var order in crew.Orders.Orders)

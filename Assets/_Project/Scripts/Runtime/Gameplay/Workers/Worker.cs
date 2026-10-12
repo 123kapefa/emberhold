@@ -171,11 +171,23 @@ namespace Emberhold.Gameplay.Workers
             WalkTo(bestStand, bestPile != null ? WorkerState.ToPile : WorkerState.ToSite);
         }
 
+        /// <summary>Есть свободная задача, которую можно начать: ресурсу для неё есть хоть одна кучка.</summary>
         private bool HasFreeOrder()
         {
             foreach (var order in context.Orders.Orders)
             {
-                if (order.Worker == null)
+                if (order.Worker == null && (!order.NeedsItems || HasPile(order.ItemId)))
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Лежит ли где-нибудь ресурс itemId: без него задачу топлива не начать, и искать путь незачем.</summary>
+        private bool HasPile(string itemId)
+        {
+            foreach (var pile in context.Items.Items)
+            {
+                if (pile.Drop.ItemId == itemId)
                     return true;
             }
             return false;

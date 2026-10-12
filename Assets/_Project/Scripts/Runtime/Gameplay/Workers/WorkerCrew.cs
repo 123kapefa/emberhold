@@ -49,6 +49,7 @@ namespace Emberhold.Gameplay.Workers
         private readonly List<Worker> workers = new();
         private readonly List<(Transform body, MeshRenderer carry)> visuals = new();
         private readonly Dictionary<LightSource, FuelTarget> fuelTargets = new();
+        private readonly List<LightSource> goneFires = new();
         private readonly LightZone litZone = new();
         private WorkerContext context;
 
@@ -157,33 +158,52 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>
         /// Задачи топлива: у огня, в котором помещается хотя бы одно полено, — задача принести до FuelPerTrip поленьев.
-        /// Ещё никем не взятая задача снимается, если огонь успели накормить.
+        /// Ещё никем не взятая задача снимается, если огонь успели накормить. Задача огня, который погасили насовсем
+        /// (выключен или удалён: тогда он и из зоны уходит) или сдвинули, снимается, даже если её уже несут: ноша остаётся на земле.
         /// </summary>
         private void UpdateFuelOrders()
         {
             if (buildZone == null)
                 return;
+            goneFires.Clear();
+            foreach (var source in fuelTargets.Keys)
+            {
+                if (source == null || !source.isActiveAndEnabled)
+                    goneFires.Add(source);
+            }
+            foreach (var source in goneFires)
+            {
+                CancelFuelOrder(fuelTargets[source]);
+                fuelTargets.Remove(source);
+            }
+
             foreach (var source in buildZone.Sources)
             {
                 if (source.Fuel == null)
                     continue;
                 if (!fuelTargets.TryGetValue(source, out var target))
                     fuelTargets[source] = target = new FuelTarget(source);
+                // Огонь стоит на земле; его клетка — пустая над ней, даже если под огнём скат или полублок.
                 var local = worldView.transform.InverseTransformPoint(source.transform.position);
-                var cell = new Vector3Int(Mathf.FloorToInt(local.x), Mathf.FloorToInt(local.y + 0.01f), Mathf.FloorToInt(local.z));
-                if (!worldView.World.IsInsideBlocks(cell))
-                    continue;
+                var cell = new Vector3Int(Mathf.FloorToInt(local.x), Mathf.FloorToInt(local.y + 0.5f), Mathf.FloorToInt(local.z));
                 var space = Mathf.FloorToInt(source.Fuel.Space + 1e-4f);
-                var existing = Orders.At(cell);
-                if (existing != null)
+                if (target.Order != null && Orders.Contains(target.Order))
                 {
-                    if (existing.Kind == WorkKind.Fuel && existing.Worker == null && space < 1)
-                        Orders.Cancel(existing);
+                    if (target.Order.Cell != cell || target.Order.Worker == null && space < 1)
+                        CancelFuelOrder(target);
                     continue;
                 }
-                if (space >= 1)
-                    Orders.AddFuel(cell, target, settings.FuelItemId, Mathf.Min(space, settings.FuelPerTrip));
+                target.Order = null;
+                if (space >= 1 && worldView.World.IsInsideBlocks(cell) && Orders.At(cell) == null)
+                    target.Order = Orders.AddFuel(cell, target, settings.FuelItemId, Mathf.Min(space, settings.FuelPerTrip));
             }
+        }
+
+        private void CancelFuelOrder(FuelTarget target)
+        {
+            if (target.Order != null)
+                Orders.Cancel(target.Order);
+            target.Order = null;
         }
 
         private bool IsLit(Vector2Int column) =>
@@ -323,6 +343,9 @@ namespace Emberhold.Gameplay.Workers
             private readonly LightSource source;
 
             public FuelTarget(LightSource source) => this.source = source;
+
+            /// <summary>Задача топлива этого огня, если она сейчас есть.</summary>
+            public WorkOrder Order { get; set; }
 
             public float FuelSpace => source.Fuel?.Space ?? 0f;
 
