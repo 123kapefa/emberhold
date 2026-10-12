@@ -11,7 +11,7 @@ namespace Emberhold.World
 {
     /// <summary>
     /// Показывает воксельный мир в сцене: на каждый чанк один GameObject с мешем и коллайдером на слое Ground.
-    /// В Awake генерирует рельеф по настройкам; каждый кадр перестраивает только изменённые чанки.
+    /// В Awake генерирует рельеф по настройкам и зонам местности сцены; каждый кадр перестраивает только изменённые чанки.
     /// </summary>
     public sealed class VoxelWorldView : MonoBehaviour
     {
@@ -51,8 +51,23 @@ namespace Emberhold.World
         private void Awake()
         {
             if (terrain != null)
-                Show(terrain.Generate());
+                Show(terrain.Generate(CollectZones(terrain.SizeInChunks * ChunkData.Size)));
         }
+
+        /// <summary>Зоны местности сцены в координатах сетки мира, который встанет на место этого вида.</summary>
+        private List<TerrainZoneArea> CollectZones(Vector3Int sizeInBlocks)
+        {
+            var zones = new List<TerrainZoneArea>();
+            var origin = centerOnOrigin ? WorldOrigin(sizeInBlocks) : transform.position;
+            foreach (var zone in FindObjectsByType<TerrainZone>())
+                if (zone.TryGetArea(origin, out var area))
+                    zones.Add(area);
+            return zones;
+        }
+
+        /// <summary>Где окажется угол (0, 0) сетки мира, если центр мира в начале координат.</summary>
+        private static Vector3 WorldOrigin(Vector3Int sizeInBlocks) =>
+            new(-sizeInBlocks.x * 0.5f, 0f, -sizeInBlocks.z * 0.5f);
 
         /// <summary>Показать мир: старые чанки убираются, все чанки нового мира строятся сразу.</summary>
         public void Show(VoxelWorld world)
@@ -61,8 +76,7 @@ namespace Emberhold.World
             World = world;
             if (centerOnOrigin)
             {
-                var size = World.SizeInBlocks;
-                transform.position = new Vector3(-size.x * 0.5f, 0f, -size.z * 0.5f);
+                transform.position = WorldOrigin(World.SizeInBlocks);
             }
 
             meshData ??= new ChunkMeshData();

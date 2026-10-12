@@ -310,6 +310,20 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void ValleyWiderThanHalfMap_IsAllFloor_NotUpsideDown()
+        {
+            // Дно шире половины карты занимает всю карту; раньше InverseLerp переворачивался и долина вставала стеной.
+            var p = PlainValley(TerrainProfileParameters.Valley);
+            p.MeanderAmplitude = 0f;
+            for (var width = 0.5f; width <= 1f; width += 0.1f)
+            {
+                p.ShapeWidth = width;
+                for (var u = 0f; u <= 1f; u += 0.125f)
+                    Assert.That(TerrainGenerator.ShapeHeight(p, u, 0.5f), Is.EqualTo(p.BaseHeight), $"Ширина {width}, u = {u}");
+            }
+        }
+
+        [Test]
         public void ValleyFloor_IsLowerThanRims()
         {
             var p = PlainValley(SmallValley());
