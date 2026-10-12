@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Emberhold.Gameplay.Enemies;
 using Emberhold.Gameplay.Lighting;
 using Emberhold.World;
 using Emberhold.World.Editing;
@@ -190,7 +191,7 @@ namespace Emberhold.Gameplay.Building
 
             Hovered = Pick(point.ReadValue<Vector2>());
             UpdatePlan();
-            if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging())
+            if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
                 if (!CanEdit(TargetCell(hit)))
                     blockedMessageUntil = Time.unscaledTime + settings.BlockedMessageSeconds;
@@ -236,6 +237,10 @@ namespace Emberhold.Gameplay.Building
 
         private bool IsCameraDragging() =>
             (cameraOrbitHold != null && cameraOrbitHold.IsPressed()) || (cameraPanHold != null && cameraPanHold.IsPressed());
+
+        /// <summary>Щелчок пришёлся по ползуну: его бьёт CrawlerStrike, блок за ним не трогаем.</summary>
+        private bool IsStrikingCrawler() =>
+            Crawler.TryPick(targetCamera.ScreenPointToRay(point.ReadValue<Vector2>()), settings.MaxRayDistance, out _);
 
         /// <summary>
         /// Применить текущий инструмент к блоку; вне света ничего не делает. Возвращает true, если мир изменился

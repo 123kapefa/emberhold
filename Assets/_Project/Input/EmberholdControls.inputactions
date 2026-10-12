@@ -1578,6 +1578,54 @@
                     "isPartOfComposite": false
                 }
             ]
+        },
+        {
+            "name": "Enemies",
+            "id": "527ca00b-0b02-4d30-b7ca-9d0e70839cce",
+            "actions": [
+                {
+                    "name": "Point",
+                    "type": "Value",
+                    "id": "a10379de-a8f3-42c1-a1fe-996a7b384151",
+                    "expectedControlType": "Vector2",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "Strike",
+                    "type": "Button",
+                    "id": "589c7d85-4ba8-427c-8280-d04c0578808d",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "cd1b1c22-8589-49ec-ba27-fda71376c029",
+                    "path": "<Mouse>/position",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Point",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "2773a230-df15-4156-b230-bf152e1d9939",
+                    "path": "<Mouse>/leftButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Strike",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
         }
     ],
     "controlSchemes": [
