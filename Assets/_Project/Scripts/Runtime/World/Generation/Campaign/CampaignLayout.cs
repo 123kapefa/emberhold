@@ -18,7 +18,7 @@ namespace Emberhold.World.Generation
         public readonly List<CampaignGorgeShape> Gorges = new();
     }
 
-    /// <summary>Горный хребет вокруг локаций: высота гребней и профиль (террасы, скалы, материалы, лес).</summary>
+    /// <summary>Горный хребет вокруг локаций: высота гребней, граница травы и профиль (террасы, скалы, материалы, лес).</summary>
     public struct CampaignRidge
     {
         /// <summary>Самые низкие места хребта в блоках.</summary>
@@ -27,6 +27,12 @@ namespace Emberhold.World.Generation
         /// <summary>Самые высокие гребни в блоках.</summary>
         public float MaxHeight;
 
+        /// <summary>
+        /// Ниже этой высоты (в блоках) склоны хребта и ущелий покрыты травой, выше — материалами профиля
+        /// хребта (камень). Граница гуляет по шуму на несколько блоков. 0 — трава не растёт.
+        /// </summary>
+        public float GrassLine;
+
         public TerrainProfileParameters Profile;
         public ForestMix Forest;
 
@@ -34,6 +40,7 @@ namespace Emberhold.World.Generation
         {
             MinHeight = 36f,
             MaxHeight = 46f,
+            GrassLine = 0f,
             Profile = TerrainProfileParameters.Valley,
         };
     }

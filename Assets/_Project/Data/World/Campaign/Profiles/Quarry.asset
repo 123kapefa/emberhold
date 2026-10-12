@@ -31,9 +31,9 @@ MonoBehaviour:
     CapDepth: 0
     CapWidth: 6
     Materials:
-      Surface: 3
+      Surface: 1
       Subsurface: 3
-      SubsurfaceDepth: 0
+      SubsurfaceDepth: 1
       Deep: 3
       Bed: 2
     WaterLevel: 0

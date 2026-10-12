@@ -166,14 +166,24 @@ namespace Emberhold.World.Generation
             }
             ShapeSlopes(corners, cliffs, levels, profiles[0]);
 
+            // Склоны хребта ниже границы травы — трава с землёй, как на лугах; выше — камень хребта.
+            var grass = TerrainMaterials.Default;
+            var grassNoise = new CampaignNoise(seed + 1);
             var materials = new TerrainMaterials[size.x, size.z];
             var bedLevels = new int[size.x, size.z];
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
             {
-                var p = profiles[heights.ColumnOwner(x, z)];
+                var owner = heights.ColumnOwner(x, z);
+                var p = profiles[owner];
                 materials[x, z] = p.Materials;
                 bedLevels[x, z] = Mathf.RoundToInt(p.WaterLevel * BlockShape.MaxHeight);
+                if (owner != CampaignHeights.Ridge || layout.Ridge.GrassLine <= 0f)
+                    continue;
+                var top = (corners[x, z] + corners[x + 1, z] + corners[x, z + 1] + corners[x + 1, z + 1]) * 0.25f / BlockShape.MaxHeight;
+                var line = layout.Ridge.GrassLine + (grassNoise.Fbm(x * 0.05f, z * 0.05f, 3) - 0.5f) * 8f;
+                if (top < line)
+                    materials[x, z] = grass;
             }
             CornerTerrain.Fill(world, corners, materials, bedLevels, profiles[0].CliffEdgeRounding,
                 profiles[0].CliffFootRounding);
