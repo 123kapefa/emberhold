@@ -29,7 +29,8 @@ namespace Emberhold.Gameplay.Enemies
         {
             this.world = world;
             this.searchLimit = searchLimit;
-            surface = new WalkSurface(world, maxStep, float.PositiveInfinity);
+            // Высота — как у CrawlerFooting, иначе путь и шаг ползуна расходились бы на лестницах и скатах.
+            surface = new WalkSurface(world, maxStep, float.PositiveInfinity, ColumnHeight);
             version = world.Version;
         }
 
@@ -49,6 +50,10 @@ namespace Emberhold.Gameplay.Enemies
 
         /// <summary>Есть ли путь из from к огню в столбце fire.</summary>
         public bool CanReach(Vector2Int fire, Vector2Int from) => from == fire || Field(fire).Reached(from);
+
+        /// <summary>Где стоит ползун в столбце; в пустой столбец не зайти.</summary>
+        private float ColumnHeight(Vector2Int column) =>
+            CrawlerFooting.TryTopSurface(world, column.x + 0.5f, column.y + 0.5f, out var height) ? height : float.PositiveInfinity;
 
         private ColumnFlood Field(Vector2Int fire)
         {

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Emberhold.World.Items;
 using Emberhold.World.Voxels;
@@ -14,6 +15,7 @@ namespace Emberhold.Gameplay.Workers
     public sealed class WalkSurface
     {
         private readonly VoxelWorld world;
+        private readonly Func<Vector2Int, float> columnHeight;
         private readonly Dictionary<Vector2Int, float> cachedHeights = new();
         private bool caching;
 
@@ -22,11 +24,13 @@ namespace Emberhold.Gameplay.Workers
         {
         }
 
-        public WalkSurface(VoxelWorld world, float maxStep, float maxDrop)
+        /// <param name="height">Высота столбца, если считать её не как у рабочих (например, как стоит ползун).</param>
+        public WalkSurface(VoxelWorld world, float maxStep, float maxDrop, Func<Vector2Int, float> height = null)
         {
             this.world = world;
             MaxStep = maxStep;
             MaxDrop = maxDrop;
+            columnHeight = height;
         }
 
         public VoxelWorld World => world;
@@ -48,7 +52,9 @@ namespace Emberhold.Gameplay.Workers
         {
             if (caching && cachedHeights.TryGetValue(column, out var cached))
                 return cached;
-            var height = DroppedItems.RestHeight(world, new Vector3Int(column.x, world.SizeInBlocks.y - 1, column.y));
+            var height = columnHeight != null
+                ? columnHeight(column)
+                : DroppedItems.RestHeight(world, new Vector3Int(column.x, world.SizeInBlocks.y - 1, column.y));
             if (caching)
                 cachedHeights[column] = height;
             return height;
