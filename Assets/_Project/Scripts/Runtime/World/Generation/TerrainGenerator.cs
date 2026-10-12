@@ -83,13 +83,7 @@ namespace Emberhold.World.Generation
                 corners[x, z] = CornerTerrain.Quantize(blocks, profiles[dominant].HeightStep, size.y);
                 levels[x, z] = Mathf.RoundToInt(Mathf.Max(profiles[dominant].TerraceHeight, 1f) * BlockShape.MaxHeight);
             }
-            // Вне скал крутые места становятся проходимыми склонами, в скалах — чистыми стенами.
-            CornerTerrain.LimitSlopes(corners, cliffs);
-            CornerTerrain.SnapSteepToLevels(corners, levels, cliffs);
-            CornerTerrain.RoundCaps(corners, Mathf.RoundToInt(p.CapDepth * BlockShape.MaxHeight), p.CapWidth, p.HeightStep);
-            // Сдвиги на уровни и купола могли сделать крутыми соседние склоны — возвращаем их к 45°.
-            CornerTerrain.LimitSlopes(corners, cliffs);
-            CornerTerrain.SnapToLayers(corners);
+            ShapeSlopes(corners, cliffs, levels, p);
 
             // Материалы и дно столбца — у профиля, который весит больше всех в середине столбца.
             var materials = new TerrainMaterials[size.x, size.z];
@@ -106,6 +100,84 @@ namespace Emberhold.World.Generation
                 bedLevels[x, z] = Mathf.RoundToInt(profiles[dominant].WaterLevel * BlockShape.MaxHeight);
             }
             CornerTerrain.Fill(world, corners, materials, bedLevels, p.CliffEdgeRounding, p.CliffFootRounding);
+        }
+
+        /// <summary>
+        /// Склоны после высот в углах: вне скал крутые места становятся проходимыми склонами, в скалах —
+        /// чистыми стенами; на шапках скал купола. p — профиль, у которого берутся купола (фон или хребет).
+        /// </summary>
+        private static void ShapeSlopes(int[,] corners, bool[,] cliffs, int[,] levels, TerrainProfileParameters p)
+        {
+            CornerTerrain.LimitSlopes(corners, cliffs);
+            CornerTerrain.SnapSteepToLevels(corners, levels, cliffs);
+            CornerTerrain.RoundCaps(corners, Mathf.RoundToInt(p.CapDepth * BlockShape.MaxHeight), p.CapWidth, p.HeightStep);
+            // Сдвиги на уровни и купола могли сделать крутыми соседние склоны — возвращаем их к 45°.
+            CornerTerrain.LimitSlopes(corners, cliffs);
+            CornerTerrain.SnapToLayers(corners);
+        }
+
+        /// <summary>
+        /// Мир по карте кампании (<see cref="CampaignLayout"/>): хребет, котловины локаций, ущелья.
+        /// heights — высоты и хозяева углов (по ним рассаживается лес).
+        /// </summary>
+        public static VoxelWorld GenerateCampaign(CampaignLayout layout, int seed, Vector3Int sizeInChunks,
+            out CampaignHeights heights)
+        {
+            var world = new VoxelWorld(sizeInChunks);
+            heights = FillCampaign(world, layout, seed);
+            return world;
+        }
+
+        /// <summary>
+        /// Заполнить мир по карте кампании. Высоты считает <see cref="CampaignHeights"/>; террасы, скалы,
+        /// шаг высоты и материалы берутся у хозяина угла: у локации на её дне, у хребта на склонах и в ущельях.
+        /// Террасы склонов отсчитываются от дна ближайшей локации или ущелья, поэтому у дна нет канавы.
+        /// </summary>
+        public static CampaignHeights FillCampaign(VoxelWorld world, CampaignLayout layout, int seed)
+        {
+            var size = world.SizeInBlocks;
+            var heights = CampaignHeights.Build(layout, seed, size.x, size.z, size.y - 2);
+            var random = new System.Random(seed);
+            var cliffOffset = new Vector2((float)random.NextDouble() * 10000f, (float)random.NextDouble() * 10000f);
+
+            // Профиль 0 — хребет, профиль i + 1 — локация i.
+            var profiles = new TerrainProfileParameters[layout.Locations.Count + 1];
+            profiles[0] = layout.Ridge.Profile;
+            for (var i = 0; i < layout.Locations.Count; i++)
+                profiles[i + 1] = layout.Locations[i].Profile;
+            for (var i = 0; i < profiles.Length; i++)
+                profiles[i].Materials.Validate();
+
+            var corners = new int[size.x + 1, size.z + 1];
+            var cliffs = new bool[size.x + 1, size.z + 1];
+            var levels = new int[size.x + 1, size.z + 1];
+            for (var z = 0; z <= size.z; z++)
+            for (var x = 0; x <= size.x; x++)
+            {
+                var p = profiles[heights.TerraceOwners[x, z]];
+                var cliff = IsCliff(p, x, z, cliffOffset);
+                var above = heights.Heights[x, z] - heights.TerraceBases[x, z];
+                var blocks = above > 0f
+                    ? heights.TerraceBases[x, z] + Terrace(above, p.TerraceHeight, p.TerraceSlope, cliff)
+                    : heights.Heights[x, z];
+                cliffs[x, z] = cliff && p.TerraceHeight > 0f;
+                corners[x, z] = CornerTerrain.Quantize(blocks, p.HeightStep, size.y);
+                levels[x, z] = Mathf.RoundToInt(Mathf.Max(p.TerraceHeight, 1f) * BlockShape.MaxHeight);
+            }
+            ShapeSlopes(corners, cliffs, levels, profiles[0]);
+
+            var materials = new TerrainMaterials[size.x, size.z];
+            var bedLevels = new int[size.x, size.z];
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+            {
+                var p = profiles[heights.ColumnOwner(x, z)];
+                materials[x, z] = p.Materials;
+                bedLevels[x, z] = Mathf.RoundToInt(p.WaterLevel * BlockShape.MaxHeight);
+            }
+            CornerTerrain.Fill(world, corners, materials, bedLevels, profiles[0].CliffEdgeRounding,
+                profiles[0].CliffFootRounding);
+            return heights;
         }
 
         /// <summary>

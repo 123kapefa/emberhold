@@ -117,7 +117,7 @@ namespace Emberhold.Gameplay.Trees
             foreach (var source in FindObjectsByType<LightSource>())
                 fires.Add(worldView.transform.InverseTransformPoint(source.transform.position));
             var clear = clearAroundFire * clearAroundFire;
-            var planted = ForestScatter.Scatter(worldView.World, terrain.Seed, terrain.Forest, worldView.Zones, forest, column =>
+            var planted = ForestScatter.Scatter(worldView.World, terrain.Seed, worldView.ForestAt, forest, column =>
             {
                 foreach (var fire in fires)
                 {
