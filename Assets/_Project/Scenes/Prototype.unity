@@ -412,7 +412,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 062414b7d64242babe2eef7083f0a1db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Emberhold.World::Emberhold.World.VoxelWorldView
-  valley: {fileID: 11400000, guid: 624b6a1a09c6e4a718cf16341278669d, type: 2}
+  terrain: {fileID: 11400000, guid: 624b6a1a09c6e4a718cf16341278669d, type: 2}
   blockMaterials:
   - {fileID: 0}
   - {fileID: 2100000, guid: 4d67e0103be5e4fc4be9ed5cba98c813, type: 2}
@@ -428,6 +428,72 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 520718229}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &625837798
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 625837801}
+  - component: {fileID: 625837800}
+  - component: {fileID: 625837799}
+  m_Layer: 0
+  m_Name: Enemies
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &625837799
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 625837798}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c5967267a41b34efebca79c0f8e5d5dd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Enemies.CrawlerStrike
+  damage: 1
+  maxDistance: 200
+  targetCamera: {fileID: 0}
+  actions: {fileID: 0}
+--- !u!114 &625837800
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 625837798}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6dfa1b778d876460ba0a80e4bf14061c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Enemies.CrawlerSpawner
+  settings: {fileID: 11400000, guid: 3043282c6ac694ef0970e03af75caf91, type: 2}
+  prefab: {fileID: 4408119101089591248, guid: 45963e742947247c49cc20b3906fbad7, type: 3}
+  worldView: {fileID: 0}
+  zone: {fileID: 0}
+  dayNight: {fileID: 0}
+--- !u!4 &625837801
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 625837798}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -843,3 +909,4 @@ SceneRoots:
   - {fileID: 1950212303}
   - {fileID: 1246859600}
   - {fileID: 733099587}
+  - {fileID: 625837801}

@@ -66,6 +66,17 @@ namespace Emberhold.Gameplay.Lighting
             return accepted;
         }
 
+        /// <summary>Отнять топливо (ползуны гасят огонь). Возвращает, сколько отнято; без топлива огонь гаснет.</summary>
+        public float DrainFuel(float amount)
+        {
+            if (Fuel == null)
+                return 0f;
+            var drained = Fuel.Burn(1f, amount);
+            if (drained > 0f)
+                ApplyFuel();
+            return drained;
+        }
+
         /// <summary>Сжечь топливо как за seconds секунд ночи.</summary>
         public void BurnFuel(float seconds)
         {
