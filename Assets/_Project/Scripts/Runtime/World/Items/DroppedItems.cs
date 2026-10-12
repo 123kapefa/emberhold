@@ -28,7 +28,7 @@ namespace Emberhold.World.Items
     /// и лежит на верхе ближайшего блока под ним. Если опору выкопали, <see cref="Settle"/> опускает его
     /// на следующий блок, а если на его месте поставили блок — поднимает на верх этого блока.
     /// Ресурсы одного вида в одной клетке складываются в одну кучку.
-    /// Только данные: показывает их вид, позже их заберут рабочие.
+    /// Только данные: показывает их вид, забирают рабочие.
     /// </summary>
     public sealed class DroppedItems
     {
@@ -53,7 +53,16 @@ namespace Emberhold.World.Items
         {
             if (destroyed.IsAir || !drops.TryGetDrop(destroyed.Material, out var drop))
                 return null;
-            var item = new DroppedItem(drop, new Vector3(position.x + 0.5f, RestHeight(world, position), position.z + 0.5f));
+            return Drop(world, position, drop);
+        }
+
+        /// <summary>
+        /// Положить ресурс в центр клетки cell на ближайший блок под ней (например, рабочий бросил ношу).
+        /// Возвращает кучку, в которой он оказался.
+        /// </summary>
+        public DroppedItem Drop(VoxelWorld world, Vector3Int cell, ItemDrop drop)
+        {
+            var item = new DroppedItem(drop, new Vector3(cell.x + 0.5f, RestHeight(world, cell), cell.z + 0.5f));
             Version++;
             if (TryMerge(item, out var pile))
                 return pile;
@@ -66,6 +75,24 @@ namespace Emberhold.World.Items
         {
             if (!items.Remove(item))
                 return false;
+            Version++;
+            return true;
+        }
+
+        /// <summary>
+        /// Взять из кучки до count единиц; опустевшая кучка исчезает. Возвращает false, если кучки уже нет.
+        /// </summary>
+        public bool Take(DroppedItem pile, int count, out ItemDrop taken)
+        {
+            taken = default;
+            if (count <= 0 || !items.Contains(pile))
+                return false;
+            var amount = Mathf.Min(count, pile.Drop.Count);
+            taken = new ItemDrop(pile.Drop.ItemId, amount);
+            if (amount == pile.Drop.Count)
+                items.Remove(pile);
+            else
+                pile.Drop = new ItemDrop(pile.Drop.ItemId, pile.Drop.Count - amount);
             Version++;
             return true;
         }

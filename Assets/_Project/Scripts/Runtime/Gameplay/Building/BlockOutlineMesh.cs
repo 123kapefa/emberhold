@@ -22,9 +22,20 @@ namespace Emberhold.Gameplay.Building
         {
             vertices.Clear();
             indices.Clear();
+            AppendBox(boxMin, boxMax, padding, vertices, indices);
+            AddFaceMark(boxMin - Vector3.one * padding, boxMax + Vector3.one * padding, face, vertices, indices);
+        }
 
+        /// <summary>Добавить 12 рёбер блока в ячейке cell до высоты height (рамки чертежей и приказов копать — одним мешем).</summary>
+        public static void AppendBox(Vector3Int cell, float height, float padding, List<Vector3> vertices, List<int> indices) =>
+            AppendBox(cell, cell + new Vector3(1f, height, 1f), padding, vertices, indices);
+
+        /// <summary>Добавить 12 рёбер коробки от boxMin до boxMax к уже набранным линиям.</summary>
+        public static void AppendBox(Vector3 boxMin, Vector3 boxMax, float padding, List<Vector3> vertices, List<int> indices)
+        {
             var min = boxMin - Vector3.one * padding;
             var max = boxMax + Vector3.one * padding;
+            var start = vertices.Count;
             for (var i = 0; i < 8; i++)
                 vertices.Add(new Vector3((i & 1) == 0 ? min.x : max.x, (i & 2) == 0 ? min.y : max.y, (i & 4) == 0 ? min.z : max.z));
             // Рёбра соединяют углы, отличающиеся одним битом.
@@ -33,12 +44,10 @@ namespace Emberhold.Gameplay.Building
             {
                 if ((i & bit) == 0)
                 {
-                    indices.Add(i);
-                    indices.Add(i | bit);
+                    indices.Add(start + i);
+                    indices.Add(start + (i | bit));
                 }
             }
-
-            AddFaceMark(min, max, face, vertices, indices);
         }
 
         private static void AddFaceMark(Vector3 min, Vector3 max, Vector3Int face, List<Vector3> vertices, List<int> indices)

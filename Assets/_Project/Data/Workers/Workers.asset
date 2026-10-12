@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c33f397df04c42d6b6c287e6037209a1, type: 3}
+  m_Name: Workers
+  m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Workers.WorkerSettings
+  count: 2
+  moveSpeed: 2.5
+  maxStep: 1
+  searchLimit: 4096
+  reachUp: 3
+  reachDown: 2
+  pickUpSeconds: 0.4
+  buildSeconds: 1.5
+  digHitSeconds: 1
+  digHitDamage: 25
+  idleSearchSeconds: 0.5

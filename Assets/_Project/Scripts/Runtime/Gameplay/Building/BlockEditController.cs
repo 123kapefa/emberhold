@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Emberhold.Gameplay.Enemies;
 using Emberhold.Gameplay.Lighting;
+using Emberhold.Gameplay.Workers;
 using Emberhold.World;
 using Emberhold.World.Editing;
 using Emberhold.World.Voxels;
@@ -15,14 +16,20 @@ namespace Emberhold.Gameplay.Building
         Dig,
         Remove,
         Build,
+        /// <summary>Чертёж: блок ставят рабочие, принеся ресурс.</summary>
+        Blueprint,
+        /// <summary>Приказ копать: блок выкапывают рабочие.</summary>
+        DigOrder,
     }
 
     /// <summary>
     /// Правка мира мышью: подсвечивает блок под курсором, ЛКМ применяет текущий инструмент.
     /// 1 — «Копать»: каждый клик снимает с блока ХП (прочность — в BlockDurability), появляются трещины,
     /// а когда ХП кончились, блок исчезает целиком;
-    /// 2 — «Убрать» сразу; 3 — «Строить»: блок встаёт за гранью под курсором, рядом виден его предпросмотр.
-    /// При стройке G — следующая форма, T — материал, щелчок ПКМ — поворот, [ и ] — высота полублока.
+    /// 2 — «Убрать» сразу; 3 — «Строить» сразу: блок встаёт за гранью под курсором, рядом виден его предпросмотр.
+    /// 4 — «Чертёж» и 5 — «Поручить копать»: то же самое делают рабочие (<see cref="WorkerCrew"/>);
+    /// повторный клик по тому же месту снимает чертёж или приказ.
+    /// При стройке и чертеже G — следующая форма, T — материал, щелчок ПКМ — поворот, [ и ] — высота полублока.
     /// ПКМ с перетаскиванием по-прежнему вращает камеру: поворот блока срабатывает, только если мышь
     /// между нажатием и отпусканием почти не сдвинулась. Камера занимает ПКМ (удержание), СКМ, колесо
     /// и WASD/QE/RF. Ввод берётся из карты «Building» в EmberholdControls.
@@ -46,6 +53,8 @@ namespace Emberhold.Gameplay.Building
         [SerializeField] private Material outlineMaterial;
         [Tooltip("Зона застройки из источников света. Если пусто — править можно везде (песочницы).")]
         [SerializeField] private BuildZone buildZone;
+        [Tooltip("Рабочие для чертежей и приказов копать. Если пусто — инструменты 4 и 5 недоступны (песочницы).")]
+        [SerializeField] private WorkerCrew workers;
 
         private InputActionMap map;
         private InputAction point;
@@ -53,6 +62,8 @@ namespace Emberhold.Gameplay.Building
         private InputAction toolDig;
         private InputAction toolRemove;
         private InputAction toolBuild;
+        private InputAction toolBlueprint;
+        private InputAction toolDigOrder;
         private InputAction nextForm;
         private InputAction nextMaterial;
         private InputAction rotate;
@@ -153,6 +164,8 @@ namespace Emberhold.Gameplay.Building
             toolDig = map.FindAction("ToolDig", true);
             toolRemove = map.FindAction("ToolRemove", true);
             toolBuild = map.FindAction("ToolBuild", true);
+            toolBlueprint = map.FindAction("ToolBlueprint", true);
+            toolDigOrder = map.FindAction("ToolDigOrder", true);
             nextForm = map.FindAction("NextForm", true);
             nextMaterial = map.FindAction("NextMaterial", true);
             rotate = map.FindAction("Rotate", true);
@@ -194,14 +207,18 @@ namespace Emberhold.Gameplay.Building
                 Tool = BlockTool.Remove;
             if (toolBuild.WasPressedThisFrame())
                 Tool = BlockTool.Build;
-            if (Tool == BlockTool.Build)
+            if (workers != null && toolBlueprint.WasPressedThisFrame())
+                Tool = BlockTool.Blueprint;
+            if (workers != null && toolDigOrder.WasPressedThisFrame())
+                Tool = BlockTool.DigOrder;
+            if (PlacesBlocks)
                 ReadBuildInput();
 
             Hovered = Pick(point.ReadValue<Vector2>());
             UpdatePlan();
             if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
-                if (!CanEdit(TargetCell(hit)))
+                if (!CanApply(hit))
                     blockedMessageUntil = Time.unscaledTime + settings.BlockedMessageSeconds;
                 Apply(hit);
                 // Блок мог исчезнуть или появиться: рамка и предпросмотр должны сразу показать новое состояние.
@@ -238,10 +255,13 @@ namespace Emberhold.Gameplay.Building
         private void UpdatePlan()
         {
             plan = null;
-            if (Tool == BlockTool.Build && Hovered is { } hit
+            if (PlacesBlocks && Hovered is { } hit
                 && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p))
                 plan = p;
         }
+
+        /// <summary>Инструмент ставит блок по плану постановки: сразу или чертежом.</summary>
+        private bool PlacesBlocks => Tool is BlockTool.Build or BlockTool.Blueprint;
 
         private bool IsCameraDragging() =>
             (cameraOrbitHold != null && cameraOrbitHold.IsPressed()) || (cameraPanHold != null && cameraPanHold.IsPressed());
@@ -251,13 +271,14 @@ namespace Emberhold.Gameplay.Building
             Crawler.TryPick(targetCamera.ScreenPointToRay(point.ReadValue<Vector2>()), settings.MaxRayDistance, out _);
 
         /// <summary>
-        /// Применить текущий инструмент к блоку; вне света ничего не делает. Возвращает true, если мир изменился
-        /// (блок убран или поставлен). Меш перестроит VoxelWorldView в LateUpdate этого кадра.
+        /// Применить текущий инструмент к блоку; вне света ничего не делает, кроме снятия чертежа или приказа. Возвращает true, если мир изменился
+        /// (блок убран или поставлен) или поставлен либо снят чертёж или приказ копать.
+        /// Меш перестроит VoxelWorldView в LateUpdate этого кадра.
         /// </summary>
         public bool Apply(BlockHit hit)
         {
             falls.Clear();
-            if (!CanEdit(TargetCell(hit)))
+            if (!CanApply(hit))
                 return false;
 
             Vector3Int changed;
@@ -281,10 +302,26 @@ namespace Emberhold.Gameplay.Building
                     Damage.Forget(p.Cell);
                     changed = p.Cell;
                     break;
+                case BlockTool.Blueprint:
+                    return workers != null && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var blueprint)
+                        && workers.ToggleBlueprint(blueprint);
+                case BlockTool.DigOrder:
+                    return workers != null && workers.ToggleDig(hit.Block);
                 default:
                     return false;
             }
 
+            OnWorldChanged(changed);
+            return true;
+        }
+
+        /// <summary>
+        /// Блок в клетке поставили или убрали (игрок или рабочий): сообщить виду, уронить блоки без опоры
+        /// вместе с их уроном и показать падение. Результат — в <see cref="LastFalls"/>.
+        /// </summary>
+        public void OnWorldChanged(Vector3Int changed)
+        {
+            falls.Clear();
             BlockChanged?.Invoke(changed);
             // Блоки без опоры падают, их урон падает вместе с ними.
             if (Stability.Settle(worldView.World, changed, falls) > 0)
@@ -292,12 +329,25 @@ namespace Emberhold.Gameplay.Building
                 Damage.Move(falls);
                 BlocksFell?.Invoke(falls);
             }
-            return true;
         }
 
         /// <summary>Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, иначе — блок под курсором.</summary>
         private Vector3Int TargetCell(BlockHit hit) =>
-            Tool == BlockTool.Build && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p) ? p.Cell : hit.Block;
+            PlacesBlocks && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p) ? p.Cell : hit.Block;
+
+        /// <summary>
+        /// Инструмент можно применить: клетка в свете. Чертёж или приказ, оставшийся в темноте (костёр погас
+        /// или сжался), снять можно и там.
+        /// </summary>
+        private bool CanApply(BlockHit hit)
+        {
+            var cell = TargetCell(hit);
+            if (CanEdit(cell))
+                return true;
+            var order = workers != null ? workers.Orders.At(cell) : null;
+            return order != null && (Tool == BlockTool.Blueprint && order.Kind == WorkKind.Build
+                                     || Tool == BlockTool.DigOrder && order.Kind == WorkKind.Dig);
+        }
 
         /// <summary>Блок освещён (центр блока внутри света) или зона застройки не задана.</summary>
         public bool CanEdit(Vector3Int block) =>
@@ -347,16 +397,16 @@ namespace Emberhold.Gameplay.Building
 
         private void UpdateOutline()
         {
-            if (Hovered is not { } hit || Tool == BlockTool.Build && plan == null)
+            if (Hovered is not { } hit || PlacesBlocks && plan == null)
             {
                 outline.SetActive(false);
                 return;
             }
 
             // При стройке рамка — вокруг ячейки, куда встанет блок, без метки грани.
-            var cell = Tool == BlockTool.Build ? plan.Value.Cell : hit.Block;
-            var block = Tool == BlockTool.Build ? plan.Value.Block : worldView.World.GetBlock(hit.Block);
-            var face = Tool == BlockTool.Build ? Vector3Int.zero : hit.Face;
+            var cell = PlacesBlocks ? plan.Value.Cell : hit.Block;
+            var block = PlacesBlocks ? plan.Value.Block : worldView.World.GetBlock(hit.Block);
+            var face = PlacesBlocks ? Vector3Int.zero : hit.Face;
             var extent = block.Shape.Extent;
             if (outlineShape is not { } shown || !shown.extent.Equals(extent) || shown.face != face)
             {
@@ -374,6 +424,8 @@ namespace Emberhold.Gameplay.Building
             {
                 BlockTool.Dig => settings.DigColor,
                 BlockTool.Build => settings.BuildColor,
+                BlockTool.Blueprint => settings.BlueprintColor,
+                BlockTool.DigOrder => settings.DigOrderColor,
                 _ => settings.RemoveColor,
             };
             outlineProperties.SetColor(BaseColorId, color);
@@ -438,16 +490,18 @@ namespace Emberhold.Gameplay.Building
         {
             if (map == null)
                 return;
-            var name = Tool switch { BlockTool.Dig => "Копать", BlockTool.Remove => "Убрать", _ => "Строить" };
-            GUI.Label(new Rect(10, 10, 600, 22), $"Инструмент: {name}   (1 — копать, 2 — убрать сразу, 3 — строить, ЛКМ — применить)");
-            if (Tool != BlockTool.Build)
-                return;
-            var form = BuildSelection.FormName(Selection.Form);
-            if (Selection.Form == BuildForm.Slab)
-                form += $" {Selection.SlabHeight}/16";
-            GUI.Label(new Rect(10, 30, 700, 22),
-                $"{form}, {BuildSelection.MaterialName(Selection.Material)}, поворот {Selection.Rotation * 90}°   " +
-                "(G — форма, T — материал, щелчок ПКМ — повернуть, [ ] — высота полублока)");
+            var name = Tool switch
+            {
+                BlockTool.Dig => "Копать",
+                BlockTool.Remove => "Убрать",
+                BlockTool.Build => "Строить",
+                BlockTool.Blueprint => "Чертёж",
+                _ => "Поручить копать",
+            };
+            var keys = workers != null
+                ? "1 — копать, 2 — убрать сразу, 3 — строить сразу, 4 — чертёж, 5 — поручить копать, ЛКМ — применить"
+                : "1 — копать, 2 — убрать сразу, 3 — строить, ЛКМ — применить";
+            GUI.Label(new Rect(10, 10, 900, 22), $"Инструмент: {name}   ({keys})");
             if (Time.unscaledTime < blockedMessageUntil)
             {
                 // Подсказка у курсора: GUI считает y сверху, экран — снизу.
@@ -455,6 +509,14 @@ namespace Emberhold.Gameplay.Building
                 var rect = new Rect(mouse.x + 16f, Screen.height - mouse.y - 8f, 360f, 24f);
                 GUI.Label(rect, "Вне света костра: строить и копать нельзя");
             }
+            if (!PlacesBlocks)
+                return;
+            var form = BuildSelection.FormName(Selection.Form);
+            if (Selection.Form == BuildForm.Slab)
+                form += $" {Selection.SlabHeight}/16";
+            GUI.Label(new Rect(10, 30, 700, 22),
+                $"{form}, {BuildSelection.MaterialName(Selection.Material)}, поворот {Selection.Rotation * 90}°   " +
+                "(G — форма, T — материал, щелчок ПКМ — повернуть, [ ] — высота полублока)");
         }
     }
 }
