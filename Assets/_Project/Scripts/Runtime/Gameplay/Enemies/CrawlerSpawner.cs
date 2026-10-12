@@ -26,6 +26,7 @@ namespace Emberhold.Gameplay.Enemies
         [SerializeField] private DayNightCycle dayNight;
 
         private readonly List<Crawler> crawlers = new();
+        private CrawlerPaths paths;
         private float nightTime;
         private float nextSpawnAt;
 
@@ -136,7 +137,9 @@ namespace Emberhold.Gameplay.Enemies
         public Crawler Spawn(Vector3 point)
         {
             var crawler = Instantiate(prefab, point, Quaternion.identity, transform);
-            crawler.Init(settings, worldView, zone);
+            if (paths == null || paths.World != worldView.World)
+                paths = new CrawlerPaths(worldView.World, settings.MaxStep);
+            crawler.Init(settings, worldView, zone, paths);
             crawler.Died += OnDied;
             crawlers.Add(crawler);
             Spawned?.Invoke(crawler);

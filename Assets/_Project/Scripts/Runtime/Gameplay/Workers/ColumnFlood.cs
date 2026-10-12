@@ -10,6 +10,8 @@ namespace Emberhold.Gameplay.Workers
     /// сразу узнать расстояние и путь до любого столбца — так рабочий выбирает ближайшую задачу и кучку.
     /// Куда можно заходить, решает canEnter (например, только освещённые столбцы); стартовый столбец
     /// доступен всегда, чтобы рабочий мог выйти из темноты.
+    /// Разлив можно пустить и «к старту» (toStart): тогда шаги проверяются в обратную сторону, и из любого
+    /// достигнутого столбца <see cref="TryPrevious"/> ведёт к старту — поле направлений, общее для всех, кто идёт к нему.
     /// </summary>
     public sealed class ColumnFlood
     {
@@ -38,8 +40,11 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Сколько столбцов достигнуто последним разливом.</summary>
         public int Count => distance.Count;
 
-        /// <summary>Разлиться из start по столбцам, куда можно заходить.</summary>
-        public void Run(WalkSurface surface, Vector2Int start, Func<Vector2Int, bool> canEnter)
+        /// <summary>
+        /// Разлиться из start по столбцам, куда можно заходить. toStart: искать пути не от start, а к нему
+        /// (важно, когда подъём и спуск ограничены по-разному).
+        /// </summary>
+        public void Run(WalkSurface surface, Vector2Int start, Func<Vector2Int, bool> canEnter, bool toStart = false)
         {
             distance.Clear();
             cameFrom.Clear();
@@ -53,7 +58,7 @@ namespace Emberhold.Gameplay.Workers
             surface.BeginCache();
             try
             {
-                Flood(surface, canEnter);
+                Flood(surface, canEnter, toStart);
             }
             finally
             {
@@ -61,7 +66,7 @@ namespace Emberhold.Gameplay.Workers
             }
         }
 
-        private void Flood(WalkSurface surface, Func<Vector2Int, bool> canEnter)
+        private void Flood(WalkSurface surface, Func<Vector2Int, bool> canEnter, bool toStart)
         {
             var start = Start;
 
@@ -75,7 +80,9 @@ namespace Emberhold.Gameplay.Workers
                 foreach (var step in Steps)
                 {
                     var next = column + step;
-                    if (settled.Contains(next) || !CanEnter(next, canEnter) || !surface.CanStep(column, next))
+                    if (settled.Contains(next) || !CanEnter(next, canEnter))
+                        continue;
+                    if (toStart ? !surface.CanStep(next, column) : !surface.CanStep(column, next))
                         continue;
                     var nextCost = cost + (step.x != 0 && step.y != 0 ? 1.41421356f : 1f);
                     if (distance.TryGetValue(next, out var known) && known <= nextCost)
@@ -102,6 +109,9 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Длина пути до столбца; бесконечность, если не дошли.</summary>
         public float Distance(Vector2Int column) =>
             distance.TryGetValue(column, out var value) ? value : float.PositiveInfinity;
+
+        /// <summary>Соседний столбец, через который путь от старта пришёл в column. false — column не достигнут или это старт.</summary>
+        public bool TryPrevious(Vector2Int column, out Vector2Int previous) => cameFrom.TryGetValue(column, out previous);
 
         /// <summary>Путь от старта до столбца, без стартового столбца. false — не дошли.</summary>
         public bool TryPath(Vector2Int goal, List<Vector2Int> path)

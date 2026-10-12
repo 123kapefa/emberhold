@@ -8,7 +8,7 @@ namespace Emberhold.Gameplay.Workers
     /// <summary>
     /// По чему ходят рабочие: карта столбцов (x, z) мира блоков, рабочий стоит на верхе самого верхнего блока
     /// в столбце. Пещер и мостов в прототипе нет, поэтому одной высоты на столбец хватает.
-    /// Шагнуть в соседний столбец можно, если перепад высот не больше <see cref="MaxStep"/>.
+    /// Шагнуть в соседний столбец можно, если подъём не больше <see cref="MaxStep"/>, а спуск — не больше <see cref="MaxDrop"/>.
     /// Координаты — мира блоков (локальные координаты VoxelWorldView).
     /// </summary>
     public sealed class WalkSurface
@@ -18,15 +18,24 @@ namespace Emberhold.Gameplay.Workers
         private bool caching;
 
         public WalkSurface(VoxelWorld world, float maxStep)
+            : this(world, maxStep, maxStep)
+        {
+        }
+
+        public WalkSurface(VoxelWorld world, float maxStep, float maxDrop)
         {
             this.world = world;
             MaxStep = maxStep;
+            MaxDrop = maxDrop;
         }
 
         public VoxelWorld World => world;
 
         /// <summary>Самый большой перепад высот между соседними столбцами, который рабочий проходит, в блоках.</summary>
         public float MaxStep { get; }
+
+        /// <summary>С какой высоты можно спуститься в соседний столбец, в блоках. Рабочим — как MaxStep, ползунам — любой.</summary>
+        public float MaxDrop { get; }
 
         public bool Contains(Vector2Int column)
         {
@@ -76,8 +85,13 @@ namespace Emberhold.Gameplay.Workers
             return CanClimb(from, a) && CanClimb(a, to) && CanClimb(from, b) && CanClimb(b, to);
         }
 
-        private bool CanClimb(Vector2Int from, Vector2Int to) =>
-            Contains(to) && Mathf.Abs(Height(to) - Height(from)) <= MaxStep + 1e-3f;
+        private bool CanClimb(Vector2Int from, Vector2Int to)
+        {
+            if (!Contains(to))
+                return false;
+            var rise = Height(to) - Height(from);
+            return rise <= MaxStep + 1e-3f && -rise <= MaxDrop + 1e-3f;
+        }
 
         /// <summary>Столбец, в котором стоит точка мира блоков.</summary>
         public static Vector2Int ColumnOf(Vector3 position) =>
