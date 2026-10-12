@@ -12,6 +12,8 @@ namespace Emberhold.World
     /// <summary>
     /// Показывает воксельный мир в сцене: на каждый чанк один GameObject с мешем и коллайдером на слое Ground.
     /// В Awake генерирует рельеф по настройкам и зонам местности сцены; каждый кадр перестраивает только изменённые чанки.
+    /// Отдельные блоки можно спрятать из картинки (<see cref="HideBlock"/>), пока их показывает кто-то другой,
+    /// например падающий блок: данные мира и коллайдер при этом не меняются.
     /// </summary>
     public sealed class VoxelWorldView : MonoBehaviour
     {
@@ -29,7 +31,11 @@ namespace Emberhold.World
         private readonly Dictionary<Collider, ChunkView> viewsByCollider = new();
         private readonly List<Vector3Int> dirtyBuffer = new();
         private readonly List<Material> sharedMaterials = new();
+        // Спрятанные блоки и сколько раз каждый спрятан: один и тот же блок могут прятать двое.
+        private readonly Dictionary<Vector3Int, int> hiddenBlocks = new();
+        private readonly List<(Vector3Int block, Block value)> hiddenNearChunk = new();
         private ChunkMeshData meshData;
+        private ChunkMeshData colliderData;
         private readonly SurfaceNormals surfaceNormals = new();
         private bool missingMaterialReported;
 
@@ -73,6 +79,7 @@ namespace Emberhold.World
         public void Show(VoxelWorld world)
         {
             ClearChunkViews();
+            hiddenBlocks.Clear();
             World = world;
             if (centerOnOrigin)
             {
@@ -99,6 +106,8 @@ namespace Emberhold.World
             foreach (var view in chunkViews.Values)
             {
                 Destroy(view.Mesh);
+                if (view.ColliderMesh != null)
+                    Destroy(view.ColliderMesh);
                 Destroy(view.Collider.gameObject);
             }
             chunkViews.Clear();
@@ -113,19 +122,115 @@ namespace Emberhold.World
                 RebuildChunk(chunk);
         }
 
+        /// <summary>
+        /// Не рисовать блок в чанке, пока его не вернут <see cref="ShowBlock"/>. Мир, луч мыши и коллайдер
+        /// по-прежнему видят блок; меш перестроится в LateUpdate этого кадра.
+        /// </summary>
+        public void HideBlock(Vector3Int block)
+        {
+            hiddenBlocks.TryGetValue(block, out var count);
+            hiddenBlocks[block] = count + 1;
+            if (count == 0)
+                MarkAround(block);
+        }
+
+        /// <summary>Снова рисовать блок, спрятанный <see cref="HideBlock"/> (столько же раз, сколько прятали).</summary>
+        public void ShowBlock(Vector3Int block)
+        {
+            if (!hiddenBlocks.TryGetValue(block, out var count))
+                return;
+            if (count > 1)
+            {
+                hiddenBlocks[block] = count - 1;
+                return;
+            }
+            hiddenBlocks.Remove(block);
+            MarkAround(block);
+        }
+
+        public bool IsHidden(Vector3Int block) => hiddenBlocks.ContainsKey(block);
+
+        /// <summary>Чанк блока и соседние: у соседей могли открыться или закрыться грани.</summary>
+        private void MarkAround(Vector3Int block)
+        {
+            if (World == null)
+                return;
+            World.MarkDirty(ChunkOf(block));
+            World.MarkDirty(ChunkOf(block + Vector3Int.left));
+            World.MarkDirty(ChunkOf(block + Vector3Int.right));
+            World.MarkDirty(ChunkOf(block + Vector3Int.down));
+            World.MarkDirty(ChunkOf(block + Vector3Int.up));
+            World.MarkDirty(ChunkOf(block + Vector3Int.back));
+            World.MarkDirty(ChunkOf(block + Vector3Int.forward));
+        }
+
+        private static Vector3Int ChunkOf(Vector3Int block) => new(
+            Mathf.FloorToInt(block.x / (float)ChunkData.Size),
+            Mathf.FloorToInt(block.y / (float)ChunkData.Size),
+            Mathf.FloorToInt(block.z / (float)ChunkData.Size));
+
         private void RebuildChunk(Vector3Int chunk)
         {
+            // Спрятанные блоки на время меширования картинки становятся воздухом прямо в данных чанка
+            // (без пометки чанков), затем возвращаются. Коллайдер строится по настоящему миру.
+            var hidden = TakeHiddenNear(chunk);
             ChunkMesher.Build(World, chunk, meshData, smoothShading ? surfaceNormals : null);
+            if (hidden)
+            {
+                RestoreHidden();
+                colliderData ??= new ChunkMeshData();
+                ChunkMesher.Build(World, chunk, colliderData);
+            }
+
+            var collider = hidden ? colliderData : meshData;
             if (!chunkViews.TryGetValue(chunk, out var view))
             {
-                if (meshData.IsEmpty)
+                if (collider.IsEmpty)
                     return;
                 view = CreateChunkView(chunk);
                 chunkViews.Add(chunk, view);
                 viewsByCollider.Add(view.Collider, view);
             }
 
-            ApplyMesh(view);
+            ApplyMesh(view, hidden);
+        }
+
+        /// <summary>
+        /// Спрятанные блоки, от которых зависит меш чанка, — заменить воздухом. Берём столбцы чанка с запасом
+        /// по краям на всю высоту: сглаженные нормали ищут поверхность по всему столбцу.
+        /// </summary>
+        private bool TakeHiddenNear(Vector3Int chunk)
+        {
+            hiddenNearChunk.Clear();
+            if (hiddenBlocks.Count == 0)
+                return false;
+            const int margin = 2;
+            var min = chunk * ChunkData.Size - new Vector3Int(margin, 0, margin);
+            var max = (chunk + Vector3Int.one) * ChunkData.Size + new Vector3Int(margin, 0, margin);
+            foreach (var block in hiddenBlocks.Keys)
+            {
+                if (block.x < min.x || block.x >= max.x || block.z < min.z || block.z >= max.z || !World.IsInsideBlocks(block))
+                    continue;
+                hiddenNearChunk.Add((block, World.GetBlock(block)));
+            }
+            foreach (var (block, _) in hiddenNearChunk)
+                SetQuietly(block, Block.Air);
+            return hiddenNearChunk.Count > 0;
+        }
+
+        private void RestoreHidden()
+        {
+            foreach (var (block, value) in hiddenNearChunk)
+                SetQuietly(block, value);
+            hiddenNearChunk.Clear();
+        }
+
+        /// <summary>Записать блок в данные чанка, не помечая чанки изменёнными.</summary>
+        private void SetQuietly(Vector3Int block, Block value)
+        {
+            var chunk = ChunkOf(block);
+            var local = block - chunk * ChunkData.Size;
+            World.GetChunk(chunk).Set(local.x, local.y, local.z, value);
         }
 
         private ChunkView CreateChunkView(Vector3Int chunk)
@@ -145,34 +250,48 @@ namespace Emberhold.World
             return new ChunkView(chunk, mesh, renderer, go.AddComponent<MeshCollider>());
         }
 
-        private void ApplyMesh(ChunkView view)
+        /// <param name="separateCollider">Коллайдер строится по <see cref="colliderData"/>, а не по мешу картинки.</param>
+        private void ApplyMesh(ChunkView view, bool separateCollider)
         {
-            var mesh = view.Mesh;
+            FillMesh(view.Mesh, meshData);
+            ReportUnmappedMaterials();
+            view.Renderer.enabled = !meshData.IsEmpty;
+
+            var collider = separateCollider ? colliderData : meshData;
+            view.TriangleBlocks.Clear();
+            for (var subMesh = 0; subMesh < sharedMaterials.Count; subMesh++)
+            {
+                // Коллайдер нумерует треугольники подряд по подмешам, в том же порядке.
+                view.TriangleBlocks.AddRange(collider.TriangleBlocks[subMesh + 1]);
+            }
+            Mesh colliderMesh = view.Mesh;
+            if (separateCollider)
+            {
+                view.ColliderMesh ??= new Mesh { name = view.Mesh.name + " Collider" };
+                FillMesh(view.ColliderMesh, colliderData);
+                colliderMesh = view.ColliderMesh;
+            }
+            // Коллайдер берёт меш при назначении, поэтому переназначаем после каждой перестройки.
+            view.Collider.sharedMesh = null;
+            if (!collider.IsEmpty)
+                view.Collider.sharedMesh = colliderMesh;
+        }
+
+        private void FillMesh(Mesh mesh, ChunkMeshData data)
+        {
             mesh.Clear();
-            mesh.indexFormat = meshData.Vertices.Count > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16;
-            mesh.SetVertices(meshData.Vertices);
-            mesh.SetNormals(meshData.Normals);
-            mesh.SetUVs(0, meshData.Uvs);
+            mesh.indexFormat = data.Vertices.Count > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16;
+            mesh.SetVertices(data.Vertices);
+            mesh.SetNormals(data.Normals);
+            mesh.SetUVs(0, data.Uvs);
 
             // Подмеш на каждый материал, даже пустой: у рендерера всегда один и тот же список материалов.
             // Если список менять при каждой перестройке, GPU Resident Drawer может остаться со старым
             // сопоставлением подмешей и материалов и нарисовать землю камнем до следующей перестройки.
             mesh.subMeshCount = sharedMaterials.Count;
-            view.TriangleBlocks.Clear();
             for (var subMesh = 0; subMesh < sharedMaterials.Count; subMesh++)
-            {
-                mesh.SetTriangles(meshData.Triangles[subMesh + 1], subMesh, false);
-                // Коллайдер нумерует треугольники подряд по подмешам, в том же порядке.
-                view.TriangleBlocks.AddRange(meshData.TriangleBlocks[subMesh + 1]);
-            }
-            ReportUnmappedMaterials();
+                mesh.SetTriangles(data.Triangles[subMesh + 1], subMesh, false);
             mesh.RecalculateBounds();
-
-            view.Renderer.enabled = !meshData.IsEmpty;
-            // Коллайдер берёт меш при назначении, поэтому переназначаем после каждой перестройки.
-            view.Collider.sharedMesh = null;
-            if (!meshData.IsEmpty)
-                view.Collider.sharedMesh = mesh;
         }
 
         /// <summary>Материалы для подмешей: подмеш i — материал блока i + 1 (воздух не рисуется).</summary>
@@ -230,6 +349,8 @@ namespace Emberhold.World
             public readonly Mesh Mesh;
             public readonly MeshRenderer Renderer;
             public readonly MeshCollider Collider;
+            /// <summary>Отдельный меш коллайдера, когда в чанке есть спрятанные блоки; иначе коллайдер берёт <see cref="Mesh"/>.</summary>
+            public Mesh ColliderMesh;
             /// <summary>Индекс блока в чанке для каждого треугольника меша по порядку.</summary>
             public readonly List<int> TriangleBlocks = new();
 

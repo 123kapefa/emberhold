@@ -27,7 +27,8 @@ namespace Emberhold.Gameplay.Building
     /// между нажатием и отпусканием почти не сдвинулась. Камера занимает ПКМ (удержание), СКМ, колесо
     /// и WASD/QE/RF. Ввод берётся из карты «Building» в EmberholdControls.
     /// Править можно только внутри света (BuildZone); снаружи рамка другого цвета и клик даёт подсказку.
-    /// После каждой правки блоки, потерявшие опору, падают (<see cref="BlockStability"/>).
+    /// После каждой правки блоки, потерявшие опору, падают (<see cref="BlockStability"/>);
+    /// видимое падение рисует <see cref="BlockFallView"/> по событию <see cref="BlocksFell"/>.
     /// </summary>
     public sealed class BlockEditController : MonoBehaviour
     {
@@ -102,6 +103,9 @@ namespace Emberhold.Gameplay.Building
 
         /// <summary>Блоки, упавшие после последней правки.</summary>
         public IReadOnlyList<BlockFall> LastFalls => falls;
+
+        /// <summary>После правки упали блоки без опоры (тот же список, что <see cref="LastFalls"/>). Мир уже изменён.</summary>
+        public event System.Action<IReadOnlyList<BlockFall>> BlocksFell;
 
         private void Awake()
         {
@@ -279,7 +283,10 @@ namespace Emberhold.Gameplay.Building
 
             // Блоки без опоры падают, их урон падает вместе с ними.
             if (Stability.Settle(worldView.World, changed, falls) > 0)
+            {
                 Damage.Move(falls);
+                BlocksFell?.Invoke(falls);
+            }
             return true;
         }
 

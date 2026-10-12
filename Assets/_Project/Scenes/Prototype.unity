@@ -804,6 +804,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1836935975}
   - component: {fileID: 1836935974}
+  - component: {fileID: 1836935976}
   m_Layer: 0
   m_Name: BlockEditing
   m_TagString: Untagged
@@ -830,6 +831,23 @@ MonoBehaviour:
   actions: {fileID: 0}
   outlineMaterial: {fileID: 2100000, guid: 23c00fcf84bdd4e26b0b5cba1c16e61c, type: 2}
   buildZone: {fileID: 1770339611}
+--- !u!114 &1836935976
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1836935973}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8c3880ebed541d389a605c423dd1f3c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Building.BlockFallView
+  editor: {fileID: 1836935974}
+  worldView: {fileID: 520718230}
+  gravity: 30
+  landingBounce: 0.06
+  landingBounceSeconds: 0.12
 --- !u!4 &1836935975
 Transform:
   m_ObjectHideFlags: 0
@@ -880,6 +898,7 @@ MonoBehaviour:
   itemMaterial: {fileID: 2100000, guid: 273a4ded7a59b41aea0d0162bf49b3df, type: 2}
   itemSize: 0.35
   maxStack: 5
+  blockFalls: {fileID: 1836935976}
 --- !u!4 &1950212303
 Transform:
   m_ObjectHideFlags: 0
