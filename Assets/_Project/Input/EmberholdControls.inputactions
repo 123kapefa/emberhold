@@ -1522,6 +1522,34 @@
                     "isPartOfComposite": false
                 }
             ]
+        },
+        {
+            "name": "DayNight",
+            "id": "9b8baf38-72dd-4495-ba88-fcc326a05fec",
+            "actions": [
+                {
+                    "name": "NextPhase",
+                    "type": "Button",
+                    "id": "94f6b3a3-2720-4a2f-bc1c-10bddc0bdc12",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "5291ef85-e3c8-4465-a84d-42b216a9613e",
+                    "path": "<Keyboard>/n",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "NextPhase",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
         }
     ],
     "controlSchemes": [
