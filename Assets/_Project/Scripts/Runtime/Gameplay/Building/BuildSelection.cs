@@ -3,7 +3,7 @@ using Emberhold.World.Voxels;
 
 namespace Emberhold.Gameplay.Building
 {
-    /// <summary>Формы, которые игрок ставит в прототипе. Столб, балка, полуарка — #27.</summary>
+    /// <summary>Формы, которые игрок ставит в прототипе. Детали на несколько клеток, деревянные формы и дверь — #44–#46.</summary>
     public enum BuildForm
     {
         Full,
@@ -12,11 +12,17 @@ namespace Emberhold.Gameplay.Building
         OuterCorner,
         InnerCorner,
         Stairs,
+        SquarePillar,
+        RoundPillar,
+        Beam,
+        Bracket,
+        HalfArch,
     }
 
     /// <summary>
     /// Что игрок сейчас ставит: форма, материал, поворот и высота полублока. Без поворота скат,
-    /// углы ската и лестница поднимаются к +Z (от игрока, если камера смотрит вдоль +Z).
+    /// углы ската и лестница поднимаются к +Z (от игрока, если камера смотрит вдоль +Z), балка лежит вдоль Z,
+    /// кронштейн прилегает к стене на +Z, нога полуарки стоит на +Z.
     /// </summary>
     public sealed class BuildSelection
     {
@@ -58,6 +64,11 @@ namespace Emberhold.Gameplay.Building
                 BuildForm.OuterCorner => new BlockShape(0, 0, 0, h),
                 BuildForm.InnerCorner => new BlockShape(0, h, h, h),
                 BuildForm.Stairs => BlockShape.Catalog(BlockForm.Stairs, 0),
+                BuildForm.SquarePillar => BlockShape.Catalog(BlockForm.SquarePillar, 0),
+                BuildForm.RoundPillar => BlockShape.Catalog(BlockForm.RoundPillar, 0),
+                BuildForm.Beam => BlockShape.Catalog(BlockForm.Beam, 0),
+                BuildForm.Bracket => BlockShape.Catalog(BlockForm.Bracket, 0),
+                BuildForm.HalfArch => BlockShape.Catalog(BlockForm.HalfArch, 0),
                 _ => throw new ArgumentOutOfRangeException(nameof(form)),
             };
             for (var i = 0; i < (rotation & 3); i++)
@@ -73,6 +84,11 @@ namespace Emberhold.Gameplay.Building
             BuildForm.OuterCorner => "Внешний угол ската",
             BuildForm.InnerCorner => "Внутренний угол ската",
             BuildForm.Stairs => "Лестница",
+            BuildForm.SquarePillar => "Столб квадратный",
+            BuildForm.RoundPillar => "Столб круглый",
+            BuildForm.Beam => "Балка",
+            BuildForm.Bracket => "Кронштейн",
+            BuildForm.HalfArch => "Полуарка",
             _ => form.ToString(),
         };
 

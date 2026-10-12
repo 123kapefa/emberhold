@@ -67,7 +67,7 @@ namespace Emberhold.Gameplay.Building
         private GameObject outline;
         private MeshRenderer outlineRenderer;
         private Mesh outlineMesh;
-        private (float height, Vector3Int face)? outlineShape;
+        private (FormBox extent, Vector3Int face)? outlineShape;
 
         private readonly List<Vector3> crackVertices = new();
         private readonly List<int> crackIndices = new();
@@ -345,11 +345,12 @@ namespace Emberhold.Gameplay.Building
             var cell = Tool == BlockTool.Build ? plan.Value.Cell : hit.Block;
             var block = Tool == BlockTool.Build ? plan.Value.Block : worldView.World.GetBlock(hit.Block);
             var face = Tool == BlockTool.Build ? Vector3Int.zero : hit.Face;
-            var shape = (height: (float)block.Shape.Top / BlockShape.MaxHeight, face);
-            if (outlineShape != shape)
+            var extent = block.Shape.Extent;
+            if (outlineShape is not { } shown || !shown.extent.Equals(extent) || shown.face != face)
             {
-                outlineShape = shape;
-                BlockOutlineMesh.Build(shape.height, shape.face, settings.OutlinePadding, outlineVertices, outlineIndices);
+                outlineShape = (extent, face);
+                var (min, max) = ExtentBounds(extent);
+                BlockOutlineMesh.Build(min, max, face, settings.OutlinePadding, outlineVertices, outlineIndices);
                 outlineMesh.Clear();
                 outlineMesh.SetVertices(outlineVertices);
                 outlineMesh.SetIndices(outlineIndices, MeshTopology.Lines, 0);
@@ -366,6 +367,13 @@ namespace Emberhold.Gameplay.Building
             outlineProperties.SetColor(BaseColorId, color);
             outlineRenderer.SetPropertyBlock(outlineProperties);
             outline.SetActive(true);
+        }
+
+        /// <summary>Коробка формы в долях ячейки: по ней строятся рамка и трещины.</summary>
+        private static (Vector3 min, Vector3 max) ExtentBounds(FormBox e)
+        {
+            const float n = BlockShape.MaxHeight;
+            return (new Vector3(e.X0, e.Y0, e.Z0) / n, new Vector3(e.X1, e.Y1, e.Z1) / n);
         }
 
         private void UpdateGhost()
@@ -391,9 +399,9 @@ namespace Emberhold.Gameplay.Building
             crackIndices.Clear();
             foreach (var (block, _) in Damage.Entries)
             {
-                var height = (float)worldView.World.GetBlock(block).Shape.Top / BlockShape.MaxHeight;
+                var (min, max) = ExtentBounds(worldView.World.GetBlock(block).Shape.Extent);
                 var stage = BlockDamage.Stage(Damage.Fraction(worldView.World, block), settings.CrackStages);
-                BlockCrackMesh.Append(block, height, stage, block.GetHashCode(), settings.OutlinePadding * 0.5f,
+                BlockCrackMesh.Append(block, min, max, stage, block.GetHashCode(), settings.OutlinePadding * 0.5f,
                     crackVertices, crackIndices);
             }
 
