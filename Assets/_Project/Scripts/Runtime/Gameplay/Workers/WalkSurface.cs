@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Emberhold.World.Items;
 using Emberhold.World.Voxels;
 using UnityEngine;
@@ -13,6 +14,8 @@ namespace Emberhold.Gameplay.Workers
     public sealed class WalkSurface
     {
         private readonly VoxelWorld world;
+        private readonly Dictionary<Vector2Int, float> cachedHeights = new();
+        private bool caching;
 
         public WalkSurface(VoxelWorld world, float maxStep)
         {
@@ -32,8 +35,31 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>Высота, на которой стоит рабочий в столбце: верх верхнего блока (средний по углам, как у кучек).</summary>
-        public float Height(Vector2Int column) =>
-            DroppedItems.RestHeight(world, new Vector3Int(column.x, world.SizeInBlocks.y - 1, column.y));
+        public float Height(Vector2Int column)
+        {
+            if (caching && cachedHeights.TryGetValue(column, out var cached))
+                return cached;
+            var height = DroppedItems.RestHeight(world, new Vector3Int(column.x, world.SizeInBlocks.y - 1, column.y));
+            if (caching)
+                cachedHeights[column] = height;
+            return height;
+        }
+
+        /// <summary>
+        /// Запоминать высоты столбцов, пока мир не меняется (на время одного поиска пути):
+        /// каждый шаг спрашивает высоту нескольких столбцов, а она ищется сверху вниз по всему столбцу.
+        /// </summary>
+        public void BeginCache()
+        {
+            cachedHeights.Clear();
+            caching = true;
+        }
+
+        public void EndCache()
+        {
+            caching = false;
+            cachedHeights.Clear();
+        }
 
         /// <summary>
         /// Можно ли шагнуть из столбца from в соседний столбец to (в том числе по диагонали).

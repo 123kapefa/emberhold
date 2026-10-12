@@ -240,6 +240,58 @@ namespace Emberhold.Tests.EditMode.Workers
             Assert.That(items.Items, Has.Count.EqualTo(1), "Камень снова лежит на земле");
         }
 
+        [Test]
+        public void Worker_LightShrinksWhileDigging_DropsOrderAndGoesBackToLight()
+        {
+            var litLimit = 32;
+            Func<Vector2Int, bool> lit = c => c.x < litLimit;
+            var cell = new Vector3Int(20, Ground - 1, 12);
+            world.SetBlock(cell, Block.Full(BlockMaterials.Stone));
+            var order = orders.AddDig(cell);
+            var worker = Spawn(new Vector2Int(17, 12), lit);
+            Run(20f, () => worker.State == WorkerState.Working && damage.Taken(cell) > 0f, worker);
+            Assume.That(worker.State, Is.EqualTo(WorkerState.Working));
+
+            // Костёр сжался: рабочий оказался в темноте посреди копки.
+            litLimit = 16;
+            Run(20f, () => lit(worker.Column) && worker.State == WorkerState.Idle, worker);
+
+            Assert.That(lit(worker.Column), Is.True, $"Рабочий остался в темноте: {worker.Position}");
+            Assert.That(order.Worker, Is.Null, "Задача отпущена");
+            Assert.That(orders.Contains(order), Is.True, "Задача осталась ждать света");
+        }
+
+        [Test]
+        public void Worker_TopsUpPartialBlock()
+        {
+            var cell = new Vector3Int(12, Ground, 12);
+            world.SetBlock(cell, Block.Flat(BlockMaterials.Dirt, BlockShape.MaxHeight / 2));
+            orders.AddBuild(cell, Block.Full(BlockMaterials.Dirt), true, null);
+            var worker = Spawn(new Vector2Int(9, 9));
+
+            Run(20f, () => orders.Orders.Count == 0, worker);
+
+            Assert.That(world.GetBlock(cell), Is.EqualTo(Block.Full(BlockMaterials.Dirt)));
+        }
+
+        [Test]
+        public void TwoWorkers_ShareOnePileForTwoBlueprints()
+        {
+            items.Drop(world, new Vector3Int(4, Ground, 4), new ItemDrop("stone", 2));
+            var a = new Vector3Int(12, Ground, 12);
+            var b = new Vector3Int(14, Ground, 8);
+            orders.AddBuild(a, Block.Full(BlockMaterials.Stone), false, new ItemDrop("stone", 1));
+            orders.AddBuild(b, Block.Full(BlockMaterials.Stone), false, new ItemDrop("stone", 1));
+            var first = Spawn(new Vector2Int(9, 9));
+            var second = Spawn(new Vector2Int(9, 10));
+
+            Run(40f, () => orders.Orders.Count == 0, first, second);
+
+            Assert.That(world.GetBlock(a).Material, Is.EqualTo(BlockMaterials.Stone));
+            Assert.That(world.GetBlock(b).Material, Is.EqualTo(BlockMaterials.Stone));
+            Assert.That(items.Items, Is.Empty);
+        }
+
         private Worker Spawn(Vector2Int column, Func<Vector2Int, bool> isLit = null)
         {
             var context = new WorkerContext(world, orders, items, damage, new BlockStability(), settings, isLit);

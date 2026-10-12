@@ -68,7 +68,8 @@ namespace Emberhold.Gameplay.Workers
                 return;
             }
 
-            context = new WorkerContext(worldView.World, Orders, droppedItems.Items, editor.Damage, editor.Stability, settings, IsLit);
+            context = new WorkerContext(worldView.World, Orders, droppedItems.Items, editor.Damage, editor.Stability, settings, IsLit,
+                () => buildZone == null || litZone.Count > 0);
             Orders.Cancelled += OnOrderCancelled;
             blueprintLines = CreateLines("Blueprints", blueprintColor);
             digLines = CreateLines("Dig Orders", digOrderColor);

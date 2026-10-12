@@ -34,6 +34,7 @@ namespace Emberhold.Gameplay.Workers
         private readonly List<Vector2Int> path = new();
         private int pathIndex;
         private float timer;
+        private float fleeTimer;
         private DroppedItem pile;
 
         public Worker(WorkerContext context, Vector3 position)
@@ -69,9 +70,20 @@ namespace Emberhold.Gameplay.Workers
 
             if (State != WorkerState.Fleeing && !context.IsLit(Column))
             {
-                Abandon();
-                if (timer <= 0f && !TryFlee())
-                    timer = context.Settings.IdleSearchSeconds;
+                // Свет ушёл из-под ног: бросаем всё и раз в IdleSearchSeconds ищем путь к свету.
+                if (State != WorkerState.Idle || Order != null || Carrying != null)
+                    Abandon();
+                fleeTimer -= deltaTime;
+                if (fleeTimer <= 0f)
+                {
+                    fleeTimer = context.Settings.IdleSearchSeconds;
+                    TryFlee();
+                }
+                if (State != WorkerState.Fleeing)
+                {
+                    SnapToGround();
+                    return;
+                }
             }
 
             switch (State)
@@ -82,8 +94,7 @@ namespace Emberhold.Gameplay.Workers
                     if (timer <= 0f)
                     {
                         timer = context.Settings.IdleSearchSeconds;
-                        if (context.IsLit(Column))
-                            TryTakeOrder();
+                        TryTakeOrder();
                     }
                     break;
                 case WorkerState.ToPile:
@@ -119,6 +130,8 @@ namespace Emberhold.Gameplay.Workers
 
         private void TryTakeOrder()
         {
+            if (!HasFreeOrder())
+                return;
             context.Flood.Run(context.Surface, Column, context.IsLit);
             WorkOrder best = null;
             DroppedItem bestPile = null;
@@ -152,6 +165,16 @@ namespace Emberhold.Gameplay.Workers
             best.Worker = this;
             pile = bestPile;
             WalkTo(bestStand, bestPile != null ? WorkerState.ToPile : WorkerState.ToSite);
+        }
+
+        private bool HasFreeOrder()
+        {
+            foreach (var order in context.Orders.Orders)
+            {
+                if (order.Worker == null)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>Найти кучку с ресурсом для своего чертежа и пойти к ней; если её нет — отпустить задачу.</summary>
@@ -188,6 +211,7 @@ namespace Emberhold.Gameplay.Workers
 
         private void OnArrived()
         {
+            fleeTimer = 0f;
             switch (State)
             {
                 case WorkerState.ToPile:
@@ -262,6 +286,9 @@ namespace Emberhold.Gameplay.Workers
 
         private bool TryFlee()
         {
+            // Если не горит ни один огонь, идти некуда.
+            if (!context.HasAnyLight())
+                return false;
             // Из темноты можно идти по любым столбцам, лишь бы к свету.
             context.Flood.Run(context.Surface, Column, null);
             if (!context.Flood.TryNearest(context.IsLit, out var lit))
@@ -314,7 +341,9 @@ namespace Emberhold.Gameplay.Workers
             if (Carrying is not { } carried)
                 return;
             Carrying = null;
-            var cell = new Vector3Int(Mathf.FloorToInt(Position.x), Mathf.FloorToInt(Position.y), Mathf.FloorToInt(Position.z));
+            // Столбец может быть заполнен до потолка мира: тогда кладём на самый верх.
+            var cell = new Vector3Int(Mathf.FloorToInt(Position.x),
+                Mathf.Min(Mathf.FloorToInt(Position.y), context.World.SizeInBlocks.y - 1), Mathf.FloorToInt(Position.z));
             if (context.World.IsInsideBlocks(cell))
                 context.Items.Drop(context.World, cell, carried);
         }

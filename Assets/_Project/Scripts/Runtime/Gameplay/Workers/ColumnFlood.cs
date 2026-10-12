@@ -22,6 +22,7 @@ namespace Emberhold.Gameplay.Workers
         private readonly Dictionary<Vector2Int, float> distance = new();
         private readonly Dictionary<Vector2Int, Vector2Int> cameFrom = new();
         private readonly HashSet<Vector2Int> settled = new();
+        private readonly Dictionary<Vector2Int, bool> enterable = new();
         private readonly List<(float cost, Vector2Int column)> heap = new();
 
         public ColumnFlood(int searchLimit = 4096)
@@ -44,9 +45,25 @@ namespace Emberhold.Gameplay.Workers
             cameFrom.Clear();
             heap.Clear();
             settled.Clear();
+            enterable.Clear();
             Start = start;
             if (!surface.Contains(start))
                 return;
+
+            surface.BeginCache();
+            try
+            {
+                Flood(surface, canEnter);
+            }
+            finally
+            {
+                surface.EndCache();
+            }
+        }
+
+        private void Flood(WalkSurface surface, Func<Vector2Int, bool> canEnter)
+        {
+            var start = Start;
 
             distance[start] = 0f;
             Push(0f, start);
@@ -58,7 +75,7 @@ namespace Emberhold.Gameplay.Workers
                 foreach (var step in Steps)
                 {
                     var next = column + step;
-                    if (settled.Contains(next) || !surface.CanStep(column, next) || canEnter != null && !canEnter(next))
+                    if (settled.Contains(next) || !CanEnter(next, canEnter) || !surface.CanStep(column, next))
                         continue;
                     var nextCost = cost + (step.x != 0 && step.y != 0 ? 1.41421356f : 1f);
                     if (distance.TryGetValue(next, out var known) && known <= nextCost)
@@ -68,6 +85,16 @@ namespace Emberhold.Gameplay.Workers
                     Push(nextCost, next);
                 }
             }
+        }
+
+        /// <summary>canEnter для столбца — один раз за разлив.</summary>
+        private bool CanEnter(Vector2Int column, Func<Vector2Int, bool> canEnter)
+        {
+            if (canEnter == null)
+                return true;
+            if (!enterable.TryGetValue(column, out var result))
+                enterable[column] = result = canEnter(column);
+            return result;
         }
 
         public bool Reached(Vector2Int column) => distance.ContainsKey(column);

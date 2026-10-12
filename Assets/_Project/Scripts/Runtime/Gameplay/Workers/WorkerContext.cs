@@ -16,7 +16,7 @@ namespace Emberhold.Gameplay.Workers
         private readonly List<BlockFall> falls = new();
 
         public WorkerContext(VoxelWorld world, WorkOrders orders, DroppedItems items, BlockDamage damage,
-            BlockStability stability, WorkerSettings settings, Func<Vector2Int, bool> isLit)
+            BlockStability stability, WorkerSettings settings, Func<Vector2Int, bool> isLit, Func<bool> hasAnyLight = null)
         {
             World = world;
             Orders = orders;
@@ -25,6 +25,7 @@ namespace Emberhold.Gameplay.Workers
             Stability = stability;
             Settings = settings;
             IsLit = isLit ?? (_ => true);
+            HasAnyLight = hasAnyLight ?? (() => true);
             Surface = new WalkSurface(world, settings.MaxStep);
             Flood = new ColumnFlood(settings.SearchLimit);
         }
@@ -38,6 +39,9 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>Столбец освещён: рабочие ходят и работают только там.</summary>
         public Func<Vector2Int, bool> IsLit { get; }
+
+        /// <summary>Горит хотя бы один огонь: если нет, из темноты идти некуда.</summary>
+        public Func<bool> HasAnyLight { get; }
 
         public WalkSurface Surface { get; }
 

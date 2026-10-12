@@ -218,7 +218,7 @@ namespace Emberhold.Gameplay.Building
             UpdatePlan();
             if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
-                if (!CanEdit(TargetCell(hit)))
+                if (!CanApply(hit))
                     blockedMessageUntil = Time.unscaledTime + settings.BlockedMessageSeconds;
                 Apply(hit);
                 // Блок мог исчезнуть или появиться: рамка и предпросмотр должны сразу показать новое состояние.
@@ -271,14 +271,14 @@ namespace Emberhold.Gameplay.Building
             Crawler.TryPick(targetCamera.ScreenPointToRay(point.ReadValue<Vector2>()), settings.MaxRayDistance, out _);
 
         /// <summary>
-        /// Применить текущий инструмент к блоку; вне света ничего не делает. Возвращает true, если мир изменился
+        /// Применить текущий инструмент к блоку; вне света ничего не делает, кроме снятия чертежа или приказа. Возвращает true, если мир изменился
         /// (блок убран или поставлен) или поставлен либо снят чертёж или приказ копать.
         /// Меш перестроит VoxelWorldView в LateUpdate этого кадра.
         /// </summary>
         public bool Apply(BlockHit hit)
         {
             falls.Clear();
-            if (!CanEdit(TargetCell(hit)))
+            if (!CanApply(hit))
                 return false;
 
             Vector3Int changed;
@@ -324,6 +324,20 @@ namespace Emberhold.Gameplay.Building
         /// <summary>Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, иначе — блок под курсором.</summary>
         private Vector3Int TargetCell(BlockHit hit) =>
             PlacesBlocks && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p) ? p.Cell : hit.Block;
+
+        /// <summary>
+        /// Инструмент можно применить: клетка в свете. Чертёж или приказ, оставшийся в темноте (костёр погас
+        /// или сжался), снять можно и там.
+        /// </summary>
+        private bool CanApply(BlockHit hit)
+        {
+            var cell = TargetCell(hit);
+            if (CanEdit(cell))
+                return true;
+            var order = workers != null ? workers.Orders.At(cell) : null;
+            return order != null && (Tool == BlockTool.Blueprint && order.Kind == WorkKind.Build
+                                     || Tool == BlockTool.DigOrder && order.Kind == WorkKind.Dig);
+        }
 
         /// <summary>Блок освещён (центр блока внутри света) или зона застройки не задана.</summary>
         public bool CanEdit(Vector3Int block) =>
