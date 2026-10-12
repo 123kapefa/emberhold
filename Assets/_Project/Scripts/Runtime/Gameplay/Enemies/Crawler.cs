@@ -42,6 +42,9 @@ namespace Emberhold.Gameplay.Enemies
         /// <summary>Жив: не убит и не растворяется. Мёртвого нельзя ударить, он не гасит огонь.</summary>
         public bool IsAlive { get; private set; }
 
+        /// <summary>Убит ударами, а не растворился с рассветом.</summary>
+        public bool WasKilled { get; private set; }
+
         /// <summary>Огонь, к которому ползун ползёт (или который гасит).</summary>
         public LightSource Target { get; private set; }
 
@@ -122,6 +125,7 @@ namespace Emberhold.Gameplay.Enemies
             Health -= damage;
             if (Health > 0f)
                 return false;
+            WasKilled = true;
             Dissolve();
             return true;
         }

@@ -50,6 +50,9 @@ namespace Emberhold.Gameplay.Enemies
         /// <summary>Появился новый ползун.</summary>
         public event Action<Crawler> Spawned;
 
+        /// <summary>Ползуна убили (растворившиеся с рассветом сюда не попадают).</summary>
+        public event Action<Crawler> Killed;
+
         private void OnEnable()
         {
             if (settings == null || prefab == null)
@@ -167,6 +170,8 @@ namespace Emberhold.Gameplay.Enemies
         {
             crawler.Died -= OnDied;
             crawlers.Remove(crawler);
+            if (crawler.WasKilled)
+                Killed?.Invoke(crawler);
         }
 
         /// <summary>Указатель (экранные координаты ввода, от левого нижнего угла) над кнопками спаунера.</summary>
