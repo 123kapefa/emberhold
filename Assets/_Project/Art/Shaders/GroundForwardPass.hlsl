@@ -1,7 +1,7 @@
-// Копия LitForwardPass.hlsl из URP 17.6 с двумя отличиями: текстура материала кладётся по трём проекциям
-// мира (без растяжения на крутых склонах), и цвет смешивается с текстурой камня, окрашенной цветом вершины,
-// по весу из UV3.x. Так гладкая земля (TerrainSurface) плавно переходит из травы в камень. У мешей без UV3
-// вес 0, и остаётся только своя текстура материала.
+// Копия LitForwardPass.hlsl из URP 17.6 с отличиями: текстура материала кладётся по трём проекциям мира
+// (без растяжения на крутых склонах), вблизи камеры добавляется мелкая деталь из альфа-канала, вдали рисунок
+// упрощается, и трава сменяется текстурой камня, окрашенной цветом вершины, по весу из UV3.x: граница резкая
+// и рваная, с тёмной каймой травы. У мешей без UV3 вес 0, и остаётся только своя текстура материала.
 #ifndef EMBERHOLD_GROUND_FORWARD_PASS_INCLUDED
 #define EMBERHOLD_GROUND_FORWARD_PASS_INCLUDED
 
@@ -17,32 +17,88 @@ TEXTURE2D(_RockMap);
 SAMPLER(sampler_RockMap);
 
 // Сколько блоков занимает текстура по каждой проекции.
-#define EMBERHOLD_GROUND_TILE 6.0
+#define EMBERHOLD_GROUND_TILE 8.0
+// Мелкая деталь из альфа-канала текстуры ложится во столько раз мельче рисунка и видна только вблизи:
+// полностью ближе DETAIL_NEAR, гаснет к DETAIL_FAR (дистанция камеры 8–80).
+#define EMBERHOLD_DETAIL_SCALE 4.0
+#define EMBERHOLD_DETAIL_NEAR 14.0
+#define EMBERHOLD_DETAIL_FAR 32.0
+// Вдали рисунок упрощается к среднему цвету текстуры: меньше ряби, читаются крупные пятна.
+#define EMBERHOLD_FLAT_NEAR 55.0
+#define EMBERHOLD_FLAT_FAR 130.0
+#define EMBERHOLD_FLAT_AMOUNT 0.55
 
-// Текстура по трём проекциям мира: на крутых склонах не растягивается. Вес проекции — по нормали.
-// Производные позиции (dpdx, dpdy) считаются снаружи: функцию зовут и внутри ветвления, где своих производных нет.
-half3 SampleTriplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, half3 normalWS, float3 dpdx, float3 dpdy)
+// Вес проекций по нормали.
+half3 TriplanarWeights(half3 normalWS)
 {
     half3 w = pow(abs(normalWS), 4.0h);
-    w /= max(w.x + w.y + w.z, 1e-4h);
+    return w / max(w.x + w.y + w.z, 1e-4h);
+}
+
+// Три проекции одной текстуры в точке p (уже в плитках), с производными для мипов.
+half4 SampleProjections(TEXTURE2D_PARAM(tex, samplerTex), float3 p, float3 dx, float3 dy, half3 w)
+{
+    return SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, p.zy, dx.zy, dy.zy) * w.x
+         + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, p.xz, dx.xz, dy.xz) * w.y
+         + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, p.xy, dx.xy, dy.xy) * w.z;
+}
+
+// Текстура по трём проекциям мира: на крутых склонах не растягивается.
+// detailFade — сколько мелкой детали добавить (1 вблизи), flatFade — насколько упростить рисунок (1 вдали).
+// Производные позиции (dpdx, dpdy) считаются снаружи: функцию зовут и внутри ветвления, где своих производных нет.
+half3 SampleTriplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, half3 normalWS, float3 dpdx, float3 dpdy,
+    half detailFade, half flatFade)
+{
+    half3 w = TriplanarWeights(normalWS);
     float3 p = positionWS / EMBERHOLD_GROUND_TILE;
     float3 dx = dpdx / EMBERHOLD_GROUND_TILE;
     float3 dy = dpdy / EMBERHOLD_GROUND_TILE;
-    half3 near = SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, p.zy, dx.zy, dy.zy).rgb * w.x
-               + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, p.xz, dx.xz, dy.xz).rgb * w.y
-               + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, p.xy, dx.xy, dy.xy).rgb * w.z;
+    half3 near = SampleProjections(TEXTURE2D_ARGS(tex, samplerTex), p, dx, dy, w).rgb;
     // Та же текстура в 5,3 раза крупнее: её яркость относительно плитки даёт пятна светлее и темнее,
     // и повтор плитки не читается.
     const float macro = 5.3;
-    float3 q = p / macro;
-    half3 far = SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, q.zy + 0.37, dx.zy / macro, dy.zy / macro).rgb * w.x
-              + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, q.xz + 0.61, dx.xz / macro, dy.xz / macro).rgb * w.y
-              + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, q.xy + 0.13, dx.xy / macro, dy.xy / macro).rgb * w.z;
+    half3 far = SampleProjections(TEXTURE2D_ARGS(tex, samplerTex), p / macro + float3(0.37, 0.61, 0.13),
+        dx / macro, dy / macro, w).rgb;
     half lumNear = dot(near, half3(0.3h, 0.59h, 0.11h));
     half lumFar = dot(far, half3(0.3h, 0.59h, 0.11h));
-    half variation = lumFar / max((lumNear + lumFar) * 0.5h, 0.05h);
-    return near * clamp(0.55h + 0.45h * variation, 0.75h, 1.25h);
+    half variation = clamp(0.55h + 0.45h * lumFar / max((lumNear + lumFar) * 0.5h, 0.05h), 0.8h, 1.2h);
+
+    // Вдали — к среднему цвету текстуры (последний мип), пятна от крупного слоя остаются.
+    half3 average = SAMPLE_TEXTURE2D_LOD(tex, samplerTex, float2(0.5, 0.5), 12).rgb;
+    half3 color = lerp(near, average, flatFade * EMBERHOLD_FLAT_AMOUNT) * variation;
+
+    // Вблизи — мелкая деталь из альфы (0,5 — без изменений), только там, где её видно.
+    UNITY_BRANCH
+    if (detailFade > 0.001h)
+    {
+        const float s = EMBERHOLD_DETAIL_SCALE;
+        half detail = SampleProjections(TEXTURE2D_ARGS(tex, samplerTex), p * s + float3(0.21, 0.47, 0.83),
+            dx * s, dy * s, w).a;
+        color *= lerp(1.0h, clamp(detail * 2.0h, 0.7h, 1.3h), detailFade);
+    }
+    return color;
 }
+
+// Шум значений по миру для рваной границы травы и камня.
+float GroundHash(float2 p)
+{
+    return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
+}
+
+float GroundValueNoise(float2 p)
+{
+    float2 i = floor(p);
+    float2 f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return lerp(lerp(GroundHash(i), GroundHash(i + float2(1, 0)), f.x),
+                lerp(GroundHash(i + float2(0, 1)), GroundHash(i + float2(1, 1)), f.x), f.y);
+}
+
+// Ширина рваного края (насколько шум сдвигает границу) и тёмная кайма травы у камня.
+#define EMBERHOLD_EDGE_RAGGED 0.6
+#define EMBERHOLD_EDGE_RIM 0.12
+#define EMBERHOLD_EDGE_RIM_DARK 0.7
+
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
 #if defined(LOD_FADE_CROSSFADE)
@@ -296,15 +352,31 @@ void LitPassFragment(
     half3 normalForTex = normalize(input.normalWS);
     float3 dpdx = ddx(input.positionWS);
     float3 dpdy = ddy(input.positionWS);
-    half3 baseAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap), input.positionWS, normalForTex, dpdx, dpdy) * _BaseColor.rgb;
+    // Чем ближе камера, тем больше детали; вдали рисунок проще.
+    float cameraDistance = distance(GetCameraPositionWS(), input.positionWS);
+    half detailFade = 1.0h - saturate((cameraDistance - EMBERHOLD_DETAIL_NEAR) / (EMBERHOLD_DETAIL_FAR - EMBERHOLD_DETAIL_NEAR));
+    half flatFade = saturate((cameraDistance - EMBERHOLD_FLAT_NEAR) / (EMBERHOLD_FLAT_FAR - EMBERHOLD_FLAT_NEAR));
+    half3 baseAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap), input.positionWS, normalForTex,
+        dpdx, dpdy, detailFade, flatFade) * _BaseColor.rgb;
     surfaceData.albedo = baseAlbedo;
     // Камень сэмплируем только там, где он есть: у блоков и в сцене без гладкой земли вес 0.
     half rockWeight = saturate(input.groundColor.a);
     UNITY_BRANCH
     if (rockWeight > 0.001h)
     {
-        half3 rockAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_RockMap, sampler_RockMap), input.positionWS, normalForTex, dpdx, dpdy) * input.groundColor.rgb;
-        surfaceData.albedo = lerp(baseAlbedo, rockAlbedo, rockWeight);
+        // Граница резкая и рваная: вес камня из вершин сдвигается шумом по миру и режется по 0,5.
+        // Шум зависит и от высоты, чтобы на обрывах край тоже был неровным.
+        float2 q = input.positionWS.xz + input.positionWS.y * float2(0.61, -0.43);
+        float noise = GroundValueNoise(q * 0.45) * 0.65 + GroundValueNoise(q * 1.7 + 17.3) * 0.35;
+        float edge = rockWeight + (noise - 0.5) * EMBERHOLD_EDGE_RAGGED;
+        float aa = clamp(fwidth(edge), 0.01, 0.1);
+        half rock = smoothstep(0.5 - aa, 0.5 + aa, edge);
+        // Тёмная кайма травы у камня — рисованный контур.
+        half rim = smoothstep(0.5 - EMBERHOLD_EDGE_RIM, 0.5 - aa, edge);
+        baseAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_RIM_DARK, rim);
+        half3 rockAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_RockMap, sampler_RockMap), input.positionWS, normalForTex,
+            dpdx, dpdy, detailFade, flatFade) * input.groundColor.rgb;
+        surfaceData.albedo = lerp(baseAlbedo, rockAlbedo, rock);
     }
 
 #ifdef LOD_FADE_CROSSFADE
