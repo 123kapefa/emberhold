@@ -45,3 +45,14 @@ MonoBehaviour:
     groveRadius: 6
     groveDensity: 0.4
     groveMainShare: 0.75
+    groundCover:
+      density: 0.15
+      growsOnStone: 1
+      open:
+      - kind: {fileID: 11400000, guid: b121440c43c645fba445fb6436a1d06c, type: 2}
+        weight: 3
+      - kind: {fileID: 11400000, guid: 3e19f06ed4444519a027add9842a8627, type: 2}
+        weight: 3
+      - kind: {fileID: 11400000, guid: 302119fe19ac42be8ea39c411052d0c8, type: 2}
+        weight: 1
+      underTrees: []

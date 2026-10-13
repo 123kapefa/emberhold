@@ -178,7 +178,7 @@ MonoBehaviour:
     name: Скрытая долина
     center: {x: 124, y: 420}
     radius: {x: 30, y: 22}
-    profile: {fileID: 11400000, guid: 542b4e21baf443ee932651dcdfef0950, type: 2}
+    profile: {fileID: 11400000, guid: 574b79edc7884ce68d24b35e374353fa, type: 2}
     floorHeight: 19
     rise: 0
     riseDirection: 0

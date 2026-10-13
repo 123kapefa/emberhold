@@ -62,6 +62,24 @@ namespace Emberhold.Tests.PlayMode.Trees
         }
 
         [UnityTest]
+        public IEnumerator PrototypeScene_GroundIsCoveredAroundCamera()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var view = Object.FindAnyObjectByType<GroundCoverView>();
+            Assert.That(view, Is.Not.Null, "В сцене есть мелочь на земле");
+            var cover = view.Cover;
+            Assert.That(cover, Is.Not.Null);
+            Assert.That(cover.Count, Is.GreaterThan(1000), "Мелочь посажена ковром");
+            var forest = Object.FindAnyObjectByType<ForestView>().Forest;
+            foreach (var patch in cover.Patches)
+                Assert.That(forest.At(new Vector2Int(patch.Cell.x, patch.Cell.z)), Is.Null, "Не в столбце дерева");
+            Assert.That(view.ShownRegions, Is.GreaterThan(0), "У камеры участки нарисованы");
+        }
+
+        [UnityTest]
         public IEnumerator PrototypeScene_WorkersChopTreeAndFeedCampfire()
         {
             yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);

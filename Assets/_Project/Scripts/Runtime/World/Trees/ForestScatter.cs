@@ -215,7 +215,7 @@ namespace Emberhold.World.Trees
         }
 
         /// <summary>Верхний блок столбца — трава (или камень, если можно), а над ним есть пустая клетка: туда и встанет дерево.</summary>
-        private static bool TryGroundTop(VoxelWorld world, int x, int z, bool onStone, out Vector3Int cell)
+        internal static bool TryGroundTop(VoxelWorld world, int x, int z, bool onStone, out Vector3Int cell)
         {
             cell = default;
             for (var y = world.SizeInBlocks.y - 2; y >= 0; y--)
@@ -237,7 +237,7 @@ namespace Emberhold.World.Trees
         }
 
         /// <summary>Псевдослучайное число от 0 до 1 для столбца: зависит только от seed, координат и номера броска.</summary>
-        private static float Random01(int seed, int x, int z, int roll)
+        internal static float Random01(int seed, int x, int z, int roll)
         {
             unchecked
             {
