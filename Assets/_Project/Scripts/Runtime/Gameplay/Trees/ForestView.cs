@@ -9,7 +9,8 @@ using UnityEngine.Rendering;
 namespace Emberhold.Gameplay.Trees
 {
     /// <summary>
-    /// Лес в сцене: при старте рассаживает деревья по профилям местности мира (фон и зоны, <see cref="ForestScatter"/>),
+    /// Лес в сцене: при старте рассаживает деревья по профилям местности мира (фон и зоны, <see cref="ForestScatter"/>;
+    /// у каждого огня сцены роща на краю круга света),
     /// показывает каждое гранёной моделью вида (<see cref="TreeMeshBuilder"/>) и убирает упавшие. Упавшее дерево кладёт поленья
     /// в те же ресурсы на земле, что и камень (<see cref="DroppedItemsView"/>). Рубят деревья рабочие (WorkerCrew),
     /// приказ рубить ставит игрок инструментом 5 (BlockEditController).
@@ -113,7 +114,8 @@ namespace Emberhold.Gameplay.Trees
         {
             var half = Mathf.Max(tree.Species.CrownWidth, tree.Species.TrunkWidth) * 0.5f;
             var bottom = Forest.BaseHeight(worldView.World, tree) - tree.Cell.y;
-            return (new Vector3(0.5f - half, bottom, 0.5f - half), new Vector3(0.5f + half, bottom + tree.Species.Height, 0.5f + half));
+            var center = new Vector2(0.5f, 0.5f) + tree.Offset;
+            return (new Vector3(center.x - half, bottom, center.y - half), new Vector3(center.x + half, bottom + tree.Species.Height, center.y + half));
         }
 
         private void Plant()
@@ -124,8 +126,15 @@ namespace Emberhold.Gameplay.Trees
             if (terrain == null)
                 return;
             var fires = new List<Vector3>();
+            // У каждого огня сцены роща стоит на краю круга света: первые дрова рядом с лагерем.
+            var starts = new List<ForestStart>();
             foreach (var source in FindObjectsByType<LightSource>())
-                fires.Add(worldView.transform.InverseTransformPoint(source.transform.position));
+            {
+                var fire = worldView.transform.InverseTransformPoint(source.transform.position);
+                fires.Add(fire);
+                if (source.FullRadius > 0f)
+                    starts.Add(new ForestStart(new Vector2(fire.x, fire.z), source.FullRadius));
+            }
             var clear = clearAroundFire * clearAroundFire;
             var planted = ForestScatter.Scatter(worldView.World, terrain.Seed, worldView.ForestAt, forest, column =>
             {
@@ -136,7 +145,7 @@ namespace Emberhold.Gameplay.Trees
                         return true;
                 }
                 return false;
-            });
+            }, starts);
             Debug.Log($"[Forest] Посажено деревьев: {planted}.", this);
         }
 
@@ -162,7 +171,8 @@ namespace Emberhold.Gameplay.Trees
             var space = worldView.transform;
             var bottom = Forest.BaseHeight(worldView.World, tree);
             var lean = Quaternion.Euler(Range(random, -maxLean, maxLean), 0f, Range(random, -maxLean, maxLean));
-            root.transform.SetPositionAndRotation(space.TransformPoint(new Vector3(tree.Cell.x + 0.5f, bottom, tree.Cell.z + 0.5f)),
+            var position = tree.Position;
+            root.transform.SetPositionAndRotation(space.TransformPoint(new Vector3(position.x, bottom, position.y)),
                 space.rotation * lean * Quaternion.Euler(0f, Range(random, 0f, 360f), 0f));
             root.transform.localScale = Vector3.one * Range(random, 1f - sizeSpread, 1f + sizeSpread * 0.5f);
 
@@ -171,7 +181,7 @@ namespace Emberhold.Gameplay.Trees
             if (material != null)
                 renderer.sharedMaterial = material;
             renderer.shadowCastingMode = ShadowCastingMode.On;
-            var grass = worldView.World.GrassTint?.Sample(tree.Cell.x + 0.5f, tree.Cell.z + 0.5f) ?? Color.white;
+            var grass = worldView.World.GrassTint?.Sample(position.x, position.y) ?? Color.white;
             properties.SetColor(BaseColorId, TreeMeshBuilder.CrownTint(species.CrownColor, grass, seed ^ 0x5bd1e995));
             renderer.SetPropertyBlock(properties);
             // Без коллайдера: дерево выбирается лучом по коробке (Forest.Raycast) и не мешает лучу выбора блока.

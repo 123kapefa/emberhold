@@ -254,12 +254,46 @@ namespace Emberhold.Tests.EditMode.Trees
             var expected = mix.Density * size.x * size.z;
             Assert.That(planted, Is.InRange(expected * 0.5f, expected * 1.5f), "Деревьев примерно столько же, сколько без рощ");
 
+            var shifted = 0;
+            foreach (var tree in forest.Trees)
+            {
+                Assert.That(Mathf.Abs(tree.Offset.x), Is.LessThanOrEqualTo(ForestScatter.MaxOffset));
+                Assert.That(Mathf.Abs(tree.Offset.y), Is.LessThanOrEqualTo(ForestScatter.MaxOffset));
+                if (tree.Offset.sqrMagnitude > 0.01f)
+                    shifted++;
+            }
+            Assert.That(shifted, Is.GreaterThan(planted / 2), "Стволы сдвинуты в клетке: роща не стоит рядами");
+
             // Тот же seed — те же рощи.
             var again = new Forest(items);
             ForestScatter.Scatter(big, 11, mix, null, again);
             Assert.That(again.Groves, Has.Count.EqualTo(forest.Groves.Count));
             for (var i = 0; i < forest.Groves.Count; i++)
                 Assert.That(again.Groves[i].Center, Is.EqualTo(forest.Groves[i].Center));
+        }
+
+        [Test]
+        public void Scatter_StartGroveEdgeReachesIntoFireLight()
+        {
+            var fire = new Vector2(64f, 64f);
+            const float light = 12f;
+            var mix = new ForestMix(0.04f, Entry(birch, 1f)).WithGroves(0.75f, 6f);
+
+            ForestScatter.Scatter(GrassWorld(8), 3, mix, null, forest,
+                column => (new Vector2(column.x + 0.5f, column.y + 0.5f) - fire).sqrMagnitude <= 9f,
+                new[] { new ForestStart(fire, light) });
+
+            var start = forest.Groves[0];
+            Assert.That(Vector2.Distance(start.Center, fire), Is.EqualTo(light).Within(1e-3f), "Центр рощи на краю круга света");
+            var lit = 0;
+            foreach (var tree in start.Trees)
+            {
+                var distance = Vector2.Distance(tree.Position, fire);
+                Assert.That(distance, Is.GreaterThan(3f), "У самого костра место свободно");
+                if (distance <= light)
+                    lit++;
+            }
+            Assert.That(lit, Is.GreaterThanOrEqualTo(4), "Край рощи в круге света: первые дрова рядом");
         }
 
         [Test]

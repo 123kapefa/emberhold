@@ -30,6 +30,15 @@ namespace Emberhold.World.Trees
 
         public float Health => Mathf.Max(0f, Species.Durability - Damage);
 
+        /// <summary>
+        /// Сдвиг ствола от центра клетки по X и Z в блоках (до ±<see cref="ForestScatter.MaxOffset"/>): деревья в роще
+        /// не стоят рядами. Дерево по-прежнему занимает свою клетку.
+        /// </summary>
+        public Vector2 Offset { get; internal set; }
+
+        /// <summary>Точка ствола на карте по X и Z: центр клетки со сдвигом.</summary>
+        public Vector2 Position => new(Cell.x + 0.5f + Offset.x, Cell.z + 0.5f + Offset.y);
+
         /// <summary>Роща, в которой растёт дерево; null — одиночное дерево.</summary>
         public Grove Grove { get; internal set; }
 
@@ -165,8 +174,9 @@ namespace Emberhold.World.Trees
             {
                 var half = Mathf.Max(tree.Species.CrownWidth, tree.Species.TrunkWidth) * 0.5f;
                 var bottom = BaseHeight(world, tree);
-                var min = new Vector3(tree.Cell.x + 0.5f - half, bottom, tree.Cell.z + 0.5f - half);
-                var max = new Vector3(tree.Cell.x + 0.5f + half, bottom + tree.Species.Height, tree.Cell.z + 0.5f + half);
+                var position = tree.Position;
+                var min = new Vector3(position.x - half, bottom, position.y - half);
+                var max = new Vector3(position.x + half, bottom + tree.Species.Height, position.y + half);
                 if (!RayBox(origin, direction, min, max, out var t) || t >= distance)
                     continue;
                 hit = tree;

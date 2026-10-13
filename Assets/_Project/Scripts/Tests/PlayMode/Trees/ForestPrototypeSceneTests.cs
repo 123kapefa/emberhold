@@ -51,6 +51,13 @@ namespace Emberhold.Tests.PlayMode.Trees
                     farYield = Mathf.Max(farYield, tree.Species.WoodYield);
             }
             Assert.That(nearYield, Is.GreaterThan(0), "У костра есть что рубить");
+            var lit = 0;
+            foreach (var tree in forest.Trees)
+            {
+                if (Vector2.Distance(tree.Position, new Vector2(fire.x, fire.z)) <= campfire.FullRadius)
+                    lit++;
+            }
+            Assert.That(lit, Is.GreaterThanOrEqualTo(3), "Край стартовой рощи в круге света костра");
             Assert.That(farYield, Is.GreaterThan(nearYield), "Дальше растут деревья крупнее");
         }
 
