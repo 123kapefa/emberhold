@@ -56,11 +56,12 @@ namespace Emberhold.World.Editing
         /// <summary>
         /// Попали в верх блока, а над ним скос, у которого часть верха лежит на полу ячейки (внешний угол ската):
         /// там виден верх нижнего блока, но глазом это пол самого скоса — выбираем скос. Фигурные формы
-        /// (столб, балка) не трогаем: пол вокруг них — верх нижнего блока.
+        /// (столб, балка) не трогаем: пол вокруг них — верх нижнего блока. На нетронутой гладкой земле
+        /// (<see cref="TerrainSurface"/>) каждый слой поверхности и так принадлежит своему блоку — её не поправляем.
         /// </summary>
         public static BlockHit PreferSlopeAbove(VoxelWorld world, BlockHit hit)
         {
-            if (hit.Face != Vector3Int.up)
+            if (hit.Face != Vector3Int.up || IsSmoothGround(world, hit.Block))
                 return hit;
             // Верх неполного блока лежит внутри его ячейки — это он сам, а не пол ячейки сверху.
             var above = hit.Block + Vector3Int.up;
@@ -70,6 +71,13 @@ namespace Emberhold.World.Editing
             if (world.GetBlock(above).IsAir || shape.IsCatalog || shape.CoversFloor)
                 return hit;
             return new BlockHit(above, Vector3Int.up);
+        }
+
+        /// <summary>Блок — земля нетронутого столбца, которая рисуется гладкой поверхностью.</summary>
+        private static bool IsSmoothGround(VoxelWorld world, Vector3Int block)
+        {
+            var surface = world.Surface;
+            return surface != null && surface.IsNatural(block.x, block.z) && block.y <= surface.TopY(block.x, block.z);
         }
 
         /// <summary>

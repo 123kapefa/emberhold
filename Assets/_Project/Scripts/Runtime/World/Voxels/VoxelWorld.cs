@@ -73,10 +73,14 @@ namespace Emberhold.World.Voxels
             data.Set(local.x, local.y, local.z, value);
             Version++;
 
-            // Тронули землю нетронутого столбца (блок под поверхностью): он и соседи (у них появляются стенки к нему) перерисовываются целиком.
-            if (Surface != null && Surface.IsNatural(block.x, block.z) && Surface.Covers(block.x, block.y, block.z)
-                && Surface.MarkEdited(block.x, block.z))
-                MarkColumnsAround(block.x, block.z);
+            // Тронули землю нетронутого столбца (блок под поверхностью): выкопанный сверху блок опускает верх столбца,
+            // любая другая правка делает его тронутым. Он и соседи (у них появляются стенки к нему) перерисовываются целиком.
+            if (Surface != null && Surface.IsNatural(block.x, block.z) && Surface.Covers(block.x, block.y, block.z))
+            {
+                var dugTop = value.IsAir && block.y == Surface.TopY(block.x, block.z) && Surface.LowerTop(block.x, block.z);
+                if (dugTop || Surface.MarkEdited(block.x, block.z))
+                    MarkColumnsAround(block.x, block.z);
+            }
 
             // Блок на границе чанка: соседние чанки по этим осям, включая диагонали. У соседа могла открыться
             // или закрыться грань, а бахрома травы на верхе блоков (GrassEdge) смотрит на соседние столбцы

@@ -115,6 +115,40 @@ namespace Emberhold.Tests.EditMode.Trees
         }
 
         [Test]
+        public void Scatter_OnSmoothGround_RockyPlacesCountAsStone()
+        {
+            // Гладкая земля: на каменной половине (x < 32) верх — кусок склона из травы над камнем,
+            // но место каменное, и обычный лес там не растёт.
+            const int h = BlockShape.MaxHeight;
+            var smooth = new VoxelWorld(new Vector3Int(4, 1, 4));
+            var corners = new int[65, 65];
+            var rockWeights = new byte[65, 65];
+            for (var z = 0; z <= 64; z++)
+            for (var x = 0; x <= 64; x++)
+            {
+                corners[x, z] = Ground * h + 4;
+                rockWeights[x, z] = x <= 32 ? (byte)255 : (byte)0;
+            }
+            var rock = new TerrainMaterials
+            {
+                Surface = BlockMaterials.Stone, Subsurface = BlockMaterials.Stone, SubsurfaceDepth = 1,
+                Deep = BlockMaterials.Stone, Bed = BlockMaterials.Stone,
+            };
+            var materials = new TerrainMaterials[64, 64];
+            for (var z = 0; z < 64; z++)
+            for (var x = 0; x < 64; x++)
+                materials[x, z] = x < 32 ? rock : TerrainMaterials.Default;
+            CornerTerrain.FillSmooth(smooth, corners, materials, new int[64, 64]).SetRock(rockWeights);
+            Assert.That(smooth.GetBlock(new Vector3Int(10, Ground, 10)).Material, Is.EqualTo(BlockMaterials.Grass));
+
+            ForestScatter.Scatter(smooth, 3, new ForestMix(0.2f, Entry(birch, 1f)), null, forest);
+
+            Assert.That(forest.Trees, Is.Not.Empty);
+            foreach (var tree in forest.Trees)
+                Assert.That(tree.Cell.x, Is.GreaterThanOrEqualTo(32), "На каменном месте деревья не растут");
+        }
+
+        [Test]
         public void Hit_FellsTreeWhenDurabilityIsGoneAndDropsWoodAtBase()
         {
             var cell = new Vector3Int(10, Ground, 10);

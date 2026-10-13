@@ -43,22 +43,17 @@ namespace Emberhold.World.Meshing
                 var index = ChunkData.Index(x, y, z);
                 var p = new Vector3(x, y, z);
 
-                // Земля нетронутого столбца рисуется гладкой поверхностью, а не гранями блоков.
-                // Стенки к тронутым соседям — по слою на каждый блок, чтобы клик по стенке ямы попадал в свой блок.
+                // Земля нетронутого столбца рисуется гладкой поверхностью, а не гранями блоков: каждый блок —
+                // своим слоем поверхности. Стенки к соседям ниже (тронутым или с выкопанным верхом) — тоже по слою на блок,
+                // чтобы клик по стенке ямы попадал в свой блок.
                 if (surface != null && surface.IsNatural(origin.x + x, origin.z + z))
                 {
                     var global = origin + new Vector3Int(x, y, z);
-                    var top = surface.TopY(global.x, global.z);
-                    if (global.y < top)
+                    if (global.y <= surface.TopY(global.x, global.z))
                     {
-                        AddSurfaceWalls(output, surface, material, index, p, global, false);
-                        continue;
-                    }
-                    if (global.y == top)
-                    {
-                        AddSurface(output, surface, index, p, global);
+                        AddSurfaceLayer(output, surface, material, index, p, global);
                         AddSurfaceWalls(output, surface, material == BlockMaterials.Grass ? BlockMaterials.Dirt : material,
-                            index, p, global, true);
+                            index, p, global);
                         continue;
                     }
                 }
@@ -97,90 +92,211 @@ namespace Emberhold.World.Meshing
             output.ApplyGrassTint(world.GrassTint, origin);
         }
 
+        /// <summary>Вершина гладкой поверхности: место в ячейке (0..1), высота в шестнадцатых от дна мира, нормаль и каменность.</summary>
+        private struct SurfacePoint
+        {
+            public float X, Z, Height, Rock;
+            public Vector3 Normal;
+
+            public static SurfacePoint Lerp(SurfacePoint a, SurfacePoint b, float t) => new()
+            {
+                X = Mathf.Lerp(a.X, b.X, t),
+                Z = Mathf.Lerp(a.Z, b.Z, t),
+                Height = Mathf.Lerp(a.Height, b.Height, t),
+                Rock = Mathf.Lerp(a.Rock, b.Rock, t),
+                Normal = Vector3.Lerp(a.Normal, b.Normal, t),
+            };
+        }
+
         /// <summary>
-        /// Гладкая поверхность нетронутого столбца (<see cref="TerrainSurface"/>): верх по высотам углов
-        /// поверхности с нормалями по соседним углам и весом камня в вершинах. Треугольники принадлежат
-        /// верхнему блоку земли столбца.
+        /// Слой гладкой поверхности нетронутого столбца (<see cref="TerrainSurface"/>), который принадлежит блоку:
+        /// часть двух треугольников поверхности с высотой в его слое (выше пола, до потолка включительно),
+        /// с нормалями по соседним углам и весом камня в вершинах. Если верх столбца выкопан и поверхность
+        /// выше него, верхний блок закрыт сверху ровной крышкой на своём потолке — своим материалом.
         /// </summary>
-        private static void AddSurface(ChunkMeshData output, TerrainSurface surface, int index, Vector3 p, Vector3Int block)
+        private static void AddSurfaceLayer(ChunkMeshData output, TerrainSurface surface, byte material, int index,
+            Vector3 p, Vector3Int block)
         {
             int gx = block.x, gz = block.z;
-            var floor = block.y * BlockShape.MaxHeight;
-            int h00 = surface.Corner(gx, gz) - floor, h10 = surface.Corner(gx + 1, gz) - floor;
-            int h01 = surface.Corner(gx, gz + 1) - floor, h11 = surface.Corner(gx + 1, gz + 1) - floor;
-            var c00 = p + new Vector3(0, h00 * Sixteenth, 0);
-            var c10 = p + new Vector3(1, h10 * Sixteenth, 0);
-            var c01 = p + new Vector3(0, h01 * Sixteenth, 1);
-            var c11 = p + new Vector3(1, h11 * Sixteenth, 1);
-            Vector3 n00 = surface.Normal(gx, gz), n10 = surface.Normal(gx + 1, gz);
-            Vector3 n01 = surface.Normal(gx, gz + 1), n11 = surface.Normal(gx + 1, gz + 1);
-            var uv00 = new Vector2(p.x, p.z);
-            var uv10 = new Vector2(p.x + 1, p.z);
-            var uv01 = new Vector2(p.x, p.z + 1);
-            var uv11 = new Vector2(p.x + 1, p.z + 1);
-            // Вся гладкая земля — в подмеше травы: её материал смешивает траву с камнем по весу в вершинах.
-            // Камень ещё и освещается гранями (AddSurfaceTriangle), трава — мягко.
-            float r00 = surface.Rock(gx, gz), r10 = surface.Rock(gx + 1, gz);
-            float r01 = surface.Rock(gx, gz + 1), r11 = surface.Rock(gx + 1, gz + 1);
-            if (Mathf.Abs(h00 - h11) <= Mathf.Abs(h10 - h01))
+            SurfacePoint Corner(int dx, int dz) => new()
             {
-                AddSurfaceTriangle(output, index, c00, c01, c11, n00, n01, n11, uv00, uv01, uv11, r00, r01, r11);
-                AddSurfaceTriangle(output, index, c00, c11, c10, n00, n11, n10, uv00, uv11, uv10, r00, r11, r10);
+                X = dx,
+                Z = dz,
+                Height = surface.Corner(gx + dx, gz + dz),
+                Rock = surface.Rock(gx + dx, gz + dz),
+                Normal = surface.Normal(gx + dx, gz + dz),
+            };
+
+            SurfacePoint c00 = Corner(0, 0), c10 = Corner(1, 0), c01 = Corner(0, 1), c11 = Corner(1, 1);
+            var floor = block.y * BlockShape.MaxHeight;
+            var isTop = block.y == surface.TopY(gx, gz);
+            if (Mathf.Abs(c00.Height - c11.Height) <= Mathf.Abs(c10.Height - c01.Height))
+            {
+                AddSurfaceSlice(output, material, index, p, floor, isTop, c00, c01, c11);
+                AddSurfaceSlice(output, material, index, p, floor, isTop, c00, c11, c10);
             }
             else
             {
-                AddSurfaceTriangle(output, index, c01, c11, c10, n01, n11, n10, uv01, uv11, uv10, r01, r11, r10);
-                AddSurfaceTriangle(output, index, c01, c10, c00, n01, n10, n00, uv01, uv10, uv00, r01, r10, r00);
+                AddSurfaceSlice(output, material, index, p, floor, isTop, c01, c11, c10);
+                AddSurfaceSlice(output, material, index, p, floor, isTop, c01, c10, c00);
             }
         }
 
         /// <summary>
-        /// Стенки блока нетронутого столбца к тронутым соседям (стенки ям и подкопов): от пола слоя до края
-        /// поверхности, у засыпанных блоков — не выше своего слоя. Каждый слой принадлежит своему блоку.
+        /// Часть треугольника поверхности в слое блока от пола floor (шестнадцатые) на блок вверх, а у верхнего
+        /// блока столбца — ещё и ровная крышка там, где треугольник выше потолка.
+        /// </summary>
+        private static void AddSurfaceSlice(ChunkMeshData output, byte material, int index, Vector3 p, int floor, bool isTop,
+            SurfacePoint a, SurfacePoint b, SurfacePoint c)
+        {
+            var ceiling = floor + BlockShape.MaxHeight;
+            var face = Normal(SurfacePosition(p, floor, a), SurfacePosition(p, floor, b), SurfacePosition(p, floor, c));
+            Span<SurfacePoint> triangle = stackalloc SurfacePoint[] { a, b, c };
+            Span<SurfacePoint> clipped = stackalloc SurfacePoint[8];
+            Span<SurfacePoint> layer = stackalloc SurfacePoint[8];
+
+            var count = Clip(triangle, clipped, floor, true);
+            count = Clip(clipped[..count], layer, ceiling, false);
+            // Часть ровно на полу слоя — верх блока ниже, не наша.
+            var above = false;
+            for (var i = 0; i < count; i++)
+                above |= layer[i].Height > floor + 1e-3f;
+            if (above)
+            {
+                for (var i = 1; i + 1 < count; i++)
+                    AddSurfaceTriangle(output, index, p, floor, face, layer[0], layer[i], layer[i + 1]);
+            }
+
+            if (!isTop)
+                return;
+            count = Clip(triangle, layer, ceiling, true);
+            var higher = false;
+            for (var i = 0; i < count; i++)
+                higher |= layer[i].Height > ceiling + 1e-3f;
+            if (!higher)
+                return;
+            var top = p + Vector3.up;
+            for (var i = 1; i + 1 < count; i++)
+            {
+                SurfacePoint u = layer[0], v = layer[i], w = layer[i + 1];
+                output.AddTriangle(material, index,
+                    top + new Vector3(u.X, 0f, u.Z), top + new Vector3(v.X, 0f, v.Z), top + new Vector3(w.X, 0f, w.Z), Vector3.up,
+                    new Vector2(p.x + u.X, p.z + u.Z), new Vector2(p.x + v.X, p.z + v.Z), new Vector2(p.x + w.X, p.z + w.Z));
+            }
+        }
+
+        /// <summary>
+        /// Отрезать от выпуклого многоугольника часть ниже (keepAbove) или выше высоты level (шестнадцатые).
+        /// Обход точек сохраняется. Возвращает число точек в result (меньше трёх — ничего не осталось).
+        /// </summary>
+        private static int Clip(ReadOnlySpan<SurfacePoint> polygon, Span<SurfacePoint> result, float level, bool keepAbove)
+        {
+            var count = 0;
+            for (var i = 0; i < polygon.Length; i++)
+            {
+                var a = polygon[i];
+                var b = polygon[(i + 1) % polygon.Length];
+                var da = keepAbove ? a.Height - level : level - a.Height;
+                var db = keepAbove ? b.Height - level : level - b.Height;
+                if (da >= 0f)
+                    result[count++] = a;
+                if (da > 0f && db < 0f || da < 0f && db > 0f)
+                    result[count++] = SurfacePoint.Lerp(a, b, da / (da - db));
+            }
+            return count < 3 ? 0 : count;
+        }
+
+        private static Vector3 SurfacePosition(Vector3 p, int floor, SurfacePoint point) =>
+            p + new Vector3(point.X, (point.Height - floor) * Sixteenth, point.Z);
+
+        /// <summary>
+        /// Стенки блока нетронутого столбца к соседям ниже него (стенки ям, подкопов и выкопанного верха соседа):
+        /// в слое блока от верха соседа до края поверхности. У тронутого соседа верх — дно мира, у нетронутого —
+        /// срезанный верх его земли. Край поверхности на ребре прямой, а стенка идёт по нему, обрезанному
+        /// по слою и с изломом там, где он выходит за слой. Каждый слой принадлежит своему блоку.
         /// </summary>
         private static void AddSurfaceWalls(ChunkMeshData output, TerrainSurface surface, byte material, int index,
-            Vector3 p, Vector3Int block, bool isTop)
+            Vector3 p, Vector3Int block)
         {
             int gx = block.x, gz = block.z;
             var floor = block.y * BlockShape.MaxHeight;
-            int Edge(int cx, int cz)
+
+            void Wall(Side side, int nx, int nz, int ax, int az, int bx, int bz)
             {
-                var h = surface.Corner(cx, cz) - floor;
-                return isTop ? Mathf.Max(h, 0) : Mathf.Clamp(h, 0, BlockShape.MaxHeight);
+                if (!surface.Contains(nx, nz))
+                    return;
+                // Ниже верха соседа стенку закрывает он сам.
+                var below = surface.IsNatural(nx, nz) ? surface.Ceiling(nx, nz) : 0;
+                if (below >= surface.Ceiling(gx, gz))
+                    return;
+                AddSurfaceWall(output, material, index, p, side, surface.Corner(ax, az) - floor, surface.Corner(bx, bz) - floor,
+                    Mathf.Max(below - floor, 0));
             }
 
-            void Wall(Side side, int ax, int az, int bx, int bz)
-            {
-                int ha = Edge(ax, az), hb = Edge(bx, bz);
-                if (ha > 0 || hb > 0)
-                    AddSideQuad(output, material, index, p, side, (0f, 0), (0f, ha), (1f, hb), (1f, 0));
-            }
-
-            if (!IsSurfaceNeighbour(surface, gx + 1, gz))
-                Wall(Side.Right, gx + 1, gz, gx + 1, gz + 1);
-            if (!IsSurfaceNeighbour(surface, gx - 1, gz))
-                Wall(Side.Left, gx, gz, gx, gz + 1);
-            if (!IsSurfaceNeighbour(surface, gx, gz + 1))
-                Wall(Side.Forward, gx, gz + 1, gx + 1, gz + 1);
-            if (!IsSurfaceNeighbour(surface, gx, gz - 1))
-                Wall(Side.Back, gx, gz, gx + 1, gz);
+            Wall(Side.Right, gx + 1, gz, gx + 1, gz, gx + 1, gz + 1);
+            Wall(Side.Left, gx - 1, gz, gx, gz, gx, gz + 1);
+            Wall(Side.Forward, gx, gz + 1, gx, gz + 1, gx + 1, gz + 1);
+            Wall(Side.Back, gx, gz - 1, gx, gz, gx + 1, gz);
         }
 
-        /// <summary>Сосед тоже рисуется поверхностью или это край мира: стенка к нему не нужна.</summary>
-        private static bool IsSurfaceNeighbour(TerrainSurface surface, int x, int z) =>
-            !surface.Contains(x, z) || surface.IsNatural(x, z);
+        /// <summary>
+        /// Стенка в слое блока под краем поверхности, который на ребре идёт прямо от высоты a (t = 0) до b (t = 1)
+        /// (шестнадцатые от пола слоя): от низа low до края, обрезанного потолком слоя.
+        /// </summary>
+        private static void AddSurfaceWall(ChunkMeshData output, byte material, int index, Vector3 p, Side side,
+            float a, float b, float low)
+        {
+            const float top = BlockShape.MaxHeight;
+            if (low >= top || a <= low && b <= low)
+                return;
+
+            float Edge(float t) => Mathf.Min(top, Mathf.Lerp(a, b, t));
+            float Cross(float level) => (level - a) / (b - a);
+
+            // Где край выше низа стенки, и где он выходит за потолок слоя.
+            float from = 0f, to = 1f;
+            if (a < low)
+                from = Cross(low);
+            else if (b < low)
+                to = Cross(low);
+            Span<float> stops = stackalloc float[3];
+            var count = 0;
+            stops[count++] = from;
+            if (a < top != b < top)
+            {
+                var kink = Cross(top);
+                if (kink > from && kink < to)
+                    stops[count++] = kink;
+            }
+            stops[count++] = to;
+
+            for (var i = 0; i + 1 < count; i++)
+            {
+                float t0 = stops[i], t1 = stops[i + 1];
+                float h0 = Edge(t0), h1 = Edge(t1);
+                if (h0 - low < 1e-4f)
+                    AddSideTriangle(output, material, index, p, side, (t0, low), (t1, h1), (t1, low));
+                else if (h1 - low < 1e-4f)
+                    AddSideTriangle(output, material, index, p, side, (t0, low), (t0, h0), (t1, low));
+                else
+                    AddSideQuad(output, material, index, p, side, (t0, low), (t0, h0), (t1, h1), (t1, low));
+            }
+        }
 
         /// <summary>
         /// Треугольник гладкой земли в подмеше травы. Трава освещается мягко (нормали по соседним углам),
-        /// камень — гранями: чем каменнее вершина, тем ближе её нормаль к нормали самого треугольника.
+        /// камень — гранями: чем каменнее вершина, тем ближе её нормаль к нормали треугольника поверхности face.
         /// </summary>
-        private static void AddSurfaceTriangle(ChunkMeshData output, int index, Vector3 a, Vector3 b, Vector3 c,
-            Vector3 na, Vector3 nb, Vector3 nc, Vector2 uva, Vector2 uvb, Vector2 uvc, float ra, float rb, float rc)
+        private static void AddSurfaceTriangle(ChunkMeshData output, int index, Vector3 p, int floor, Vector3 face,
+            SurfacePoint a, SurfacePoint b, SurfacePoint c)
         {
-            var face = Normal(a, b, c);
-            output.AddTriangle(BlockMaterials.Grass, index, a, b, c,
-                Vector3.Lerp(na, face, ra).normalized, Vector3.Lerp(nb, face, rb).normalized, Vector3.Lerp(nc, face, rc).normalized,
-                uva, uvb, uvc, ra, rb, rc);
+            output.AddTriangle(BlockMaterials.Grass, index,
+                SurfacePosition(p, floor, a), SurfacePosition(p, floor, b), SurfacePosition(p, floor, c),
+                Vector3.Lerp(a.Normal.normalized, face, a.Rock).normalized,
+                Vector3.Lerp(b.Normal.normalized, face, b.Rock).normalized,
+                Vector3.Lerp(c.Normal.normalized, face, c.Rock).normalized,
+                new Vector2(p.x + a.X, p.z + a.Z), new Vector2(p.x + b.X, p.z + b.Z), new Vector2(p.x + c.X, p.z + c.Z),
+                a.Rock, b.Rock, c.Rock);
         }
 
         /// <summary>
@@ -192,10 +308,11 @@ namespace Emberhold.World.Meshing
             var global = origin + new Vector3Int(x, y, z);
             var block = ChunkData.IsInside(x, y, z) ? data.Get(x, y, z)
                 : global.y < 0 ? Block.Full(BlockMaterials.Stone) : world.GetBlock(global);
-            // Верхний блок нетронутой земли не виден: на его месте гладкая поверхность, которая может быть
-            // ниже его верха. Грани соседей к нему рисуем, иначе у построек на земле остаются щели.
+            // Неполные блоки нетронутой земли не видны: на их месте гладкая поверхность, которая может быть
+            // ниже их углов. Грани соседей к ним рисуем, иначе у построек на земле остаются щели.
             var surface = world.Surface;
-            if (surface != null && !block.IsAir && surface.IsNatural(global.x, global.z) && global.y == surface.TopY(global.x, global.z))
+            if (surface != null && !block.IsAir && !block.Shape.IsFull && surface.IsNatural(global.x, global.z)
+                && global.y <= surface.TopY(global.x, global.z))
                 return Block.Air;
             return block;
         }
