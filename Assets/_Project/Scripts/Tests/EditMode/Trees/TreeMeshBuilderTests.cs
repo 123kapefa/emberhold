@@ -37,18 +37,58 @@ namespace Emberhold.Tests.EditMode.Trees
         [TestCaseSource(nameof(Shapes))]
         public void Build_FacesPointOutward(TreeShape shape)
         {
+            // Тела дерева (ствол, конусы, комки кроны) — замкнутые поверхности. Грани смотрят наружу, если
+            // 1) обход согласован: каждое ребро соседние грани проходят в разные стороны, и
+            // 2) у каждого тела объём по формуле Гаусса (сумма a · (b × c) / 6) положительный, а не вывернутый.
             var mesh = Build(Species(shape, 5f, 1.6f), 1);
             var vertices = mesh.vertices;
-            var normals = mesh.normals;
             var triangles = mesh.triangles;
+            var points = new Dictionary<Vector3, int>();
+            int Point(Vector3 p)
+            {
+                if (!points.TryGetValue(p, out var id))
+                    points[p] = id = points.Count;
+                return id;
+            }
+
+            var edges = new Dictionary<(int, int), int>();
+            var faces = new List<(int a, int b, int c)>();
             for (var i = 0; i < triangles.Length; i += 3)
             {
-                var a = vertices[triangles[i]];
-                var b = vertices[triangles[i + 1]];
-                var c = vertices[triangles[i + 2]];
-                // Лицевая сторона в Unity — обход по часовой стрелке: Cross(b − a, c − a) совпадает с нормалью грани.
-                Assert.That(Vector3.Dot(Vector3.Cross(b - a, c - a).normalized, normals[triangles[i]]), Is.GreaterThan(0.99f));
+                var face = (Point(vertices[triangles[i]]), Point(vertices[triangles[i + 1]]), Point(vertices[triangles[i + 2]]));
+                faces.Add(face);
+                foreach (var edge in new[] { (face.Item1, face.Item2), (face.Item2, face.Item3), (face.Item3, face.Item1) })
+                    edges[edge] = edges.TryGetValue(edge, out var n) ? n + 1 : 1;
             }
+            foreach (var (edge, count) in edges)
+            {
+                edges.TryGetValue((edge.Item2, edge.Item1), out var back);
+                Assert.That(back, Is.EqualTo(count), "Ребро в обе стороны поровну: поверхность замкнута, обход согласован");
+            }
+
+            // Тела — связные по общим точкам группы граней.
+            var parent = new int[points.Count];
+            for (var i = 0; i < parent.Length; i++)
+                parent[i] = i;
+            int Root(int i) => parent[i] == i ? i : parent[i] = Root(parent[i]);
+            foreach (var (a, b, c) in faces)
+            {
+                parent[Root(b)] = Root(a);
+                parent[Root(c)] = Root(a);
+            }
+            var byId = new Vector3[points.Count];
+            foreach (var (p, id) in points)
+                byId[id] = p;
+            var volumes = new Dictionary<int, float>();
+            foreach (var (a, b, c) in faces)
+            {
+                var root = Root(a);
+                volumes.TryGetValue(root, out var v);
+                volumes[root] = v + Vector3.Dot(byId[a], Vector3.Cross(byId[b], byId[c])) / 6f;
+            }
+            Assert.That(volumes.Count, Is.GreaterThan(1));
+            foreach (var volume in volumes.Values)
+                Assert.That(volume, Is.GreaterThan(0f), "Тело не вывернуто наизнанку");
         }
 
         [Test]

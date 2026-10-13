@@ -159,8 +159,28 @@ namespace Emberhold.World.Trees
             return fallen;
         }
 
-        /// <summary>Высота основания дерева: верх блока под ним (у ската — средняя по углам).</summary>
-        public static float BaseHeight(VoxelWorld world, TreeStand tree) => DroppedItems.RestHeight(world, tree.Cell);
+        /// <summary>Высота основания дерева: земля в точке ствола (<see cref="GroundHeight"/>), а не в центре клетки.</summary>
+        public static float BaseHeight(VoxelWorld world, TreeStand tree) => GroundHeight(world, tree.Cell, tree.Position);
+
+        /// <summary>
+        /// Высота земли под точкой point (X, Z) в клетке cell над землёй: на нетронутой земле — гладкая поверхность
+        /// в этой точке (по углам столбца), иначе верх блока под клеткой. Так стоят вещи, сдвинутые от центра клетки.
+        /// </summary>
+        public static float GroundHeight(VoxelWorld world, Vector3Int cell, Vector2 point)
+        {
+            var surface = world.Surface;
+            if (surface != null && surface.IsNatural(cell.x, cell.z) && cell.y - 1 <= surface.TopY(cell.x, cell.z))
+            {
+                var u = Mathf.Clamp01(point.x - cell.x);
+                var v = Mathf.Clamp01(point.y - cell.z);
+                var h00 = surface.CornerIn(cell.x, cell.z, cell.x, cell.z);
+                var h10 = surface.CornerIn(cell.x, cell.z, cell.x + 1, cell.z);
+                var h01 = surface.CornerIn(cell.x, cell.z, cell.x, cell.z + 1);
+                var h11 = surface.CornerIn(cell.x, cell.z, cell.x + 1, cell.z + 1);
+                return Mathf.Lerp(Mathf.Lerp(h00, h10, u), Mathf.Lerp(h01, h11, u), v) / BlockShape.MaxHeight;
+            }
+            return DroppedItems.RestHeight(world, cell);
+        }
 
         /// <summary>
         /// Ближайшее дерево, в которое попадает луч (координаты мира блоков), в пределах maxDistance.
