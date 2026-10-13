@@ -66,9 +66,13 @@ namespace Emberhold.World.Meshing
             var surface = world.Surface;
             if (surface != null && surface.IsNatural(x, z))
             {
-                // Гладкая земля, если на ней ничего не стоит.
+                // Гладкая земля, если на ней ничего не стоит. Выше выкопанного верха угол — крышка верхнего блока
+                // его материалом: трава, только если блок — трава.
                 var top = surface.TopY(x, z);
                 if (top + 1 < size.y && !world.GetBlock(new Vector3Int(x, top + 1, z)).IsAir)
+                    return false;
+                if (surface.Corner(cx, cz) > surface.Ceiling(x, z)
+                    && world.GetBlock(new Vector3Int(x, top, z)).Material != BlockMaterials.Grass)
                     return false;
                 return Mathf.Abs(surface.CornerIn(x, z, cx, cz) - height) <= MaxStep && surface.Rock(cx, cz) < 0.5f;
             }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Emberhold.Gameplay.Enemies;
 using Emberhold.Gameplay.Workers;
 using Emberhold.World.Editing;
 using Emberhold.World.Generation;
@@ -38,7 +39,7 @@ namespace Emberhold.Tests.EditMode.World
         };
 
         /// <summary>Мир 1×2×1 чанк: ровный камень на высоте Base, угол (5, 5) поднят до Bump.</summary>
-        private static VoxelWorld BumpWorld()
+        private static VoxelWorld BumpWorld(int bedLevel = 0)
         {
             var world = new VoxelWorld(new Vector3Int(1, 2, 1));
             var size = world.SizeInBlocks;
@@ -51,7 +52,11 @@ namespace Emberhold.Tests.EditMode.World
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
                 materials[x, z] = Rock;
-            CornerTerrain.FillSmooth(world, corners, materials, new int[size.x, size.z]);
+            var beds = new int[size.x, size.z];
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+                beds[x, z] = bedLevel;
+            CornerTerrain.FillSmooth(world, corners, materials, beds);
             world.TakeDirtyChunks(new List<Vector3Int>());
             return world;
         }
@@ -65,6 +70,39 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(world.GetBlock(Stone), Is.EqualTo(new Block(BlockMaterials.Stone, new BlockShape(8, 8, 8, 16))));
             Assert.That(world.GetBlock(Piece + Vector3Int.up).IsAir, Is.True);
             Assert.That(world.Surface.TopY(4, 4), Is.EqualTo(3));
+        }
+
+        [Test]
+        public void PieceUnderWater_IsBedMaterial()
+        {
+            var world = BumpWorld(4 * H);
+
+            Assert.That(world.GetBlock(Piece).Material, Is.EqualTo(Rock.Bed));
+        }
+
+        [Test]
+        public void GroundHeight_FromBelowTheTopPiece_IsSurfaceHeight()
+        {
+            // Поиск сверху вниз с середины столбца натыкается на блок под куском — высота всё равно поверхности.
+            var world = BumpWorld();
+            var center = world.Surface.CenterHeight(4, 4);
+
+            Assert.That(DroppedItems.RestHeight(world, Stone), Is.EqualTo(center).Within(1e-4f));
+            // Ползун с высоты 1 и шагом 1,7 дотягивается до 2,7 — до поверхности 2,81 не достаёт.
+            Assert.That(CrawlerFooting.TryStep(world, 4.5f, 4.5f, 1f, 1.7f, out var surface), Is.False);
+            Assert.That(surface, Is.EqualTo(center).Within(1e-4f));
+        }
+
+        [Test]
+        public void GrassEdge_OverDugTop_IsTheBlockMaterial()
+        {
+            // Выкопанный верх закрыт крышкой камня: бахрома травы с неё на соседей не идёт.
+            var world = BumpWorld();
+            Assert.That(GrassEdge.IsGrass(world, 4, 4, 5, 5, Bump), Is.True);
+
+            world.SetBlock(Piece, Block.Air);
+
+            Assert.That(GrassEdge.IsGrass(world, 4, 4, 5, 5, 3 * H), Is.False);
         }
 
         [Test]

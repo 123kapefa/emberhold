@@ -71,13 +71,14 @@ namespace Emberhold.World.Voxels
             * 0.25f / BlockShape.MaxHeight;
 
         /// <summary>
-        /// Высота земли для блока (x, y, z), если это верхний блок земли нетронутого столбца:
+        /// Высота земли для блока (x, y, z), если это земля нетронутого столбца (любой её слой — под поверхностью
+        /// лежат куски склона, и поиск сверху вниз от середины может наткнуться на любой из них):
         /// на неё встают рабочие, ползуны и предметы, чтобы не висеть над гладкой поверхностью и не тонуть в ней.
         /// </summary>
         public bool TryGroundHeight(int x, int y, int z, out float height)
         {
             height = 0f;
-            if (!IsNatural(x, z) || y != topY[x, z])
+            if (!IsNatural(x, z) || y > topY[x, z])
                 return false;
             height = CenterHeight(x, z);
             return true;
@@ -114,6 +115,10 @@ namespace Emberhold.World.Voxels
                 throw new ArgumentException($"Нужна сетка углов {SizeX + 1}×{SizeZ + 1}", nameof(weights));
             rock = weights;
         }
+
+        /// <summary>Каменный ли столбец: углы в среднем больше чем наполовину каменные (так генератор выбирает материалы).</summary>
+        public bool IsRocky(int x, int z) =>
+            rock != null && rock[x, z] + rock[x + 1, z] + rock[x, z + 1] + rock[x + 1, z + 1] > 2 * 255;
 
         /// <summary>Каменность угла, 0..1.</summary>
         public float Rock(int x, int z) => rock == null ? 0f : rock[x, z] / 255f;
