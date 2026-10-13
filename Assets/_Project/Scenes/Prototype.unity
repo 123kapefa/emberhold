@@ -1057,8 +1057,9 @@ MonoBehaviour:
   worldView: {fileID: 520718230}
   droppedItems: {fileID: 1950212302}
   clearAroundFire: 5
-  trunkMaterial: {fileID: 2100000, guid: 932ae790c9e7a4b1480d98f70518d09f, type: 2}
-  crownMaterial: {fileID: 2100000, guid: 932ae790c9e7a4b1480d98f70518d09f, type: 2}
+  material: {fileID: 2100000, guid: 8b62bdf6948e4af1bdd8edce22358654, type: 2}
+  maxLean: 4
+  sizeSpread: 0.1
 --- !u!4 &1310000003
 Transform:
   m_ObjectHideFlags: 0

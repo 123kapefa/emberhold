@@ -31,6 +31,13 @@ namespace Emberhold.Tests.PlayMode.Trees
             Assert.That(forest, Is.Not.Null);
             Assert.That(forest.Trees.Count, Is.GreaterThan(50), "Лес посажен");
 
+            // Каждое дерево — гранёная модель вида на шейдере деревьев.
+            yield return null;
+            var renderers = Object.FindAnyObjectByType<ForestView>().GetComponentsInChildren<MeshRenderer>();
+            Assert.That(renderers.Length, Is.EqualTo(forest.Trees.Count), "У каждого дерева своя модель");
+            Assert.That(renderers[0].sharedMaterial.shader.name, Is.EqualTo("Emberhold/World/Tree"));
+            Assert.That(renderers[0].GetComponent<MeshFilter>().sharedMesh.vertexCount, Is.GreaterThan(0));
+
             var fire = view.transform.InverseTransformPoint(campfire.transform.position);
             var nearYield = 0;
             var farYield = 0;

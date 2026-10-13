@@ -19,6 +19,9 @@ MonoBehaviour:
   height: 8
   trunkHeight: 2.6
   trunkWidth: 0.55
-  crownWidth: 2.4
-  trunkColor: {r: 0.38, g: 0.24, b: 0.15, a: 1}
-  crownColor: {r: 0.1, g: 0.3, b: 0.2, a: 1}
+  crownWidth: 3
+  trunkColor: {r: 0.333, g: 0.224, b: 0.169, a: 1}
+  crownColor: {r: 0.216, g: 0.341, b: 0.294, a: 1}
+  shape: 2
+  stripeColor: {r: 0.231, g: 0.227, b: 0.212, a: 0}
+  variants: 3
