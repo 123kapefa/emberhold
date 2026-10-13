@@ -103,6 +103,9 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(BlockPicking.PreferSlopeAbove(world, top), Is.EqualTo(new BlockHit(above, Vector3Int.up)));
             var side = new BlockHit(Cell, Vector3Int.right);
             Assert.That(BlockPicking.PreferSlopeAbove(world, side), Is.EqualTo(side), "Боковая грань нижнего блока");
+
+            world.SetBlock(Cell, Block.Flat(BlockMaterials.Dirt, 8));
+            Assert.That(BlockPicking.PreferSlopeAbove(world, top), Is.EqualTo(top), "Верх неполного блока — он сам");
         }
 
         private static BlockDamage NewDamage() => new(new UniformBlockDurability(100f));

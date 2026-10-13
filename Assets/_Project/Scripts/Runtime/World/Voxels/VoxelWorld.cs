@@ -59,8 +59,7 @@ namespace Emberhold.World.Voxels
         }
 
         /// <summary>
-        /// Поставить блок. Помечает его чанк, а если блок на границе — и соседний чанк:
-        /// у соседа могла открыться или закрыться грань.
+        /// Поставить блок. Помечает его чанк, а если блок на границе — и соседние чанки за ней.
         /// </summary>
         public void SetBlock(Vector3Int block, Block value)
         {
@@ -79,19 +78,17 @@ namespace Emberhold.World.Voxels
                 && Surface.MarkEdited(block.x, block.z))
                 MarkColumnsAround(block.x, block.z);
 
-            MarkDirty(chunk);
+            // Блок на границе чанка: соседние чанки по этим осям, включая диагонали. У соседа могла открыться
+            // или закрыться грань, а бахрома травы на верхе блоков (GrassEdge) смотрит на соседние столбцы
+            // по диагонали и на слой выше и ниже.
             const int last = ChunkData.Size - 1;
-            if (local.x == 0) MarkDirty(chunk + Vector3Int.left);
-            if (local.x == last) MarkDirty(chunk + Vector3Int.right);
-            if (local.y == 0) MarkDirty(chunk + Vector3Int.down);
-            if (local.y == last) MarkDirty(chunk + Vector3Int.up);
-            if (local.z == 0) MarkDirty(chunk + Vector3Int.back);
-            if (local.z == last) MarkDirty(chunk + Vector3Int.forward);
-            // Бахрома травы на верхе блоков смотрит и на соседей по диагонали (GrassEdge).
-            var dx = local.x == 0 ? -1 : local.x == last ? 1 : 0;
-            var dz = local.z == 0 ? -1 : local.z == last ? 1 : 0;
-            if (dx != 0 && dz != 0)
-                MarkDirty(chunk + new Vector3Int(dx, 0, dz));
+            int x0 = local.x == 0 ? -1 : 0, x1 = local.x == last ? 1 : 0;
+            int y0 = local.y == 0 ? -1 : 0, y1 = local.y == last ? 1 : 0;
+            int z0 = local.z == 0 ? -1 : 0, z1 = local.z == last ? 1 : 0;
+            for (var dy = y0; dy <= y1; dy++)
+            for (var dz = z0; dz <= z1; dz++)
+            for (var dx = x0; dx <= x1; dx++)
+                MarkDirty(chunk + new Vector3Int(dx, dy, dz));
         }
 
         public void MarkDirty(Vector3Int chunk)

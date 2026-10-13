@@ -12,6 +12,30 @@ namespace Emberhold.Tests.EditMode.World
         private static readonly Block Stone = Block.Full(BlockMaterials.Stone);
 
         [Test]
+        public void GrassTint_ColoursVerticesByTheirPlaceInTheWorld()
+        {
+            // Падающая трава сохраняет оттенок своего места: цвет вершин — оттенок мира в их точке.
+            var corners = new Color[65, 65];
+            for (var z = 0; z <= 64; z++)
+            for (var x = 0; x <= 64; x++)
+                corners[x, z] = new Color(x / 64f, 0.5f, z / 64f, 1f);
+            var tint = new GroundTint(corners);
+            var data = new ChunkMeshData();
+            var cell = new Vector3Int(40, 3, 7);
+
+            var origin = BlockGroupMesher.Build(new List<Vector3Int> { cell }, new List<Block> { Block.Full(BlockMaterials.Grass) },
+                data, null, tint);
+
+            Assert.That(data.Colors, Has.Count.EqualTo(data.Vertices.Count));
+            for (var i = 0; i < data.Vertices.Count; i++)
+            {
+                var p = data.Vertices[i] + origin;
+                Assert.That(data.Colors[i], Is.EqualTo(tint.Sample(p.x, p.z)));
+            }
+            Assert.That(data.Colors, Has.None.EqualTo(Color.white));
+        }
+
+        [Test]
         public void SingleBlock_HasAllSixFacesIncludingBottom()
         {
             var data = new ChunkMeshData();

@@ -65,6 +65,23 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void SetBlock_OnChunkCorner_MarksAllChunksAroundIt()
+        {
+            // Угол чанка по X, Y и Z: бахрома травы соседей смотрит и по диагонали, и на слой выше и ниже.
+            var world = new VoxelWorld(new Vector3Int(2, 2, 2));
+            TakeDirty(world);
+
+            world.SetBlock(new Vector3Int(15, 16, 15), Block.Full(BlockMaterials.Stone));
+
+            var expected = new List<Vector3Int>();
+            for (var y = 0; y < 2; y++)
+            for (var z = 0; z < 2; z++)
+            for (var x = 0; x < 2; x++)
+                expected.Add(new Vector3Int(x, y, z));
+            Assert.That(TakeDirty(world), Is.EquivalentTo(expected));
+        }
+
+        [Test]
         public void SetBlock_SameValue_DoesNotMarkDirty()
         {
             var world = new VoxelWorld(Vector3Int.one);

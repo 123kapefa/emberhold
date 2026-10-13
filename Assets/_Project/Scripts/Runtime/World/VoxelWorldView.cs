@@ -466,7 +466,23 @@ namespace Emberhold.World
                 view.Collider.sharedMesh = colliderMesh;
         }
 
-        /// <param name="visual">Меш картинки: ему нужны вес и цвет перехода в камень; коллайдеру — нет.</param>
+        /// <summary>
+        /// Смешивание земли в меш: UV3 (вес камня, бахрома травы) и оттенок травы в цвете вершин.
+        /// colors — список для переиспользования.
+        /// </summary>
+        public static void SetGroundBlend(Mesh mesh, ChunkMeshData data, List<Color> colors)
+        {
+            mesh.SetUVs(3, data.Blends);
+            colors.Clear();
+            // Цвет материала Unity переводит в линейное пространство сам, цвет вершин — нет.
+            var linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
+            foreach (var tint in data.Colors)
+                colors.Add(linear ? new Color(Mathf.GammaToLinearSpace(tint.r), Mathf.GammaToLinearSpace(tint.g),
+                    Mathf.GammaToLinearSpace(tint.b), tint.a) : tint);
+            mesh.SetColors(colors);
+        }
+
+        /// <param name="visual">Меш картинки: ему нужны вес камня, бахрома травы (UV3) и оттенок травы (цвет вершин); коллайдеру — нет.</param>
         private void FillMesh(Mesh mesh, ChunkMeshData data, bool visual)
         {
             mesh.Clear();
@@ -480,14 +496,7 @@ namespace Emberhold.World
             if (visual)
             {
                 Shader.SetGlobalColor(GroundRockColorId, RockColor());
-                mesh.SetUVs(3, data.Blends);
-                groundColors.Clear();
-                // Цвет материала Unity переводит в линейное пространство сам, цвет вершин — нет.
-                var linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
-                foreach (var tint in data.Colors)
-                    groundColors.Add(linear ? new Color(Mathf.GammaToLinearSpace(tint.r), Mathf.GammaToLinearSpace(tint.g),
-                        Mathf.GammaToLinearSpace(tint.b), tint.a) : tint);
-                mesh.SetColors(groundColors);
+                SetGroundBlend(mesh, data, groundColors);
             }
 
             // Подмеш на каждый материал, даже пустой: у рендерера всегда один и тот же список материалов.

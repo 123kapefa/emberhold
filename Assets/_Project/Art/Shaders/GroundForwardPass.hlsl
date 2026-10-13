@@ -467,24 +467,27 @@ void LitPassFragment(
     if (input.groundBlend.y < -0.5)
         baseAlbedo = TintGrass(baseAlbedo, input.groundColor);
     surfaceData.albedo = baseAlbedo;
-    // Камень сэмплируем только там, где он есть: у блоков и в сцене без гладкой земли вес 0.
+    // Граница травы с камнем резкая и рваная, с зубцами-травинками: вес травы (1 − камень) сдвигается шумом
+    // по миру и режется по 0,5. У травы тёмная кайма — рисованный контур, на камне под краем тень.
+    // Край считаем до ветвления: в нём производные (ddx, fwidth), а вес камня меняется от пикселя к пикселю,
+    // и внутри ветки соседние пиксели могли бы пойти разными путями.
     half rockWeight = saturate(input.groundBlend.x);
+    half rockRim, rockShadow;
+    half rockGrass = GrassCover(1.0 - rockWeight
+        + GrassEdgeOffset(input.positionWS, EMBERHOLD_EDGE_RAGGED, 1.0 - rockWeight, dpdx, dpdy), rockRim, rockShadow);
+    // Камень сэмплируем только там, где он есть: у блоков и в сцене без гладкой земли вес 0.
     UNITY_BRANCH
     if (rockWeight > 0.001h)
     {
-        // Граница резкая и рваная, с зубцами-травинками: вес травы (1 − камень) сдвигается шумом по миру
-        // и режется по 0,5. У травы тёмная кайма — рисованный контур, на камне под краем тень.
-        half rim, shadow;
-        half grass = GrassCover(1.0 - rockWeight
-            + GrassEdgeOffset(input.positionWS, EMBERHOLD_EDGE_RAGGED, 1.0 - rockWeight, dpdx, dpdy), rim, shadow);
-        baseAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_RIM_DARK, rim);
+        baseAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_RIM_DARK, rockRim);
         half3 rockAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_RockMap, sampler_RockMap), input.positionWS, normalForTex,
             dpdx, dpdy, detailFade, flatFade) * _GroundRockColor.rgb;
-        rockAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_SHADOW_DARK, shadow);
-        surfaceData.albedo = lerp(rockAlbedo, baseAlbedo, grass);
+        rockAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_SHADOW_DARK, rockShadow);
+        surfaceData.albedo = lerp(rockAlbedo, baseAlbedo, rockGrass);
     }
 
     // Трава с соседей на верх блока земли или камня: та же рваная бахрома с зубцами, от края с травой внутрь блока.
+    // Маска одна на весь треугольник, поэтому пиксели одного квадрата идут в ветку вместе и производные внутри верны.
     UNITY_BRANCH
     if (input.groundBlend.y > 0.5)
     {

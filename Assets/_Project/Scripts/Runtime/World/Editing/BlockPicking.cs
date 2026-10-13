@@ -62,8 +62,9 @@ namespace Emberhold.World.Editing
         {
             if (hit.Face != Vector3Int.up)
                 return hit;
+            // Верх неполного блока лежит внутри его ячейки — это он сам, а не пол ячейки сверху.
             var above = hit.Block + Vector3Int.up;
-            if (!world.IsInsideBlocks(above))
+            if (!world.IsInsideBlocks(above) || !world.GetBlock(hit.Block).Shape.IsFull)
                 return hit;
             var shape = world.GetBlock(above).Shape;
             if (world.GetBlock(above).IsAir || shape.IsCatalog || shape.CoversFloor)
