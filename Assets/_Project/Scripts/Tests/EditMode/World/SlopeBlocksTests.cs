@@ -181,11 +181,12 @@ namespace Emberhold.Tests.EditMode.World
 
             // Кусок склона на скале — камень: после копания в столбце не остаётся травы.
             Assert.That(damage.Hit(world, Piece, 100f), Is.True);
-            Assert.That(items.Items, Has.Count.EqualTo(1));
+            Assert.That(items.Items.Sum(i => i.Drop.Count), Is.EqualTo(1));
             Assert.That(damage.Hit(world, Stone, 100f), Is.True);
 
-            Assert.That(items.Items, Has.Count.EqualTo(2));
-            Assert.That(items.Items.Select(i => i.Drop), Has.All.EqualTo(new ItemDrop("stone", 1)));
+            // Оба камня в одном столбце — одна кучка из двух.
+            Assert.That(items.Items.All(i => i.Drop.ItemId == "stone"), Is.True);
+            Assert.That(items.Items.Sum(i => i.Drop.Count), Is.EqualTo(2));
         }
 
         [Test]
