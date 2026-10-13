@@ -87,6 +87,8 @@ namespace Emberhold.Tests.EditMode.Trees
                 }
             }
 
+            Assert.That(forest.Groves, Is.Empty, "Лес без рощ — ровный, как раньше");
+
             // Тот же seed — тот же лес.
             var again = new Forest(items);
             ForestScatter.Scatter(world, 7, background, zones, again, column => column.x < 4 && column.y < 4);
@@ -141,6 +143,37 @@ namespace Emberhold.Tests.EditMode.Trees
             Assert.That(forest.Trees, Is.Not.Empty);
             foreach (var tree in forest.Trees)
                 Assert.That(tree.Cell.x, Is.GreaterThanOrEqualTo(32), "На каменном месте деревья не растут");
+        }
+
+        [Test]
+        public void BaseHeight_OnSmoothSlope_IsGroundAtTrunkNotAtCellCenter()
+        {
+            // Гладкий склон вдоль X: восьмая блока на столбец (мир высотой 16, склон до 12). Ствол, сдвинутый от центра клетки, стоит на земле в своей точке.
+            const int h = BlockShape.MaxHeight;
+            var slope = new VoxelWorld(new Vector3Int(4, 1, 4));
+            var corners = new int[65, 65];
+            for (var z = 0; z <= 64; z++)
+            for (var x = 0; x <= 64; x++)
+                corners[x, z] = Ground * h + x * 2;
+            var materials = new TerrainMaterials[64, 64];
+            for (var z = 0; z < 64; z++)
+            for (var x = 0; x < 64; x++)
+                materials[x, z] = TerrainMaterials.Default;
+            var surface = CornerTerrain.FillSmooth(slope, corners, materials, new int[64, 64]);
+            var cell = new Vector3Int(10, surface.TopY(10, 10) + 1, 10);
+
+            Assert.That(Forest.GroundHeight(slope, cell, new Vector2(10.8f, 10.5f)), Is.EqualTo(Ground + 10.8f / 8f).Within(1e-4f));
+            Assert.That(Forest.GroundHeight(slope, cell, new Vector2(10.2f, 10.5f)), Is.EqualTo(Ground + 10.2f / 8f).Within(1e-4f));
+
+            ForestScatter.Scatter(slope, 3, new ForestMix(0.3f, Entry(birch, 1f)), null, forest);
+            var shifted = 0;
+            foreach (var tree in forest.Trees)
+            {
+                Assert.That(Forest.BaseHeight(slope, tree), Is.EqualTo(Ground + tree.Position.x / 8f).Within(1e-4f), "Основание в точке ствола");
+                if (Mathf.Abs(tree.Offset.x) > 0.1f)
+                    shifted++;
+            }
+            Assert.That(shifted, Is.GreaterThan(0), "Есть стволы, сдвинутые вдоль склона");
         }
 
         [Test]
@@ -207,6 +240,134 @@ namespace Emberhold.Tests.EditMode.Trees
 
             Assert.That(forest.Raycast(world, origin + Vector3.up * 10f, Vector3.right, 100f, out _, out _), Is.False, "Над деревьями мимо");
             Assert.That(forest.Raycast(world, origin, Vector3.right, 5f, out _, out _), Is.False, "Дальше луча не ищем");
+        }
+
+        [Test]
+        public void Scatter_WithGroves_PlantsDenseGrovesAndSparseSinglesBetween()
+        {
+            var big = GrassWorld(8);
+            var mix = new ForestMix(0.04f, Entry(birch, 1f), Entry(pine, 1f)).WithGroves(0.75f, 6f);
+
+            var planted = ForestScatter.Scatter(big, 11, mix, null, forest);
+
+            Assert.That(forest.Groves, Has.Count.GreaterThanOrEqualTo(3), "Рощи посажены");
+            var inGroves = 0;
+            foreach (var grove in forest.Groves)
+            {
+                Assert.That(grove.Trees, Has.Count.GreaterThanOrEqualTo(ForestScatter.MinGroveTrees));
+                foreach (var tree in grove.Trees)
+                {
+                    Assert.That(tree.Grove, Is.SameAs(grove));
+                    Assert.That(grove.Contains(tree.Column), Is.True, "Дерево рощи стоит в её области");
+                }
+                inGroves += grove.Trees.Count;
+            }
+            var singles = planted - inGroves;
+            Assert.That(singles, Is.GreaterThan(0), "Между рощами растут одиночные деревья");
+            Assert.That(inGroves, Is.GreaterThan(singles), "Большая часть деревьев — в рощах");
+
+            var groveArea = 0;
+            var size = big.SizeInBlocks;
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+            {
+                if (forest.GroveAt(new Vector2Int(x, z)) != null)
+                    groveArea++;
+            }
+            var insideDensity = (float)inGroves / groveArea;
+            var outsideDensity = (float)singles / (size.x * size.z - groveArea);
+            Assert.That(insideDensity, Is.GreaterThan(outsideDensity * 5f), "В роще гуще, чем на лугу");
+            var expected = mix.Density * size.x * size.z;
+            Assert.That(planted, Is.InRange(expected * 0.5f, expected * 1.5f), "Деревьев примерно столько же, сколько без рощ");
+
+            var shifted = 0;
+            foreach (var tree in forest.Trees)
+            {
+                Assert.That(Mathf.Abs(tree.Offset.x), Is.LessThanOrEqualTo(ForestScatter.MaxOffset));
+                Assert.That(Mathf.Abs(tree.Offset.y), Is.LessThanOrEqualTo(ForestScatter.MaxOffset));
+                if (tree.Offset.sqrMagnitude > 0.01f)
+                    shifted++;
+            }
+            Assert.That(shifted, Is.GreaterThan(planted / 2), "Стволы сдвинуты в клетке: роща не стоит рядами");
+
+            // Тот же seed — те же рощи.
+            var again = new Forest(items);
+            ForestScatter.Scatter(big, 11, mix, null, again);
+            Assert.That(again.Groves, Has.Count.EqualTo(forest.Groves.Count));
+            for (var i = 0; i < forest.Groves.Count; i++)
+                Assert.That(again.Groves[i].Center, Is.EqualTo(forest.Groves[i].Center));
+        }
+
+        [Test]
+        public void Scatter_StartGroveEdgeReachesIntoFireLight()
+        {
+            var fire = new Vector2(64f, 64f);
+            const float light = 12f;
+            var mix = new ForestMix(0.04f, Entry(birch, 1f)).WithGroves(0.75f, 6f);
+
+            ForestScatter.Scatter(GrassWorld(8), 3, mix, null, forest,
+                column => (new Vector2(column.x + 0.5f, column.y + 0.5f) - fire).sqrMagnitude <= 9f,
+                new[] { new ForestStart(fire, light) });
+
+            var start = forest.Groves[0];
+            Assert.That(Vector2.Distance(start.Center, fire), Is.EqualTo(light).Within(1e-3f), "Центр рощи на краю круга света");
+            var lit = 0;
+            foreach (var tree in start.Trees)
+            {
+                var distance = Vector2.Distance(tree.Position, fire);
+                Assert.That(distance, Is.GreaterThan(3f), "У самого костра место свободно");
+                if (distance <= light)
+                    lit++;
+            }
+            Assert.That(lit, Is.GreaterThanOrEqualTo(4), "Край рощи в круге света: первые дрова рядом");
+        }
+
+        [Test]
+        public void Scatter_GroveGrowsItsMainSpecies()
+        {
+            var mix = new ForestMix(0.04f, Entry(birch, 1f), Entry(pine, 1f)).WithGroves(1f, 6f, 0.4f, 1f);
+
+            ForestScatter.Scatter(GrassWorld(8), 5, mix, null, forest);
+
+            Assert.That(forest.Groves, Is.Not.Empty);
+            foreach (var grove in forest.Groves)
+            {
+                Assert.That(grove.MainSpecies, Is.Not.Null);
+                foreach (var tree in grove.Trees)
+                    Assert.That(tree.Species, Is.SameAs(grove.MainSpecies), "Берёзовая роща — из берёз, бор — из сосен");
+            }
+        }
+
+        [Test]
+        public void Fell_TakesTreeOutOfItsGrove_ClearedGroveStaysInForest()
+        {
+            var big = GrassWorld(8);
+            ForestScatter.Scatter(big, 11, new ForestMix(0.04f, Entry(birch, 1f)).WithGroves(0.75f, 6f), null, forest);
+            var grove = forest.Groves[0];
+            var count = grove.Trees.Count;
+            var first = grove.Trees[0];
+
+            Assert.That(forest.GroveAt(first.Column), Is.SameAs(grove));
+            forest.Fell(big, first);
+            Assert.That(grove.Trees, Has.Count.EqualTo(count - 1));
+            Assert.That(grove.Trees, Has.No.Member(first));
+
+            while (grove.Trees.Count > 0)
+                forest.Fell(big, grove.Trees[0]);
+            Assert.That(grove.IsCleared, Is.True);
+            Assert.That(forest.Groves, Has.Member(grove), "Вырубленная роща остаётся местом на карте");
+        }
+
+        // Ровная трава chunks × chunks чанков, как в SetUp.
+        private static VoxelWorld GrassWorld(int chunks)
+        {
+            var world = new VoxelWorld(new Vector3Int(chunks, 1, chunks));
+            var size = world.SizeInBlocks;
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+            for (var y = 0; y < Ground; y++)
+                world.SetBlock(new Vector3Int(x, y, z), Block.Full(y == Ground - 1 ? BlockMaterials.Grass : BlockMaterials.Dirt));
+            return world;
         }
 
         private static ForestMix.Entry Entry(TreeSpecies species, float weight) => new() { species = species, weight = weight };

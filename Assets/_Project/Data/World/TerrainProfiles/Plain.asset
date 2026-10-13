@@ -43,3 +43,7 @@ MonoBehaviour:
     species:
     - species: {fileID: 11400000, guid: 6c72b2e90e52486fb0dd64cf8ef77439, type: 2}
       weight: 1
+    groveShare: 0.7
+    groveRadius: 6
+    groveDensity: 0.4
+    groveMainShare: 0.75

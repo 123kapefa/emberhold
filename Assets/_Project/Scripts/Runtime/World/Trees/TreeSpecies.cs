@@ -2,6 +2,17 @@ using UnityEngine;
 
 namespace Emberhold.World.Trees
 {
+    /// <summary>Силуэт модели дерева (<see cref="TreeMeshBuilder"/>).</summary>
+    public enum TreeShape
+    {
+        /// <summary>Лиственное: крона из гранёных комков (берёза).</summary>
+        Leafy,
+        /// <summary>Хвойное: ярусы конусов (сосна).</summary>
+        Conifer,
+        /// <summary>Широкие плоские ярусы на толстом стволе (вековой кедр).</summary>
+        Tiered,
+    }
+
     /// <summary>
     /// Вид дерева ассетом: сколько ударов держит, сколько поленьев даёт и как выглядит.
     /// Ресурс у всех видов один (поленья), виды отличаются прочностью и выходом. Образцы лежат в Data/Trees.
@@ -38,6 +49,15 @@ namespace Emberhold.World.Trees
         [SerializeField] private Color trunkColor = new(0.85f, 0.82f, 0.75f);
         [SerializeField] private Color crownColor = new(0.45f, 0.7f, 0.3f);
 
+        [Header("Модель")]
+        [Tooltip("Силуэт гранёной модели.")]
+        [SerializeField] private TreeShape shape = TreeShape.Leafy;
+        [Tooltip("Цвет полосок на стволе (берёза); альфа 0 — без полосок.")]
+        [SerializeField] private Color stripeColor = new(0.23f, 0.23f, 0.21f, 0f);
+        [Tooltip("Сколько разных форм у вида: дерево берёт одну по своей клетке.")]
+        [Range(1, 8)]
+        [SerializeField] private int variants = 3;
+
         public string DisplayName => displayName;
         public float Durability => durability;
         public string ItemId => string.IsNullOrEmpty(itemId) ? "wood" : itemId;
@@ -48,9 +68,13 @@ namespace Emberhold.World.Trees
         public float CrownWidth => crownWidth;
         public Color TrunkColor => trunkColor;
         public Color CrownColor => crownColor;
+        public TreeShape Shape => shape;
+        public Color StripeColor => stripeColor;
+        public int Variants => Mathf.Max(1, variants);
 
         /// <summary>Вид для тестов без ассета.</summary>
-        public static TreeSpecies Create(string name, float durability, int woodYield, float height = 3f, float crownWidth = 1f)
+        public static TreeSpecies Create(string name, float durability, int woodYield, float height = 3f, float crownWidth = 1f,
+            TreeShape shape = TreeShape.Leafy)
         {
             var species = CreateInstance<TreeSpecies>();
             species.name = name;
@@ -59,6 +83,7 @@ namespace Emberhold.World.Trees
             species.woodYield = woodYield;
             species.height = height;
             species.crownWidth = crownWidth;
+            species.shape = shape;
             return species;
         }
     }
