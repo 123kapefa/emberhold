@@ -144,7 +144,8 @@ namespace Emberhold.World.Items
         /// Высота, на которой лежит предмет в клетке cell: верх первого непустого блока, начиная с самой клетки
         /// и ниже. Высота простого блока берётся средней по углам, чтобы на склоне предмет не висел над землёй;
         /// у фигурной формы, которая не закрывает пол (столб, балка, полуарка), — её верх, чтобы предмет не утонул в ней.
-        /// Если под предметом до дна мира пусто, он лежит на дне.
+        /// Если под предметом до дна мира пусто, он лежит на дне. На нетронутой гладкой земле
+        /// (<see cref="TerrainSurface"/>) — высота поверхности в середине клетки.
         /// </summary>
         public static float RestHeight(VoxelWorld world, Vector3Int cell)
         {
@@ -152,6 +153,8 @@ namespace Emberhold.World.Items
             for (var y = Mathf.Min(cell.y, top); y >= 0; y--)
             {
                 var block = world.GetBlock(new Vector3Int(cell.x, y, cell.z));
+                if (!block.IsAir && world.Surface != null && world.Surface.TryGroundHeight(cell.x, y, cell.z, out var ground))
+                    return ground;
                 if (!block.IsAir)
                     return y + (block.Shape.IsCatalog && !block.Shape.CoversFloor ? block.Shape.Top / (float)BlockShape.MaxHeight : block.Shape.Fill);
             }

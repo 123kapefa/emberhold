@@ -59,6 +59,7 @@ namespace Emberhold.World.Meshing
                 to.Vertices.Add(vertex + offset);
             to.Normals.AddRange(from.Normals);
             to.Uvs.AddRange(from.Uvs);
+            to.Blends.AddRange(from.Blends);
             for (var material = 0; material < from.Triangles.Length; material++)
             {
                 foreach (var index in from.Triangles[material])

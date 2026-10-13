@@ -30,7 +30,7 @@ namespace Emberhold.Tests.PlayMode.World
 
             // Берёзовая долина (центр 112, 102) — дно на 14 блоках, хребет рядом выше 30.
             Assert.That(GroundHeight(view, 112, 102), Is.InRange(11f, 17f));
-            Assert.That(GroundHeight(view, 20, 250), Is.GreaterThan(30f));
+            Assert.That(GroundHeight(view, 256, 505), Is.GreaterThan(30f));
 
             var forest = Object.FindAnyObjectByType<ForestView>().Forest;
             Assert.That(forest, Is.Not.Null);

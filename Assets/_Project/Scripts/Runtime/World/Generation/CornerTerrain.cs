@@ -75,6 +75,40 @@ namespace Emberhold.World.Generation
                 WriteColumn(world, materials[x, z], bedLevels[x, z], x, z, topY[x, z], columns);
         }
 
+        /// <summary>
+        /// Блоки под гладкой поверхностью (<see cref="TerrainSurface"/>): corners — её высоты в шестнадцатых
+        /// с любой крутизной. Под поверхностью лежат только целые блоки: столько, сколько слоёв помещается
+        /// под её серединой (с округлением), но не меньше одного. Поверхность — лишь картинка нетронутой
+        /// земли; выкопанный блок уходит целиком, и столбец дальше показывается целыми блоками, без косых
+        /// остатков. Возвращает поверхность с верхним слоем земли каждого столбца и ставит её миру.
+        /// </summary>
+        public static TerrainSurface FillSmooth(VoxelWorld world, int[,] corners, TerrainMaterials[,] materials, int[,] bedLevels)
+        {
+            const int h = BlockShape.MaxHeight;
+            var size = world.SizeInBlocks;
+            if (corners.GetLength(0) != size.x + 1 || corners.GetLength(1) != size.z + 1)
+                throw new ArgumentException($"Нужна сетка углов {size.x + 1}×{size.z + 1}", nameof(corners));
+            var topY = new int[size.x, size.z];
+            world.Surface = null;
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+            {
+                var center = (corners[x, z] + corners[x + 1, z] + corners[x, z + 1] + corners[x + 1, z + 1]) / 4f;
+                var count = Mathf.Clamp(Mathf.RoundToInt(center / h), 1, size.y - 1);
+                var top = count - 1;
+                topY[x, z] = top;
+                var m = materials[x, z];
+                for (var y = 0; y < top; y++)
+                    world.SetBlock(new Vector3Int(x, y, z), Block.Full(m.Below(top - y)));
+                world.SetBlock(new Vector3Int(x, top, z), Block.Full(center < bedLevels[x, z] ? m.Bed : m.Surface));
+                for (var y = top + 1; y < size.y; y++)
+                    world.SetBlock(new Vector3Int(x, y, z), Block.Air);
+            }
+            var surface = new TerrainSurface(corners, topY);
+            world.Surface = surface;
+            return surface;
+        }
+
         // Углы столбца в массиве: 0 — C00, 1 — C10, 2 — C01, 3 — C11.
         // Стороны: пары углов на ребре и соответствующие углы соседа за ребром.
         private static readonly (int dx, int dz, int a0, int a1, int b0, int b1)[] Sides =

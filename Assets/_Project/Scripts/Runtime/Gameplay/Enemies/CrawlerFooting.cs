@@ -33,7 +33,9 @@ namespace Emberhold.Gameplay.Enemies
                 var block = world.GetBlock(new Vector3Int(cx, y, cz));
                 if (block.IsAir)
                     continue;
-                surface = y + Height(block.Shape);
+                surface = world.Surface != null && world.Surface.TryGroundHeight(cx, y, cz, out var ground)
+                    ? ground
+                    : y + Height(block.Shape);
                 return surface <= top + Epsilon;
             }
             return false;
