@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Emberhold.Core;
 using Emberhold.Gameplay.Lighting;
 using Emberhold.World;
 using Emberhold.World.Vegetation;
@@ -305,12 +306,14 @@ namespace Emberhold.Gameplay.Trees
             mesh.RecalculateBounds();
         }
 
-        // Расстояние от камеры до земли по взгляду, в блоках; если луч не попал в землю — высота камеры над миром.
+        // Расстояние от камеры до земли по взгляду, в блоках; луч только по земле, рабочие и предметы не в счёт.
+        // Если луч не попал в землю — высота камеры над миром.
         private float GroundDistance(Camera camera, Vector3 eye)
         {
             var view = camera.transform;
             var scale = Mathf.Max(worldView.transform.lossyScale.y, 1e-4f);
-            if (Physics.Raycast(view.position, view.forward, out var hit, hideBeyond * 4f * scale))
+            if (Physics.Raycast(view.position, view.forward, out var hit, hideBeyond * 4f * scale, Layers.GroundMask,
+                    QueryTriggerInteraction.Ignore))
                 return hit.distance / scale;
             return eye.y;
         }
