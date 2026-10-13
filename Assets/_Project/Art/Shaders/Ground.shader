@@ -11,6 +11,9 @@ Shader "Emberhold/World/Ground"
         [MainColor] _BaseColor("Color", Color) = (1,1,1,1)
         _RockMap("Rock (переход гладкой земли)", 2D) = "white" {}
         _GrassMap("Grass (трава на краю блоков земли и камня)", 2D) = "white" {}
+        _GrassSwampMap("Grass Swamp (трава Топей)", 2D) = "white" {}
+        _GrassDeadMap("Grass Dead (трава Мёртвого города)", 2D) = "white" {}
+        _GrassMountainMap("Grass Mountain (трава Гор)", 2D) = "white" {}
 
         _Cutoff("Alpha Cutoff", Range(0.0, 1.0)) = 0.5
 

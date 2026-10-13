@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Emberhold.World.Voxels;
 using UnityEngine;
 
 namespace Emberhold.World.Generation
@@ -41,6 +42,12 @@ namespace Emberhold.World.Generation
         /// </summary>
         public readonly Color[,] GrassTints;
 
+        /// <summary>
+        /// Смесь видов травы в углу (<see cref="Voxels.GrassKinds.Weight"/>): смешивается так же, как <see cref="GrassTints"/>,
+        /// поэтому трава одной локации плавно переходит в траву другой.
+        /// </summary>
+        public readonly Color[,] GrassKinds;
+
         /// <summary>За сколько блоков от края дна локации или ущелья их оттенок сходит на нет.</summary>
         public const float TintBlend = 16f;
 
@@ -51,6 +58,7 @@ namespace Emberhold.World.Generation
             TerraceOwners = new int[sizeX + 1, sizeZ + 1];
             TerraceBases = new float[sizeX + 1, sizeZ + 1];
             GrassTints = new Color[sizeX + 1, sizeZ + 1];
+            GrassKinds = new Color[sizeX + 1, sizeZ + 1];
         }
 
         /// <summary>Чья земля в столбце (x, z): хозяин его юго-западного угла.</summary>
@@ -93,6 +101,7 @@ namespace Emberhold.World.Generation
 
             // Оттенок: сумма оттенков с весами и сумма весов; остаток до 1 — хребет.
             var tint = new Color(0f, 0f, 0f, 0f);
+            var kind = new Color(0f, 0f, 0f, 0f);
             var tintWeight = 0f;
 
             var owner = Ridge;
@@ -126,6 +135,7 @@ namespace Emberhold.World.Generation
                 floors[i] = location.Floor(x, z, noise);
                 var w = 1f - CampaignNoise.SmoothStep(0f, TintBlend, d);
                 tint += w * (location.Shape.GrassTint ?? Color.white);
+                kind += w * Voxels.GrassKinds.Weight(location.Shape.GrassKind);
                 tintWeight += w;
                 h = CampaignNoise.SmoothMin(h, floors[i] + Math.Max(d, 0f) * wall, 5f);
                 if (d < nearest)
@@ -165,7 +175,10 @@ namespace Emberhold.World.Generation
                 var gw = 1f - CampaignNoise.SmoothStep(0f, TintBlend, d);
                 var fromTint = locations[gorge.Shape.From].Shape.GrassTint ?? Color.white;
                 var toTint = locations[gorge.Shape.To].Shape.GrassTint ?? Color.white;
-                tint += gw * Color.LerpUnclamped(fromTint, toTint, CampaignNoise.SmoothStep(0.2f, 0.8f, t));
+                var along = CampaignNoise.SmoothStep(0.2f, 0.8f, t);
+                tint += gw * Color.LerpUnclamped(fromTint, toTint, along);
+                kind += gw * Color.LerpUnclamped(Voxels.GrassKinds.Weight(locations[gorge.Shape.From].Shape.GrassKind),
+                    Voxels.GrassKinds.Weight(locations[gorge.Shape.To].Shape.GrassKind), along);
                 tintWeight += gw;
                 if (d < nearest)
                 {
@@ -182,6 +195,8 @@ namespace Emberhold.World.Generation
 
             var ridgeTint = ridge.GrassTint ?? Color.white;
             GrassTints[xi, zi] = tintWeight < 1f ? tint + (1f - tintWeight) * ridgeTint : tint / tintWeight;
+            var ridgeKind = Voxels.GrassKinds.Weight(ridge.GrassKind);
+            GrassKinds[xi, zi] = tintWeight < 1f ? kind + (1f - tintWeight) * ridgeKind : kind / tintWeight;
 
             Heights[xi, zi] = Math.Max(1f, Math.Min(maxHeight, h));
             Owners[xi, zi] = owner;

@@ -467,12 +467,13 @@ namespace Emberhold.World
         }
 
         /// <summary>
-        /// Смешивание земли в меш: UV3 (вес камня, бахрома травы) и оттенок травы в цвете вершин.
+        /// Смешивание земли в меш: UV3 (вес камня, бахрома травы), UV4 (вид травы) и оттенок травы в цвете вершин.
         /// colors — список для переиспользования.
         /// </summary>
         public static void SetGroundBlend(Mesh mesh, ChunkMeshData data, List<Color> colors)
         {
             mesh.SetUVs(3, data.Blends);
+            mesh.SetUVs(4, data.Kinds);
             colors.Clear();
             // Цвет материала Unity переводит в линейное пространство сам, цвет вершин — нет.
             var linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
