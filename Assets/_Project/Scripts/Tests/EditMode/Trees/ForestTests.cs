@@ -151,6 +151,37 @@ namespace Emberhold.Tests.EditMode.Trees
         }
 
         [Test]
+        public void BaseHeight_OnSmoothSlope_IsGroundAtTrunkNotAtCellCenter()
+        {
+            // Гладкий склон вдоль X: восьмая блока на столбец (мир высотой 16, склон до 12). Ствол, сдвинутый от центра клетки, стоит на земле в своей точке.
+            const int h = BlockShape.MaxHeight;
+            var slope = new VoxelWorld(new Vector3Int(4, 1, 4));
+            var corners = new int[65, 65];
+            for (var z = 0; z <= 64; z++)
+            for (var x = 0; x <= 64; x++)
+                corners[x, z] = Ground * h + x * 2;
+            var materials = new TerrainMaterials[64, 64];
+            for (var z = 0; z < 64; z++)
+            for (var x = 0; x < 64; x++)
+                materials[x, z] = TerrainMaterials.Default;
+            var surface = CornerTerrain.FillSmooth(slope, corners, materials, new int[64, 64]);
+            var cell = new Vector3Int(10, surface.TopY(10, 10) + 1, 10);
+
+            Assert.That(Forest.GroundHeight(slope, cell, new Vector2(10.8f, 10.5f)), Is.EqualTo(Ground + 10.8f / 8f).Within(1e-4f));
+            Assert.That(Forest.GroundHeight(slope, cell, new Vector2(10.2f, 10.5f)), Is.EqualTo(Ground + 10.2f / 8f).Within(1e-4f));
+
+            ForestScatter.Scatter(slope, 3, new ForestMix(0.3f, Entry(birch, 1f)), null, forest);
+            var shifted = 0;
+            foreach (var tree in forest.Trees)
+            {
+                Assert.That(Forest.BaseHeight(slope, tree), Is.EqualTo(Ground + tree.Position.x / 8f).Within(1e-4f), "Основание в точке ствола");
+                if (Mathf.Abs(tree.Offset.x) > 0.1f)
+                    shifted++;
+            }
+            Assert.That(shifted, Is.GreaterThan(0), "Есть стволы, сдвинутые вдоль склона");
+        }
+
+        [Test]
         public void Hit_FellsTreeWhenDurabilityIsGoneAndDropsWoodAtBase()
         {
             var cell = new Vector3Int(10, Ground, 10);
