@@ -1,4 +1,5 @@
-"""Рисует бесшовные текстуры земли Emberhold в мультяшном стиле: трава, камень, земля.
+"""Рисует бесшовные текстуры земли Emberhold в мультяшном стиле: трава, камень, земля
+и трава трёх локаций: Топи, Мёртвый город, Горы.
 
 RGB — рисунок крупными пятнами в 3–4 тона (видно с высоты камеры), A — мелкая деталь в серых тонах
 около 0,5: шейдер Ground.shader накладывает её мельче и только вблизи камеры.
@@ -207,9 +208,134 @@ def dirt():
     save("GroundDirt.png", rgb, np.clip(detail, 0, 1))
 
 
+# ---------- общее для травы ----------
+
+def stones(rng, rgb, count, size_range, keep, color, shadow_color):
+    """Камешки или пятна: светлое пятно с тёмной нижней кромкой (рисованный объём). Возвращает маску."""
+    f1, f2, idx, pts = worley(rng, count)
+    size = rng.uniform(size_range[0], size_range[1], len(pts))
+    kept = rng.random(len(pts)) < keep
+    r = size[idx]
+    blob = (f1 < r) & kept[idx]
+    yy, xx = np.mgrid[0:SIZE, 0:SIZE].astype(np.float32)
+    ddy = (yy - pts[idx, 1] + SIZE / 2) % SIZE - SIZE / 2
+    rgb[blob] = color
+    if shadow_color is not None:
+        rgb[blob & (ddy > r * 0.35)] = shadow_color
+    return blob
+
+
+def draw_tufts(rng, count, height, spread=(4, 7), width=3):
+    """Пучки травы: штрихи-«галочки» по три травинки."""
+    def tufts(d):
+        for _ in range(count):
+            x, y = rng.random(2) * SIZE + SIZE
+            h = rng.uniform(*height)
+            for s in (-1, 0, 1):
+                d.line([(x + s * spread[0], y), (x + s * spread[1] + rng.uniform(-2, 2), y - h * (1 - 0.25 * abs(s)))],
+                       fill=255, width=width)
+    return wrapped_draw(tufts)
+
+
+def blade_detail(rng, count, height):
+    """Деталь вблизи: частые тонкие травинки."""
+    def blades(d):
+        for _ in range(count):
+            x, y = rng.random(2) * SIZE + SIZE
+            h = rng.uniform(*height)
+            d.line([(x, y), (x + rng.uniform(-3, 3), y - h)], fill=int(rng.uniform(120, 255)), width=1)
+    return wrapped_draw(blades)
+
+
+# ---------- трава Топей ----------
+
+def grass_swamp():
+    rng = np.random.default_rng(7504)
+    # Тёмная мокрая трава, холоднее луговой, с подушками мха.
+    tones = [(40, 56, 46), (50, 68, 53), (61, 80, 59), (72, 92, 64)]
+    clumps = bands(normalize(fbm(rng, 3, 4, 0.5, warp_field(rng, 4, 260))) * 0.999, 4)
+    rgb = palette(clumps, tones)
+    # Мох: округлые светлые жёлто-зелёные подушки ступенями.
+    moss = normalize(fbm(rng, 6, 3, 0.5, warp_field(rng, 6, 120)))
+    rgb[moss > 0.72] = (88, 104, 62)
+    rgb[moss > 0.82] = (104, 118, 70)
+    # Редкие тёмные пучки осоки.
+    tuft = draw_tufts(rng, 140, (12, 20))
+    rgb = rgb * (1 - tuft[..., None] * 0.55) + np.asarray((34, 48, 40), np.float32) * tuft[..., None] * 0.55
+    # Маленькие лужицы неровной формы: тёмная вода с кромкой грязи и бликом у верхнего левого края.
+    pools = normalize(fbm(rng, 9, 2, 0.5, warp_field(rng, 8, 90)))
+    water = pools > 0.8
+    # Кромка — вода, расширенная на пару пикселей (с переносом через край текстуры).
+    grown = np.zeros_like(water)
+    for oy in range(-3, 4):
+        for ox in range(-3, 4):
+            if ox * ox + oy * oy <= 9:
+                grown |= np.roll(np.roll(water, oy, axis=0), ox, axis=1)
+    rim = grown
+    # Блик: вода, у которой сверху-слева на несколько пикселей ещё вода, а не берег.
+    lit = water & np.roll(np.roll(water, 5, axis=0), 5, axis=1) & ~np.roll(np.roll(water, 9, axis=0), 9, axis=1)
+    rgb[rim] = (52, 50, 42)
+    rgb[water] = (44, 58, 66)
+    rgb[lit] = (84, 102, 110)
+    rgb = soften(rgb)
+
+    detail = 0.5 + (blade_detail(rng, 1800, (4, 8)) - 0.35) * 0.45 + (fbm(rng, 36, 3) - 0.5) * 0.35
+    detail[water] = 0.5 + (fbm(rng, 24, 2)[water] - 0.5) * 0.1
+    save("GroundGrassSwamp.png", rgb, np.clip(detail, 0, 1))
+
+
+# ---------- трава Мёртвого города ----------
+
+def grass_dead():
+    rng = np.random.default_rng(7505)
+    # Сухая выгоревшая трава: пыльная олива к соломе, без сочной зелени.
+    tones = [(86, 82, 60), (104, 98, 68), (122, 113, 78), (140, 129, 88)]
+    clumps = bands(normalize(fbm(rng, 3, 4, 0.5, warp_field(rng, 4, 260))) * 0.999, 4)
+    rgb = palette(clumps, tones)
+    # Проплешины голой земли: мелкие и частые, близкие по тону к траве, чтобы повтор плитки не читался.
+    bare = normalize(fbm(rng, 7, 3, 0.5, warp_field(rng, 7, 120)))
+    rgb[bare > 0.66] = (98, 88, 72)
+    rgb[bare > 0.78] = (90, 80, 67)
+    # Пепел: серые пятна и тёмные угольки.
+    ash = normalize(fbm(rng, 8, 3, 0.5, warp_field(rng, 8, 90)))
+    rgb[ash > 0.84] = (112, 110, 104)
+    stones(rng, rgb, 90, (1.5, 3.5), 0.5, (54, 52, 50), None)
+    # Редкие сухие пучки.
+    tuft = draw_tufts(rng, 110, (8, 15))
+    rgb = rgb * (1 - tuft[..., None] * 0.6) + np.asarray((146, 136, 96), np.float32) * tuft[..., None] * 0.6
+    rgb = soften(rgb)
+
+    detail = 0.5 + (blade_detail(rng, 900, (4, 8)) - 0.35) * 0.4 + (fbm(rng, 44, 3) - 0.5) * 0.45
+    save("GroundGrassDead.png", rgb, np.clip(detail, 0, 1))
+
+
+# ---------- трава Гор ----------
+
+def grass_mountain():
+    rng = np.random.default_rng(7506)
+    # Короткая жёсткая трава, холодная сизая зелень.
+    tones = [(60, 76, 62), (73, 89, 70), (87, 102, 78), (100, 114, 86)]
+    clumps = bands(normalize(fbm(rng, 4, 4, 0.5, warp_field(rng, 4, 200))) * 0.999, 4)
+    rgb = palette(clumps, tones)
+    # Короткие частые пучки.
+    tuft = draw_tufts(rng, 420, (6, 10), spread=(3, 5), width=2)
+    rgb = rgb * (1 - tuft[..., None] * 0.55) + np.asarray((112, 124, 92), np.float32) * tuft[..., None] * 0.55
+    # Камешки и лишайник (бледно-жёлтые и рыжеватые пятнышки).
+    stones(rng, rgb, 80, (3, 6), 0.5, (128, 130, 128), (78, 80, 84))
+    stones(rng, rgb, 60, (2, 4), 0.6, (150, 146, 100), None)
+    stones(rng, rgb, 40, (2, 3.5), 0.5, (142, 118, 88), None)
+    rgb = soften(rgb)
+
+    detail = 0.5 + (blade_detail(rng, 3200, (3, 6)) - 0.35) * 0.5 + (fbm(rng, 40, 2) - 0.5) * 0.25
+    save("GroundGrassMountain.png", rgb, np.clip(detail, 0, 1))
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     grass()
     rock()
     dirt()
+    grass_swamp()
+    grass_dead()
+    grass_mountain()
     print("Готово:", OUT)

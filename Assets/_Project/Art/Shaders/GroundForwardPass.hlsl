@@ -1,7 +1,9 @@
 // Копия LitForwardPass.hlsl из URP 17.6 с отличиями: текстура материала кладётся по трём проекциям мира
 // (без растяжения на крутых склонах), вблизи камеры добавляется мелкая деталь из альфа-канала, вдали рисунок
-// упрощается, и трава сменяется текстурой камня по весу из UV3.x. Трава окрашена оттенком своего места
-// (по локациям) из цвета вершины. На верх блоков земли и камня рядом с травой заходит трава (_GrassMap)
+// упрощается, сетки повтора плитки нет (варианты плитки по шуму мира и крупные светлые и тёмные пятна),
+// и трава сменяется текстурой камня по весу из UV3.x. Трава окрашена оттенком своего места
+// (по локациям) из цвета вершины, а у Топей, Мёртвого города и Гор своя текстура травы — по весам из UV4.
+// На верх блоков земли и камня рядом с травой заходит трава (_GrassMap)
 // по маске соседей из UV3.y и месту в ячейке из UV3.zw. Граница травы везде одна: резкая, рваная,
 // с зубцами-травинками и тёмной каймой. У мешей без UV3 веса 0, и остаётся своя текстура материала.
 #ifndef EMBERHOLD_GROUND_FORWARD_PASS_INCLUDED
@@ -20,6 +22,10 @@ SAMPLER(sampler_RockMap);
 // Текстура травы для бахромы травы на краю блоков земли и камня рядом с травой (вес в UV3.y).
 TEXTURE2D(_GrassMap);
 SAMPLER(sampler_GrassMap);
+// Трава локаций: Топи, Мёртвый город, Горы (веса в UV4.xyz, остаток — обычная трава). Сэмплер общий с _GrassMap.
+TEXTURE2D(_GrassSwampMap);
+TEXTURE2D(_GrassDeadMap);
+TEXTURE2D(_GrassMountainMap);
 // Цвет камня перехода гладкой земли — общее свойство, его ставит VoxelWorldView (цвет материала камня).
 half4 _GroundRockColor;
 
@@ -57,7 +63,62 @@ half4 SampleProjections(TEXTURE2D_PARAM(tex, samplerTex), float3 p, float3 dx, f
          + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, p.xy, dx.xy, dy.xy) * w.z;
 }
 
-// Текстура по трём проекциям мира: на крутых склонах не растягивается.
+float GroundValueNoise(float2 p);
+
+// Точка плитки, повёрнутая на четверть оборота: текстура бесшовная, поэтому поворот тоже стыкуется.
+float2 GroundRotate(float2 v) { return float2(v.y, -v.x); }
+
+// Три проекции, сдвинутые на offset (в плитках); при rotate верхняя проекция повёрнута на четверть оборота.
+// Боковые не поворачиваем: у камня плиты на стенах лежат слоями, поперёк они смотрелись бы чужими.
+half4 SampleProjectionsAt(TEXTURE2D_PARAM(tex, samplerTex), float3 p, float3 dx, float3 dy, half3 w, float2 offset, bool rotate)
+{
+    float2 a = p.zy, b = p.xz, c = p.xy;
+    float2 adx = dx.zy, bdx = dx.xz, cdx = dx.xy;
+    float2 ady = dy.zy, bdy = dy.xz, cdy = dy.xy;
+    if (rotate)
+    {
+        b = GroundRotate(b);
+        bdx = GroundRotate(bdx);
+        bdy = GroundRotate(bdy);
+    }
+    return SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, a + offset, adx, ady) * w.x
+         + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, b + offset, bdx, bdy) * w.y
+         + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, c + offset, cdx, cdy) * w.z;
+}
+
+// Сколько блоков примерно занимает один вариант плитки и насколько светлеют и темнеют крупные пятна по миру.
+#define EMBERHOLD_VARIANT_SIZE 9.0
+#define EMBERHOLD_PATCH_SIZE 36.0
+#define EMBERHOLD_PATCH_AMOUNT 0.13
+
+// Без сетки повтора: плитка рисуется в двух вариантах (свой сдвиг и поворот у каждого номера), номер плавно
+// меняется по крупному шуму мира, и соседние варианты смешиваются по нему. Пятна плитки больше не стоят в ряд.
+half4 SampleProjectionsVaried(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, float3 p, float3 dx, float3 dy, half3 w)
+{
+    float2 q = positionWS.xz + positionWS.y * float2(0.61, -0.43);
+    float index = GroundValueNoise(q / EMBERHOLD_VARIANT_SIZE + 31.7) * 8.0;
+    float ia = floor(index);
+    float ib = ia + 1.0;
+    float f = frac(index);
+    half4 a = SampleProjectionsAt(TEXTURE2D_ARGS(tex, samplerTex), p, dx, dy, w,
+        frac(sin(float2(3.1, 7.3) * ia) * 43758.5453), frac(ia * 0.5) > 0.25);
+    half4 b = SampleProjectionsAt(TEXTURE2D_ARGS(tex, samplerTex), p, dx, dy, w,
+        frac(sin(float2(3.1, 7.3) * ib) * 43758.5453), frac(ib * 0.5) > 0.25);
+    // Переход по разнице цветов: где варианты похожи, граница не видна, где разные — она проходит по пятнам.
+    half t = smoothstep(0.4h, 0.6h, f - 0.1h * dot(a.rgb - b.rgb, half3(1.0h, 1.0h, 1.0h)));
+    return lerp(a, b, t);
+}
+
+// Крупные мягкие светлые и тёмные пятна по миру на десятки блоков: множитель яркости около 1.
+half GroundPatches(float3 positionWS)
+{
+    float2 q = positionWS.xz / EMBERHOLD_PATCH_SIZE;
+    float n = GroundValueNoise(q + 7.9) * 0.65 + GroundValueNoise(q * 2.3 + 2.1) * 0.35;
+    return 1.0h + (n - 0.5h) * 2.0h * EMBERHOLD_PATCH_AMOUNT;
+}
+
+// Текстура по трём проекциям мира: на крутых склонах не растягивается, сетки повтора нет, по миру —
+// крупные светлые и тёмные пятна.
 // detailFade — сколько мелкой детали добавить (1 вблизи), flatFade — насколько упростить рисунок (1 вдали).
 // Производные позиции (dpdx, dpdy) считаются снаружи: функцию зовут и внутри ветвления, где своих производных нет.
 half3 SampleTriplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, half3 normalWS, float3 dpdx, float3 dpdy,
@@ -67,7 +128,7 @@ half3 SampleTriplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, half3
     float3 p = positionWS / EMBERHOLD_GROUND_TILE;
     float3 dx = dpdx / EMBERHOLD_GROUND_TILE;
     float3 dy = dpdy / EMBERHOLD_GROUND_TILE;
-    half3 near = SampleProjections(TEXTURE2D_ARGS(tex, samplerTex), p, dx, dy, w).rgb;
+    half3 near = SampleProjectionsVaried(TEXTURE2D_ARGS(tex, samplerTex), positionWS, p, dx, dy, w).rgb;
     // Та же текстура в 5,3 раза крупнее: её яркость относительно плитки даёт пятна светлее и темнее,
     // и повтор плитки не читается.
     const float macro = 5.3;
@@ -79,7 +140,7 @@ half3 SampleTriplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, half3
 
     // Вдали — к среднему цвету текстуры (последний мип), пятна от крупного слоя остаются.
     half3 average = SAMPLE_TEXTURE2D_LOD(tex, samplerTex, float2(0.5, 0.5), 12).rgb;
-    half3 color = lerp(near, average, flatFade * EMBERHOLD_FLAT_AMOUNT) * variation;
+    half3 color = lerp(near, average, flatFade * EMBERHOLD_FLAT_AMOUNT) * variation * GroundPatches(positionWS);
 
     // Вблизи — мелкая деталь из альфы (0,5 — без изменений), только там, где её видно.
     UNITY_BRANCH
@@ -90,6 +151,28 @@ half3 SampleTriplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, half3
             dx * s, dy * s, w).a;
         color *= lerp(1.0h, clamp(detail * 2.0h, 0.7h, 1.3h), detailFade);
     }
+    return color;
+}
+
+// Трава своего места: обычная трава meadow смешивается с травой локаций по весам kinds (x — топь,
+// y — мёртвый город, z — горы). Текстуры локаций умножаются на scale (цвет материала, как у meadow).
+half3 MixGrassKinds(half3 meadow, half3 kinds, half3 scale, float3 positionWS, half3 normalWS, float3 dpdx, float3 dpdy,
+    half detailFade, half flatFade)
+{
+    kinds = saturate(kinds);
+    half3 color = meadow * saturate(1.0h - kinds.x - kinds.y - kinds.z);
+    UNITY_BRANCH
+    if (kinds.x > 0.001h)
+        color += kinds.x * scale * SampleTriplanar(TEXTURE2D_ARGS(_GrassSwampMap, sampler_GrassMap), positionWS, normalWS,
+            dpdx, dpdy, detailFade, flatFade);
+    UNITY_BRANCH
+    if (kinds.y > 0.001h)
+        color += kinds.y * scale * SampleTriplanar(TEXTURE2D_ARGS(_GrassDeadMap, sampler_GrassMap), positionWS, normalWS,
+            dpdx, dpdy, detailFade, flatFade);
+    UNITY_BRANCH
+    if (kinds.z > 0.001h)
+        color += kinds.z * scale * SampleTriplanar(TEXTURE2D_ARGS(_GrassMountainMap, sampler_GrassMap), positionWS, normalWS,
+            dpdx, dpdy, detailFade, flatFade);
     return color;
 }
 
@@ -114,6 +197,10 @@ float GroundValueNoise(float2 p)
 // Зубцы-травинки: сколько на блок вдоль края и какой глубины, в блоках.
 #define EMBERHOLD_TEETH_PER_BLOCK 7.0
 #define EMBERHOLD_TEETH_DEPTH 0.28
+// Издалека травинки тоньше пикселя: пропадают, а их тёмная кайма и тень остаются рядом чёрточек. Поэтому
+// с TEETH_NEAR до TEETH_FAR блоков от камеры зубцы плавно сходят на нет, край остаётся просто рваным.
+#define EMBERHOLD_TEETH_NEAR 15.0
+#define EMBERHOLD_TEETH_FAR 25.0
 #define EMBERHOLD_EDGE_RIM 0.12
 #define EMBERHOLD_EDGE_RIM_DARK 0.7
 #define EMBERHOLD_EDGE_SHADOW 0.1
@@ -129,7 +216,8 @@ float GroundValueNoise(float2 p)
 // weight — вес травы из вершин (без шума): по его наклону на экране находим направление края в мире,
 // зубцы — треугольники вдоль края с вогнутыми боками (острые кончики), разной высоты, глубиной
 // до TEETH_DEPTH блока при любом наклоне веса. Где наклон не найти (вес ровный, грань вертикальна), зубцов нет.
-float GrassEdgeOffset(float3 positionWS, float ragged, float weight, float3 dpdx, float3 dpdy)
+// Издалека (cameraDistance — до камеры) зубцы гаснут, см. TEETH_NEAR и TEETH_FAR.
+float GrassEdgeOffset(float3 positionWS, float ragged, float weight, float3 dpdx, float3 dpdy, float cameraDistance)
 {
     // Шум зависит и от высоты, чтобы на обрывах край тоже был неровным.
     float2 q = positionWS.xz + positionWS.y * float2(0.61, -0.43);
@@ -158,7 +246,8 @@ float GrassEdgeOffset(float3 positionWS, float ragged, float weight, float3 dpdx
         float height = GroundHash(float2(floor(a), 7.1 + layer * 3.3));
         teeth = max(teeth, tooth * tooth * height * sqrt(height) * (layer == 0 ? 1.0 : 0.8));
     }
-    return offset + teeth * EMBERHOLD_TEETH_DEPTH * slope;
+    float teethFade = 1.0 - saturate((cameraDistance - EMBERHOLD_TEETH_NEAR) / (EMBERHOLD_TEETH_FAR - EMBERHOLD_TEETH_NEAR));
+    return offset + teeth * EMBERHOLD_TEETH_DEPTH * slope * teethFade;
 }
 
 float GroundSmoothMin(float a, float b, float k)
@@ -225,6 +314,7 @@ struct Attributes
     float2 staticLightmapUV   : TEXCOORD1;
     float2 dynamicLightmapUV  : TEXCOORD2;
     float4 groundBlend  : TEXCOORD3;
+    float4 grassKinds   : TEXCOORD4;
     half4 color         : COLOR;
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
@@ -270,6 +360,8 @@ struct Varyings
     // UV3: x — вес камня гладкой земли, y — маска соседей-травы у блоков земли и камня (−1 — вершина травы),
     // zw — место в ячейке.
     float4 groundBlend              : TEXCOORD12;
+    // UV4: вид травы своего места — веса травы Топей, Мёртвого города и Гор.
+    half3 grassKinds                : TEXCOORD13;
 
     float4 positionCS               : SV_POSITION;
 
@@ -425,6 +517,7 @@ Varyings LitPassVertex(Attributes input)
     output.positionCS = vertexInput.positionCS;
     output.groundColor = input.color;
     output.groundBlend = input.groundBlend;
+    output.grassKinds = input.grassKinds.xyz;
 
     return output;
 }
@@ -465,7 +558,8 @@ void LitPassFragment(
         dpdx, dpdy, detailFade, flatFade) * _BaseColor.rgb;
     // Трава (гладкая земля и блоки травы) — в оттенке своего места.
     if (input.groundBlend.y < -0.5)
-        baseAlbedo = TintGrass(baseAlbedo, input.groundColor);
+        baseAlbedo = TintGrass(MixGrassKinds(baseAlbedo, input.grassKinds, _BaseColor.rgb, input.positionWS, normalForTex,
+            dpdx, dpdy, detailFade, flatFade), input.groundColor);
     surfaceData.albedo = baseAlbedo;
     // Граница травы с камнем резкая и рваная, с зубцами-травинками: вес травы (1 − камень) сдвигается шумом
     // по миру и режется по 0,5. У травы тёмная кайма — рисованный контур, на камне под краем тень.
@@ -474,7 +568,8 @@ void LitPassFragment(
     half rockWeight = saturate(input.groundBlend.x);
     half rockRim, rockShadow;
     half rockGrass = GrassCover(1.0 - rockWeight
-        + GrassEdgeOffset(input.positionWS, EMBERHOLD_EDGE_RAGGED, 1.0 - rockWeight, dpdx, dpdy), rockRim, rockShadow);
+        + GrassEdgeOffset(input.positionWS, EMBERHOLD_EDGE_RAGGED, 1.0 - rockWeight, dpdx, dpdy, cameraDistance),
+        rockRim, rockShadow);
     // Камень сэмплируем только там, где он есть: у блоков и в сцене без гладкой земли вес 0.
     UNITY_BRANCH
     if (rockWeight > 0.001h)
@@ -494,9 +589,11 @@ void LitPassFragment(
         float toGrass = -FringeDistance(input.groundBlend.y, input.groundBlend.zw);
         half rim, shadow;
         half grass = GrassCover(0.5 + EMBERHOLD_FRINGE_INSET + toGrass
-            + GrassEdgeOffset(input.positionWS, EMBERHOLD_FRINGE_RAGGED, toGrass, dpdx, dpdy), rim, shadow);
-        half3 grassAlbedo = TintGrass(SampleTriplanar(TEXTURE2D_ARGS(_GrassMap, sampler_GrassMap), input.positionWS,
-            normalForTex, dpdx, dpdy, detailFade, flatFade), input.groundColor);
+            + GrassEdgeOffset(input.positionWS, EMBERHOLD_FRINGE_RAGGED, toGrass, dpdx, dpdy, cameraDistance), rim, shadow);
+        half3 meadow = SampleTriplanar(TEXTURE2D_ARGS(_GrassMap, sampler_GrassMap), input.positionWS,
+            normalForTex, dpdx, dpdy, detailFade, flatFade);
+        half3 grassAlbedo = TintGrass(MixGrassKinds(meadow, input.grassKinds, 1.0h, input.positionWS, normalForTex,
+            dpdx, dpdy, detailFade, flatFade), input.groundColor);
         grassAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_RIM_DARK, rim);
         half3 groundAlbedo = surfaceData.albedo * lerp(1.0h, EMBERHOLD_EDGE_SHADOW_DARK, shadow);
         surfaceData.albedo = lerp(groundAlbedo, grassAlbedo, grass);

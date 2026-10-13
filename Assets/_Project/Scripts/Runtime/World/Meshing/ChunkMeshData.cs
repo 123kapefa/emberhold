@@ -25,6 +25,11 @@ namespace Emberhold.World.Meshing
         /// Его берут трава (гладкая земля и блоки травы) и бахрома травы на соседних блоках.
         /// </summary>
         public readonly List<Color> Colors = new();
+        /// <summary>
+        /// Смесь видов травы своего места (UV4, <see cref="GroundTint.SampleKinds"/>): x — топь, y — мёртвый город,
+        /// z — горы, остаток — луговая. Её берут трава и бахрома травы, как и оттенок.
+        /// </summary>
+        public readonly List<Vector4> Kinds = new();
 
         /// <summary>Значение UV3.y у вершин подмеша травы: шейдер красит их оттенком травы.</summary>
         public const float GrassVertex = -1f;
@@ -67,6 +72,7 @@ namespace Emberhold.World.Meshing
             Uvs.Clear();
             Blends.Clear();
             Colors.Clear();
+            Kinds.Clear();
             foreach (var list in Triangles)
                 list.Clear();
             foreach (var list in TriangleBlocks)
@@ -135,15 +141,19 @@ namespace Emberhold.World.Meshing
         }
 
         /// <summary>
-        /// Оттенок травы вершинам по их месту: tint в точке (origin + вершина) по X и Z; вершины подмеша травы
-        /// помечаются <see cref="GrassVertex"/>. Без оттенка цвет остаётся белым.
+        /// Оттенок и вид травы вершинам по их месту: tint в точке (origin + вершина) по X и Z; вершины подмеша травы
+        /// помечаются <see cref="GrassVertex"/>. Без оттенка цвет остаётся белым, трава — луговой.
         /// </summary>
         public void ApplyGrassTint(GroundTint tint, Vector3 origin)
         {
             if (tint != null)
             {
                 for (var i = 0; i < Vertices.Count; i++)
-                    Colors[i] = tint.Sample(origin.x + Vertices[i].x, origin.z + Vertices[i].z);
+                {
+                    float x = origin.x + Vertices[i].x, z = origin.z + Vertices[i].z;
+                    Colors[i] = tint.Sample(x, z);
+                    Kinds[i] = tint.SampleKinds(x, z);
+                }
             }
             foreach (var index in Triangles[BlockMaterials.Grass])
             {
@@ -159,6 +169,7 @@ namespace Emberhold.World.Meshing
             Uvs.Add(uv);
             Blends.Add(new Vector4(blend, 0f, 0f, 0f));
             Colors.Add(Color.white);
+            Kinds.Add(Vector4.zero);
         }
 
         private void AddIndices(byte material, int block, int a, int b, int c)

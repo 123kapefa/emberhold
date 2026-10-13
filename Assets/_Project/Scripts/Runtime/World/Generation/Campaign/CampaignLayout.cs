@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Emberhold.World.Trees;
+using Emberhold.World.Voxels;
 using UnityEngine;
 
 namespace Emberhold.World.Generation
@@ -43,6 +44,8 @@ namespace Emberhold.World.Generation
         public ForestMix Forest;
         /// <summary>Оттенок травы на хребте и его склонах (rgb — множитель, a — насыщенность); null — нейтральный.</summary>
         public Color? GrassTint;
+        /// <summary>Вид травы на хребте и его склонах.</summary>
+        public GrassKind GrassKind;
 
         public static CampaignRidge Default => new()
         {
@@ -84,6 +87,8 @@ namespace Emberhold.World.Generation
         public ForestMix Forest;
         /// <summary>Оттенок травы локации (rgb — множитель, a — насыщенность); null — нейтральный.</summary>
         public Color? GrassTint;
+        /// <summary>Вид травы локации: своя текстура травы.</summary>
+        public GrassKind GrassKind;
     }
 
     /// <summary>

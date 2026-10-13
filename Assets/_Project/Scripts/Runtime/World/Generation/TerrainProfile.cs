@@ -1,4 +1,5 @@
 using Emberhold.World.Trees;
+using Emberhold.World.Voxels;
 using UnityEngine;
 
 namespace Emberhold.World.Generation
@@ -17,10 +18,15 @@ namespace Emberhold.World.Generation
         [ColorUsage(true, true)]
         [SerializeField] private Color grassTint = Color.white;
 
+        [Tooltip("Вид травы местности: своя текстура травы. Локация карты может задать свой.")]
+        [SerializeField] private GrassKind grassKind = GrassKind.Meadow;
+
         public TerrainProfileParameters Parameters => parameters;
         public ForestMix Forest => forest;
         /// <summary>Оттенок травы: rgb умножается на траву, a — насыщенность (1 — как есть).</summary>
         public Color GrassTint => grassTint;
+        /// <summary>Вид травы: какая текстура травы на этой местности.</summary>
+        public GrassKind GrassKind => grassKind;
 
         private void OnValidate() => parameters.Materials.Validate();
     }
