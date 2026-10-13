@@ -29,6 +29,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 0.86, g: 0.96, b: 1.06, a: 0.85}
+    overrideGrassKind: 0
+    grassKind: 0
   - id: birch
     name: Берёзовая долина
     center: {x: 112, y: 102}
@@ -40,6 +42,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 1, g: 1, b: 1, a: 1}
+    overrideGrassKind: 0
+    grassKind: 0
   - id: mill
     name: Старая мельница
     center: {x: 172, y: 194}
@@ -51,6 +55,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 1.07, g: 1.0, b: 0.86, a: 1}
+    overrideGrassKind: 0
+    grassKind: 0
   - id: plain
     name: Речная пойма
     center: {x: 86, y: 300}
@@ -62,6 +68,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 0.92, g: 1.05, b: 0.86, a: 1.1}
+    overrideGrassKind: 0
+    grassKind: 0
   - id: hills
     name: Сосновые холмы
     center: {x: 214, y: 324}
@@ -73,6 +81,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 1.1, g: 1.03, b: 0.82, a: 0.95}
+    overrideGrassKind: 0
+    grassKind: 0
   - id: ford
     name: Брод у заставы
     center: {x: 292, y: 182}
@@ -84,6 +94,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 0.96, g: 1.03, b: 0.92, a: 1.05}
+    overrideGrassKind: 0
+    grassKind: 0
   - id: quarry
     name: Каменоломня
     center: {x: 300, y: 72}
@@ -95,6 +107,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 1.0, g: 0.98, b: 0.94, a: 0.6}
+    overrideGrassKind: 0
+    grassKind: 0
   - id: mount
     name: Горы
     center: {x: 424, y: 98}
@@ -106,6 +120,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 0.76, g: 0.84, b: 0.9, a: 0.85}
+    overrideGrassKind: 1
+    grassKind: 3
   - id: city
     name: Мёртвый город
     center: {x: 340, y: 346}
@@ -117,6 +133,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 0.95, g: 0.93, b: 0.92, a: 0.45}
+    overrideGrassKind: 1
+    grassKind: 2
   - id: swamp
     name: Топи
     center: {x: 404, y: 250}
@@ -128,6 +146,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 0.88, g: 0.8, b: 0.62, a: 0.9}
+    overrideGrassKind: 1
+    grassKind: 1
   - id: cedar
     name: Кедровое плато
     center: {x: 462, y: 362}
@@ -139,6 +159,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 0.84, g: 0.94, b: 1.04, a: 0.8}
+    overrideGrassKind: 0
+    grassKind: 0
   - id: rock
     name: Скала маяка
     center: {x: 468, y: 454}
@@ -150,6 +172,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 1.02, g: 1.08, b: 1.14, a: 0.6}
+    overrideGrassKind: 0
+    grassKind: 0
   - id: secret
     name: Скрытая долина
     center: {x: 124, y: 420}
@@ -161,6 +185,8 @@ MonoBehaviour:
     roughness: 1
     overrideGrassTint: 1
     grassTint: {r: 0.96, g: 1.12, b: 0.86, a: 1.2}
+    overrideGrassKind: 0
+    grassKind: 0
   gorges:
   - name: 
     from: pass

@@ -223,7 +223,7 @@ namespace Emberhold.World.Trees
                 var block = world.GetBlock(new Vector3Int(x, y, z));
                 if (block.IsAir)
                     continue;
-                // На гладкой земле верх — кусок склона из травы и над камнем: каменное место узнаём по поверхности.
+                // На гладкой земле травяной столбец бывает с каменными углами: каменное место узнаём по поверхности.
                 var material = block.Material;
                 var surface = world.Surface;
                 if (surface != null && surface.IsNatural(x, z) && y <= surface.TopY(x, z) && surface.IsRocky(x, z))

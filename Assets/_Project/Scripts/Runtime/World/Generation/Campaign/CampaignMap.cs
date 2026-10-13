@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Emberhold.World.Voxels;
 using UnityEngine;
 
 namespace Emberhold.World.Generation
@@ -48,6 +49,7 @@ namespace Emberhold.World.Generation
                     Profile = ridgeProfile != null ? ridgeProfile.Parameters : TerrainProfileParameters.Valley,
                     Forest = ridgeProfile != null ? ridgeProfile.Forest : null,
                     GrassTint = ridgeProfile != null ? ridgeProfile.GrassTint : Color.white,
+                    GrassKind = ridgeProfile != null ? ridgeProfile.GrassKind : GrassKind.Meadow,
                 },
             };
             var indices = new Dictionary<string, int>();
@@ -96,8 +98,16 @@ namespace Emberhold.World.Generation
             [ColorUsage(true, true)]
             public Color grassTint = Color.white;
 
+            [Tooltip("Свой вид травы; выключено — вид профиля.")]
+            public bool overrideGrassKind;
+            [Tooltip("Вид травы локации: своя текстура травы (Топи, Мёртвый город, Горы), остальные — луговая.")]
+            public GrassKind grassKind;
+
             /// <summary>Оттенок травы: свой, если задан, иначе профиля, иначе нейтральный.</summary>
             public Color GrassTint => overrideGrassTint ? grassTint : profile != null ? profile.GrassTint : Color.white;
+
+            /// <summary>Вид травы: свой, если задан, иначе профиля, иначе луговая.</summary>
+            public GrassKind GrassKind => overrideGrassKind ? grassKind : profile != null ? profile.GrassKind : GrassKind.Meadow;
 
             public CampaignLocationShape ToShape() => new()
             {
@@ -111,6 +121,7 @@ namespace Emberhold.World.Generation
                 Profile = profile != null ? profile.Parameters : FlatFloor,
                 Forest = profile != null ? profile.Forest : null,
                 GrassTint = GrassTint,
+                GrassKind = GrassKind,
             };
         }
 
