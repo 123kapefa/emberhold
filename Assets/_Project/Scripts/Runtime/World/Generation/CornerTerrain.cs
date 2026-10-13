@@ -108,9 +108,8 @@ namespace Emberhold.World.Generation
                     var floor = y * h;
                     var shape = new BlockShape(c00 - floor, c10 - floor, c01 - floor, c11 - floor);
                     var underWater = center < bedLevels[x, z];
-                    var material = y < middle ? m.Below(middle - y)
-                        : y == middle ? underWater ? m.Bed : m.Surface
-                        : underWater ? m.Bed : BlockMaterials.Grass;
+                    // Куски склона над средним слоем — из того же, что верх столбца: на скале камень, на лугу трава.
+                    var material = y < middle ? m.Below(middle - y) : underWater ? m.Bed : m.Surface;
                     // Пустым блок не бывает: до верхнего слоя самый высокий угол выше пола каждого слоя.
                     world.SetBlock(new Vector3Int(x, y, z), new Block(material, shape));
                 }
