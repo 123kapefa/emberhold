@@ -531,7 +531,10 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void SampleValleyAsset_MatchesDefaultValley()
         {
-            Assert.That(WorldHash(Full(LoadProfile("Valley"))), Is.EqualTo(DefaultValleyHash));
+            // Образец — долина по умолчанию, поднятая на 4 блока над коренной породой (#97).
+            var raised = TerrainProfileParameters.Valley;
+            raised.BaseHeight += 4f;
+            Assert.That(WorldHash(Full(LoadProfile("Valley"))), Is.EqualTo(WorldHash(Full(raised))));
         }
     }
 }
