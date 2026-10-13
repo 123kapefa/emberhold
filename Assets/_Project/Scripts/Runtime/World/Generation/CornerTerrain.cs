@@ -77,10 +77,10 @@ namespace Emberhold.World.Generation
 
         /// <summary>
         /// Блоки под гладкой поверхностью (<see cref="TerrainSurface"/>): corners — её высоты в шестнадцатых
-        /// с любой крутизной. Столбец, у которого углы расходятся не больше чем на блок, повторяет
-        /// поверхность точно: скос может переходить границу слоя, тогда верх собран из двух скошенных блоков
-        /// друг над другом. Круче — ровный верх на средней высоте (скала из блоков; рисуется всё равно
-        /// поверхность). Возвращает поверхность с верхним слоем земли каждого столбца и ставит её миру.
+        /// с любой крутизной. Под поверхностью лежат только целые блоки: столько, сколько слоёв помещается
+        /// под её серединой (с округлением), но не меньше одного. Поверхность — лишь картинка нетронутой
+        /// земли; выкопанный блок уходит целиком, и столбец дальше показывается целыми блоками, без косых
+        /// остатков. Возвращает поверхность с верхним слоем земли каждого столбца и ставит её миру.
         /// </summary>
         public static TerrainSurface FillSmooth(VoxelWorld world, int[,] corners, TerrainMaterials[,] materials, int[,] bedLevels)
         {
@@ -88,40 +88,19 @@ namespace Emberhold.World.Generation
             var size = world.SizeInBlocks;
             if (corners.GetLength(0) != size.x + 1 || corners.GetLength(1) != size.z + 1)
                 throw new ArgumentException($"Нужна сетка углов {size.x + 1}×{size.z + 1}", nameof(corners));
-            var ceiling = size.y * h;
             var topY = new int[size.x, size.z];
             world.Surface = null;
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
             {
-                int a = Mathf.Clamp(corners[x, z], 1, ceiling), b = Mathf.Clamp(corners[x + 1, z], 1, ceiling);
-                int c = Mathf.Clamp(corners[x, z + 1], 1, ceiling), d = Mathf.Clamp(corners[x + 1, z + 1], 1, ceiling);
-                var min = Mathf.Min(Mathf.Min(a, b), Mathf.Min(c, d));
-                var max = Mathf.Max(Mathf.Max(a, b), Mathf.Max(c, d));
-                var m = materials[x, z];
-                var surfaceMaterial = (a + b + c + d) / 4f < bedLevels[x, z] ? m.Bed : m.Surface;
-                if (max - min > h)
-                {
-                    // Круче блока на блок: ровный верх на средней высоте.
-                    var level = Mathf.Max(1, Mathf.RoundToInt((a + b + c + d) / 4f));
-                    a = b = c = d = min = max = level;
-                }
-
-                // Нижний слой верха — где лежит самый низкий угол (угол ровно на границе — в слое под ней).
-                var low = Mathf.Clamp((min - 1) / h, 0, size.y - 1);
-                var lowFloor = low * h;
-                var lower = new BlockShape(a - lowFloor, b - lowFloor, c - lowFloor, d - lowFloor);
-                var upFloor = lowFloor + h;
-                var upper = new BlockShape(a - upFloor, b - upFloor, c - upFloor, d - upFloor);
-                var hasUpper = max > upFloor && !upper.IsEmpty && low + 1 < size.y;
-                var top = hasUpper ? low + 1 : low;
+                var center = (corners[x, z] + corners[x + 1, z] + corners[x, z + 1] + corners[x + 1, z + 1]) / 4f;
+                var count = Mathf.Clamp(Mathf.RoundToInt(center / h), 1, size.y - 1);
+                var top = count - 1;
                 topY[x, z] = top;
-
-                for (var y = 0; y < low; y++)
-                    world.SetBlock(new Vector3Int(x, y, z), Block.Full(m.Below(low - y)));
-                world.SetBlock(new Vector3Int(x, low, z), new Block(surfaceMaterial, lower.IsEmpty ? BlockShape.Flat(1) : lower));
-                if (hasUpper)
-                    world.SetBlock(new Vector3Int(x, low + 1, z), new Block(surfaceMaterial, upper));
+                var m = materials[x, z];
+                for (var y = 0; y < top; y++)
+                    world.SetBlock(new Vector3Int(x, y, z), Block.Full(m.Below(top - y)));
+                world.SetBlock(new Vector3Int(x, top, z), Block.Full(center < bedLevels[x, z] ? m.Bed : m.Surface));
                 for (var y = top + 1; y < size.y; y++)
                     world.SetBlock(new Vector3Int(x, y, z), Block.Air);
             }

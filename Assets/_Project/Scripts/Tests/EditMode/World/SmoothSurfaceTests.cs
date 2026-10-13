@@ -36,22 +36,32 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
-        public void SlopeAcrossLayerBoundary_IsTwoSlopedBlocks()
+        public void UnderSurface_LieWholeBlocks_UpToItsMiddle()
         {
-            // Столбец (4, 4): углы 10 и 20 шестнадцатых — склон переходит границу слоя 16.
+            // Столбец (4, 4): углы 10 и 20 шестнадцатых, середина 15 — под ней один целый блок, без скосов.
             var world = Flat(10, (5, 4, 20), (5, 5, 20));
 
-            var lower = world.GetBlock(new Vector3Int(4, 0, 4));
-            var upper = world.GetBlock(new Vector3Int(4, 1, 4));
-            Assert.That(lower.Shape, Is.EqualTo(new BlockShape(10, 16, 10, 16)));
-            Assert.That(upper.Shape, Is.EqualTo(new BlockShape(0, 4, 0, 4)));
-            Assert.That(world.Surface.TopY(4, 4), Is.EqualTo(1));
+            Assert.That(world.GetBlock(new Vector3Int(4, 0, 4)).Shape, Is.EqualTo(BlockShape.Full));
+            Assert.That(world.GetBlock(new Vector3Int(4, 1, 4)).IsAir, Is.True);
+            Assert.That(world.Surface.TopY(4, 4), Is.EqualTo(0));
         }
 
         [Test]
-        public void SteeperThanOneBlock_BecomesFlatAtAverage()
+        public void DiggingTopBlock_RemovesItWhole()
         {
-            // Угол на 3 блока выше соседних: перепад больше блока, верх ровный на средней высоте.
+            // Склон через границу слоя: раньше после копания оставался косой блок, теперь — целый блок ниже.
+            var world = Flat(2 * H + 10, (5, 4, 2 * H + 20), (5, 5, 2 * H + 20));
+            var top = world.Surface.TopY(4, 4);
+            world.SetBlock(new Vector3Int(4, top, 4), Block.Air);
+
+            Assert.That(world.GetBlock(new Vector3Int(4, top - 1, 4)).Shape, Is.EqualTo(BlockShape.Full));
+            Assert.That(world.Surface.IsNatural(4, 4), Is.False);
+        }
+
+        [Test]
+        public void SteepSurface_KeepsItsSteepness_BlocksAreWholeAtTheMiddle()
+        {
+            // Угол на 4 блока выше соседних: поверхность хранит крутизну, блоки — целые до её середины.
             var world = Flat(2 * H, (5, 5, 6 * H));
 
             Assert.That(world.GetBlock(new Vector3Int(4, 2, 4)).Shape, Is.EqualTo(BlockShape.Flat(H)));
@@ -100,7 +110,7 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void GroundHeight_OnSmoothSurface_IsSurfaceHeight()
         {
-            // Склон через границу слоя: блоки дали бы 1 + средняя по верхнему скосу, поверхность — середину.
+            // Под склоном целый блок с верхом на 1, а земля для ходьбы — середина поверхности.
             var world = Flat(10, (5, 4, 20), (5, 5, 20));
             var expected = (10 + 20 + 10 + 20) / 4f / H;
 
@@ -135,8 +145,9 @@ namespace Emberhold.Tests.EditMode.World
                 var block = world.GetBlock(new Vector3Int(x, top, z));
                 Assert.That(block.IsAir, Is.False, $"столбец {x},{z}");
                 Assert.That(world.GetBlock(new Vector3Int(x, top + 1, z)).IsAir, Is.True, $"столбец {x},{z}");
-                // Блоки повторяют поверхность: верх блока не дальше блока от неё (на крутых местах — ступени).
-                Assert.That(top + block.Shape.Fill, Is.EqualTo(surface).Within(1.01f), $"столбец {x},{z}");
+                // Под поверхностью целые блоки до её середины: верх блока не дальше полублока от неё.
+                Assert.That(block.Shape, Is.EqualTo(BlockShape.Full), $"столбец {x},{z}");
+                Assert.That(top + 1f, Is.EqualTo(Mathf.Max(surface, 1f)).Within(0.51f), $"столбец {x},{z}");
             }
         }
     }
