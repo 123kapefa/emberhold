@@ -239,6 +239,66 @@ namespace Emberhold.Tests.EditMode.Trees
             Assert.That(GroundCoverMeshBuilder.Build(kind, 0).Colors.All(c => c.a < 0.5f), Is.True, "Без флага — нет");
         }
 
+        [Test]
+        public void Thinning_LevelFollowsDistance()
+        {
+            const int all = GroundCoverThinning.Steps;
+            Assert.That(GroundCoverThinning.Level(30f, 60f, 110f, all), Is.EqualTo(all), "Близко — вся мелочь");
+            Assert.That(GroundCoverThinning.Level(60f, 60f, 110f, all), Is.EqualTo(all));
+            Assert.That(GroundCoverThinning.Level(70f, 60f, 110f, 3), Is.EqualTo(3));
+            Assert.That(GroundCoverThinning.Level(85f, 60f, 110f, 2), Is.EqualTo(2));
+            Assert.That(GroundCoverThinning.Level(100f, 60f, 110f, 1), Is.EqualTo(1));
+            Assert.That(GroundCoverThinning.Level(110f, 60f, 110f, 1), Is.EqualTo(1));
+            Assert.That(GroundCoverThinning.Level(150f, 60f, 110f, 0), Is.EqualTo(0), "Далеко — скрыта");
+        }
+
+        [Test]
+        public void Thinning_StepHoldsNearItsBorder()
+        {
+            const int all = GroundCoverThinning.Steps;
+            // Граница 4→3 на 60: чуть за ней ступень держится, дальше запаса — меняется.
+            Assert.That(GroundCoverThinning.Level(61f, 60f, 110f, all), Is.EqualTo(all));
+            Assert.That(GroundCoverThinning.Level(63f, 60f, 110f, all), Is.EqualTo(3));
+            Assert.That(GroundCoverThinning.Level(59f, 60f, 110f, 3), Is.EqualTo(3));
+            Assert.That(GroundCoverThinning.Level(57f, 60f, 110f, 3), Is.EqualTo(all));
+            // Граница скрытия на 110.
+            Assert.That(GroundCoverThinning.Level(111f, 60f, 110f, 1), Is.EqualTo(1));
+            Assert.That(GroundCoverThinning.Level(113f, 60f, 110f, 1), Is.EqualTo(0));
+            Assert.That(GroundCoverThinning.Level(109f, 60f, 110f, 0), Is.EqualTo(0));
+            Assert.That(GroundCoverThinning.Level(107f, 60f, 110f, 0), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Thinning_KeepsShareOfPatchesSmallFirstToGo()
+        {
+            var moss = Kind("Мох", GroundCoverShape.Moss, 0.1f);
+            var patches = new List<GroundCoverPatch>();
+            for (var z = 0; z < 60; z++)
+            for (var x = 0; x < 60; x++)
+                patches.Add(new GroundCoverPatch(new Vector3Int(x, Ground, z), (x + z) % 3 == 0 ? fern : (x + z) % 3 == 1 ? grass : moss, 0, Vector2.zero, 0f, 1f));
+
+            float Share(int level, GroundCoverKind kind = null)
+            {
+                var of = patches.Where(p => kind == null || p.Kind == kind).ToList();
+                return of.Count(p => GroundCoverThinning.Keeps(p, level)) / (float)of.Count;
+            }
+
+            Assert.That(Share(GroundCoverThinning.Steps), Is.EqualTo(1f));
+            Assert.That(Share(0), Is.EqualTo(0f));
+            for (var level = 1; level < GroundCoverThinning.Steps; level++)
+            {
+                Assert.That(Share(level), Is.EqualTo(level / (float)GroundCoverThinning.Steps).Within(0.08f), $"Ступень {level}");
+                Assert.That(Share(level, moss), Is.LessThan(Share(level, grass)), "Мох пропадает раньше травы");
+                Assert.That(Share(level, grass), Is.LessThan(Share(level, fern)), "Трава — раньше папоротника");
+                Assert.That(Share(level, moss), Is.GreaterThan(0f), "Редеет каждый вид, а не пропадает целиком");
+            }
+            // Ступени вложены: что видно на меньшей, видно и на большей.
+            foreach (var p in patches)
+                for (var level = 1; level < GroundCoverThinning.Steps; level++)
+                    if (GroundCoverThinning.Keeps(p, level))
+                        Assert.That(GroundCoverThinning.Keeps(p, level + 1), Is.True);
+        }
+
         private GroundCover Scatter(float density, int seed, bool onStone = false, System.Func<Vector2Int, bool> keepClear = null)
         {
             var mix = new ForestMix(0f).WithGroundCover(new GroundCoverMix(density, onStone, new[] { Entry(grass, 1f) }));

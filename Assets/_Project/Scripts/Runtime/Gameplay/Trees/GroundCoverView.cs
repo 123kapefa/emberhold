@@ -14,6 +14,8 @@ namespace Emberhold.Gameplay.Trees
     /// <see cref="RegionSize"/>×<see cref="RegionSize"/> столбцов, и сетки строятся только у камеры (в пределах
     /// drawDistance): дальше мелочь всё равно не разглядеть. Пучок, под которым копали или строили, пропадает,
     /// и его участок перестраивается. Цвет травы подстраивается под оттенок травы локации, как кроны деревьев.
+    /// Когда камера отъезжает от земли дальше thinFrom, мелочь редеет ступенями, дальше hideBeyond скрыта целиком
+    /// (<see cref="GroundCoverThinning"/>).
     /// </summary>
     public sealed class GroundCoverView : MonoBehaviour
     {
@@ -32,6 +34,12 @@ namespace Emberhold.Gameplay.Trees
         [Tooltip("Мелочь рисуется на таком расстоянии от камеры по горизонтали, в блоках; дальше участки не строятся.")]
         [Min(16f)]
         [SerializeField] private float drawDistance = 96f;
+        [Tooltip("С такого расстояния от камеры до земли (в блоках) мелочь начинает редеть: мелкая пропадает первой.")]
+        [Min(0f)]
+        [SerializeField] private float thinFrom = 60f;
+        [Tooltip("Дальше этого расстояния от камеры до земли (в блоках) мелочь скрыта целиком и участки не строятся.")]
+        [Min(0f)]
+        [SerializeField] private float hideBeyond = 110f;
         [Tooltip("Сколько участков строить за кадр, когда камера сдвинулась (сначала ближние).")]
         [Range(1, 64)]
         [SerializeField] private int regionsPerFrame = 8;
@@ -52,6 +60,8 @@ namespace Emberhold.Gameplay.Trees
         private Comparison<Vector2Int> byDistance;
         private Vector2 sortCenter;
         private Vector2Int? lastMiddle;
+        // Ступень редения (GroundCoverThinning): Steps — вся мелочь, 0 — скрыта.
+        private int level = GroundCoverThinning.Steps;
         private GroundCover cover;
         // Свой корень для участков с позой мира: детьми вида мира могут быть только чанки.
         private Transform container;
@@ -75,6 +85,9 @@ namespace Emberhold.Gameplay.Trees
 
         /// <summary>Сколько участков сейчас нарисовано.</summary>
         public int ShownRegions => shown.Count;
+
+        /// <summary>Ступень редения: <see cref="GroundCoverThinning.Steps"/> — видна вся мелочь, 0 — скрыта.</summary>
+        public int ThinningLevel => level;
 
         private void Start()
         {
@@ -149,7 +162,7 @@ namespace Emberhold.Gameplay.Trees
                 dirty.Add(region);
         }
 
-        // Построить участки у камеры (ближние первыми, не больше budget новых), перестроить изменившиеся, убрать далёкие.
+        // Перестроить изменившиеся участки и построить новые у камеры (ближние первыми, вместе не больше budget), убрать далёкие.
         private void Refresh(int budget)
         {
             var camera = Camera.main;
@@ -158,6 +171,24 @@ namespace Emberhold.Gameplay.Trees
             var space = worldView.transform;
             var eye = space.InverseTransformPoint(camera.transform.position);
             var center = new Vector2(eye.x, eye.z);
+            var newLevel = GroundCoverThinning.Level(GroundDistance(camera, eye), thinFrom, hideBeyond, level);
+            if (newLevel != level)
+            {
+                level = newLevel;
+                // Другая ступень — перестроить всё нарисованное; скрытая мелочь не держит ни сеток, ни памяти.
+                foreach (var key in shown.Keys)
+                    dirty.Add(key);
+                lastMiddle = null;
+            }
+            if (level == 0)
+            {
+                foreach (var region in shown.Values)
+                    Release(region);
+                shown.Clear();
+                dirty.Clear();
+                wanted.Clear();
+                return;
+            }
             var keep = drawDistance + RegionSize;
             var middle = new Vector2Int(Mathf.FloorToInt(center.x / RegionSize), Mathf.FloorToInt(center.y / RegionSize));
             // Камера в том же участке, всё нужное построено и ничего не менялось — делать нечего.
@@ -177,12 +208,21 @@ namespace Emberhold.Gameplay.Trees
                 dirty.Remove(key);
             }
 
-            foreach (var key in dirty)
+            // Изменившиеся участки перестраиваются в тот же счёт budget, ближние первыми: смена ступени редения
+            // трогает все нарисованные участки, и разом это был бы рывок кадра.
+            sortCenter = center;
+            byDistance ??= (a, b) => Distance(a, sortCenter).CompareTo(Distance(b, sortCenter));
+            far.Clear();
+            far.AddRange(dirty);
+            far.Sort(byDistance);
+            var refilled = Mathf.Min(far.Count, budget);
+            for (var i = 0; i < refilled; i++)
             {
-                if (shown.TryGetValue(key, out var region))
-                    Fill(key, region.Mesh);
+                if (shown.TryGetValue(far[i], out var region))
+                    Fill(far[i], region.Mesh);
+                dirty.Remove(far[i]);
             }
-            dirty.Clear();
+            budget -= refilled;
 
             wanted.Clear();
             var reach = Mathf.CeilToInt(drawDistance / RegionSize) + 1;
@@ -193,8 +233,6 @@ namespace Emberhold.Gameplay.Trees
                 if (!shown.ContainsKey(key) && regions.ContainsKey(key) && Distance(key, center) <= drawDistance)
                     wanted.Add(key);
             }
-            sortCenter = center;
-            byDistance ??= (a, b) => Distance(a, sortCenter).CompareTo(Distance(b, sortCenter));
             wanted.Sort(byDistance);
             var built = Mathf.Min(wanted.Count, budget);
             for (var i = 0; i < built; i++)
@@ -237,6 +275,8 @@ namespace Emberhold.Gameplay.Trees
             {
                 foreach (var patch in list)
                 {
+                    if (!GroundCoverThinning.Keeps(patch, level))
+                        continue;
                     var shape = ShapeFor(patch.Kind, patch.Variant);
                     var position = patch.Position;
                     var rotation = Quaternion.Euler(0f, patch.Rotation, 0f);
@@ -263,6 +303,16 @@ namespace Emberhold.Gameplay.Trees
                 indices.Add(i);
             mesh.SetTriangles(indices, 0, vertices.Count, 0);
             mesh.RecalculateBounds();
+        }
+
+        // Расстояние от камеры до земли по взгляду, в блоках; если луч не попал в землю — высота камеры над миром.
+        private float GroundDistance(Camera camera, Vector3 eye)
+        {
+            var view = camera.transform;
+            var scale = Mathf.Max(worldView.transform.lossyScale.y, 1e-4f);
+            if (Physics.Raycast(view.position, view.forward, out var hit, hideBeyond * 4f * scale))
+                return hit.distance / scale;
+            return eye.y;
         }
 
         private GroundCoverMeshBuilder.Shape ShapeFor(GroundCoverKind kind, int variant)
