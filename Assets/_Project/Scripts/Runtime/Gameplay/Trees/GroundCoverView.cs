@@ -44,6 +44,8 @@ namespace Emberhold.Gameplay.Trees
         private readonly List<Vector2Int> wanted = new();
         private readonly List<Vector2Int> far = new();
         private GroundCover cover;
+        // Свой корень для участков с позой мира: детьми вида мира могут быть только чанки.
+        private Transform container;
 
         private sealed class Region
         {
@@ -83,6 +85,8 @@ namespace Emberhold.Gameplay.Trees
             foreach (var region in shown.Values)
                 Release(region);
             shown.Clear();
+            if (container != null)
+                Destroy(container.gameObject);
         }
 
         private void LateUpdate()
@@ -175,8 +179,15 @@ namespace Emberhold.Gameplay.Trees
 
         private Region Create(Vector2Int key)
         {
+            if (container == null)
+            {
+                container = new GameObject("Ground cover").transform;
+                var space = worldView.transform;
+                container.SetPositionAndRotation(space.position, space.rotation);
+                container.localScale = space.lossyScale;
+            }
             var root = new GameObject($"Ground cover {key.x},{key.y}");
-            root.transform.SetParent(worldView.transform, false);
+            root.transform.SetParent(container, false);
             var mesh = new Mesh { name = root.name, indexFormat = IndexFormat.UInt32 };
             Fill(key, mesh);
             root.AddComponent<MeshFilter>().sharedMesh = mesh;
