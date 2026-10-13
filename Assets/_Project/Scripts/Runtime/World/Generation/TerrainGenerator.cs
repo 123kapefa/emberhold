@@ -137,6 +137,7 @@ namespace Emberhold.World.Generation
         {
             var size = world.SizeInBlocks;
             var heights = CampaignHeights.Build(layout, seed, size.x, size.z, size.y - 2);
+            world.GrassTint = new GroundTint(heights.GrassTints);
             var random = new System.Random(seed);
             var cliffOffset = new Vector2((float)random.NextDouble() * 10000f, (float)random.NextDouble() * 10000f);
 

@@ -93,6 +93,8 @@ namespace Emberhold.World.Meshing
                 n = Neighbor(world, data, origin, x, y, z - 1).Shape;
                 AddSide(output, material, index, p, Side.Back, s.C00, s.C10, n.C01, n.C11);
             }
+
+            output.ApplyGrassTint(world.GrassTint, origin);
         }
 
         /// <summary>

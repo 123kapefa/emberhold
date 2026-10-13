@@ -39,8 +39,8 @@ namespace Emberhold.World
         private readonly List<(Vector3Int block, Block value)> hiddenNearChunk = new();
         // Чанки, у которых изменилась только картинка (спрятали или вернули блок): коллайдер у них прежний.
         private readonly HashSet<Vector3Int> visualDirty = new();
-        private readonly List<Color32> groundColors = new();
-        private Color32? rockColor;
+        private readonly List<Color> groundColors = new();
+        private Color? rockColor;
         private ChunkMeshData meshData;
         private ChunkMeshData colliderData;
         private readonly SurfaceNormals surfaceNormals = new();
@@ -474,15 +474,19 @@ namespace Emberhold.World
             mesh.SetVertices(data.Vertices);
             mesh.SetNormals(data.Normals);
             mesh.SetUVs(0, data.Uvs);
-            // Гладкая земля смешивает цвет травы с цветом камня: вес в UV3.x, цвет камня — в цвете вершин.
+            // Гладкая земля смешивает траву с камнем: вес в UV3.x, цвет камня — общее свойство шейдера.
             // Верх блоков земли и камня у травы получает бахрому травы: маска соседей и место в ячейке в UV3.yzw.
+            // Оттенок травы своего места — в цвете вершин.
             if (visual)
             {
+                Shader.SetGlobalColor(GroundRockColorId, RockColor());
                 mesh.SetUVs(3, data.Blends);
                 groundColors.Clear();
-                var rock = RockColor();
-                for (var i = 0; i < data.Vertices.Count; i++)
-                    groundColors.Add(rock);
+                // Цвет материала Unity переводит в линейное пространство сам, цвет вершин — нет.
+                var linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
+                foreach (var tint in data.Colors)
+                    groundColors.Add(linear ? new Color(Mathf.GammaToLinearSpace(tint.r), Mathf.GammaToLinearSpace(tint.g),
+                        Mathf.GammaToLinearSpace(tint.b), tint.a) : tint);
                 mesh.SetColors(groundColors);
             }
 
@@ -496,18 +500,18 @@ namespace Emberhold.World
         }
 
         /// <summary>Цвет камня для перехода гладкой земли из травы в камень: основной цвет материала камня.</summary>
-        private Color32 RockColor()
+        /// <remarks>Общее свойство шейдера: Unity переводит его в линейное пространство сам, как цвет материала.</remarks>
+        private Color RockColor()
         {
             if (rockColor.HasValue)
                 return rockColor.Value;
             var stone = blockMaterials != null && BlockMaterials.Stone < blockMaterials.Length ? blockMaterials[BlockMaterials.Stone] : null;
-            var color = stone != null && stone.HasProperty(BaseColorId) ? stone.GetColor(BaseColorId) : Color.gray;
-            // Цвет материала Unity переводит в линейное пространство сам, цвет вершин — нет.
-            rockColor = QualitySettings.activeColorSpace == ColorSpace.Linear ? color.linear : color;
+            rockColor = stone != null && stone.HasProperty(BaseColorId) ? stone.GetColor(BaseColorId) : Color.gray;
             return rockColor.Value;
         }
 
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        private static readonly int GroundRockColorId = Shader.PropertyToID("_GroundRockColor");
 
         /// <summary>Материалы для подмешей: подмеш i — материал блока i + 1 (воздух не рисуется).</summary>
         private void BuildSharedMaterials()

@@ -34,12 +34,23 @@ namespace Emberhold.World.Generation
         /// <summary>От какой высоты считать террасы: дно ближайшей локации или ущелья, чтобы у дна не было канавы.</summary>
         public readonly float[,] TerraceBases;
 
+        /// <summary>
+        /// Оттенок травы в углу: смесь оттенков локаций по близости (внутри дна — свой, за краем за
+        /// <see cref="TintBlend"/> блоков сходит на нет), в ущелье — плавно от оттенка начала к оттенку конца,
+        /// остаток — оттенок хребта. Поэтому на стыках, в ущельях и на склонах переход плавный.
+        /// </summary>
+        public readonly Color[,] GrassTints;
+
+        /// <summary>За сколько блоков от края дна локации или ущелья их оттенок сходит на нет.</summary>
+        public const float TintBlend = 16f;
+
         private CampaignHeights(int sizeX, int sizeZ)
         {
             Heights = new float[sizeX + 1, sizeZ + 1];
             Owners = new int[sizeX + 1, sizeZ + 1];
             TerraceOwners = new int[sizeX + 1, sizeZ + 1];
             TerraceBases = new float[sizeX + 1, sizeZ + 1];
+            GrassTints = new Color[sizeX + 1, sizeZ + 1];
         }
 
         /// <summary>Чья земля в столбце (x, z): хозяин его юго-западного угла.</summary>
@@ -80,6 +91,10 @@ namespace Emberhold.World.Generation
                     + (1f - CampaignNoise.SmoothStep(0f, 24f, edge)) * 4f;
             h = Math.Max(ridge.MinHeight, Math.Min(ridge.MaxHeight, h));
 
+            // Оттенок: сумма оттенков с весами и сумма весов; остаток до 1 — хребет.
+            var tint = new Color(0f, 0f, 0f, 0f);
+            var tintWeight = 0f;
+
             var owner = Ridge;
             var terraceOwner = Ridge;
             var terraceBase = 0f;
@@ -109,6 +124,9 @@ namespace Emberhold.World.Generation
                     : 0.75f + 0.7f * noise.Fbm(x * 0.05f + 5f, z * 0.05f, 3);
                 distances[i] = d;
                 floors[i] = location.Floor(x, z, noise);
+                var w = 1f - CampaignNoise.SmoothStep(0f, TintBlend, d);
+                tint += w * (location.Shape.GrassTint ?? Color.white);
+                tintWeight += w;
                 h = CampaignNoise.SmoothMin(h, floors[i] + Math.Max(d, 0f) * wall, 5f);
                 if (d < nearest)
                 {
@@ -143,6 +161,12 @@ namespace Emberhold.World.Generation
                     floor = Math.Max(floor, CampaignNoise.Lerp(floor, floors[end], into));
                 var wall = 0.8f + 0.5f * noise.Fbm(x * 0.07f, z * 0.07f, 3);
                 h = CampaignNoise.SmoothMin(h, floor + Math.Max(d, 0f) * wall, 4f);
+                // Ущелье: оттенок плавно от локации начала к локации конца по середине пути.
+                var gw = 1f - CampaignNoise.SmoothStep(0f, TintBlend, d);
+                var fromTint = locations[gorge.Shape.From].Shape.GrassTint ?? Color.white;
+                var toTint = locations[gorge.Shape.To].Shape.GrassTint ?? Color.white;
+                tint += gw * Color.LerpUnclamped(fromTint, toTint, CampaignNoise.SmoothStep(0.2f, 0.8f, t));
+                tintWeight += gw;
                 if (d < nearest)
                 {
                     nearest = d;
@@ -155,6 +179,9 @@ namespace Emberhold.World.Generation
                     terraceBase = gorge.Floor(t);
                 }
             }
+
+            var ridgeTint = ridge.GrassTint ?? Color.white;
+            GrassTints[xi, zi] = tintWeight < 1f ? tint + (1f - tintWeight) * ridgeTint : tint / tintWeight;
 
             Heights[xi, zi] = Math.Max(1f, Math.Min(maxHeight, h));
             Owners[xi, zi] = owner;

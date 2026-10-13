@@ -1,8 +1,9 @@
 // Копия LitForwardPass.hlsl из URP 17.6 с отличиями: текстура материала кладётся по трём проекциям мира
 // (без растяжения на крутых склонах), вблизи камеры добавляется мелкая деталь из альфа-канала, вдали рисунок
-// упрощается, и трава сменяется текстурой камня, окрашенной цветом вершины, по весу из UV3.x; на верх блоков
-// земли и камня рядом с травой заходит трава (_GrassMap) по маске соседей из UV3.y и месту в ячейке из UV3.zw. Граница травы везде одна: резкая,
-// рваная, с зубцами-травинками и тёмной каймой. У мешей без UV3 веса 0, и остаётся своя текстура материала.
+// упрощается, и трава сменяется текстурой камня по весу из UV3.x. Трава окрашена оттенком своего места
+// (по локациям) из цвета вершины. На верх блоков земли и камня рядом с травой заходит трава (_GrassMap)
+// по маске соседей из UV3.y и месту в ячейке из UV3.zw. Граница травы везде одна: резкая, рваная,
+// с зубцами-травинками и тёмной каймой. У мешей без UV3 веса 0, и остаётся своя текстура материала.
 #ifndef EMBERHOLD_GROUND_FORWARD_PASS_INCLUDED
 #define EMBERHOLD_GROUND_FORWARD_PASS_INCLUDED
 
@@ -19,6 +20,15 @@ SAMPLER(sampler_RockMap);
 // Текстура травы для бахромы травы на краю блоков земли и камня рядом с травой (вес в UV3.y).
 TEXTURE2D(_GrassMap);
 SAMPLER(sampler_GrassMap);
+// Цвет камня перехода гладкой земли — общее свойство, его ставит VoxelWorldView (цвет материала камня).
+half4 _GroundRockColor;
+
+// Оттенок травы своего места из цвета вершины: rgb — множитель, a — насыщенность (1 — как есть).
+half3 TintGrass(half3 albedo, half4 tint)
+{
+    half luma = dot(albedo, half3(0.3h, 0.59h, 0.11h));
+    return lerp(luma.xxx, albedo, tint.a) * tint.rgb;
+}
 
 // Сколько блоков занимает текстура по каждой проекции.
 #define EMBERHOLD_GROUND_TILE 8.0
@@ -255,10 +265,11 @@ struct Varyings
     float4 probeOcclusion : TEXCOORD10;
 #endif
 
-    // rgb — цвет, к которому смешивать, a — вес смешивания.
+    // Оттенок травы своего места (цвет вершины): rgb — множитель, a — насыщенность.
     half4 groundColor               : TEXCOORD11;
-    // Трава на краю блока земли или камня: x — маска соседей-травы, yz — место в ячейке (UV3.yzw).
-    float3 groundGrass              : TEXCOORD12;
+    // UV3: x — вес камня гладкой земли, y — маска соседей-травы у блоков земли и камня (−1 — вершина травы),
+    // zw — место в ячейке.
+    float4 groundBlend              : TEXCOORD12;
 
     float4 positionCS               : SV_POSITION;
 
@@ -412,8 +423,8 @@ Varyings LitPassVertex(Attributes input)
 #endif
 
     output.positionCS = vertexInput.positionCS;
-    output.groundColor = half4(input.color.rgb, input.groundBlend.x);
-    output.groundGrass = input.groundBlend.yzw;
+    output.groundColor = input.color;
+    output.groundBlend = input.groundBlend;
 
     return output;
 }
@@ -452,9 +463,12 @@ void LitPassFragment(
     half flatFade = saturate((cameraDistance - EMBERHOLD_FLAT_NEAR) / (EMBERHOLD_FLAT_FAR - EMBERHOLD_FLAT_NEAR));
     half3 baseAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap), input.positionWS, normalForTex,
         dpdx, dpdy, detailFade, flatFade) * _BaseColor.rgb;
+    // Трава (гладкая земля и блоки травы) — в оттенке своего места.
+    if (input.groundBlend.y < -0.5)
+        baseAlbedo = TintGrass(baseAlbedo, input.groundColor);
     surfaceData.albedo = baseAlbedo;
     // Камень сэмплируем только там, где он есть: у блоков и в сцене без гладкой земли вес 0.
-    half rockWeight = saturate(input.groundColor.a);
+    half rockWeight = saturate(input.groundBlend.x);
     UNITY_BRANCH
     if (rockWeight > 0.001h)
     {
@@ -465,21 +479,21 @@ void LitPassFragment(
             + GrassEdgeOffset(input.positionWS, EMBERHOLD_EDGE_RAGGED, 1.0 - rockWeight, dpdx, dpdy), rim, shadow);
         baseAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_RIM_DARK, rim);
         half3 rockAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_RockMap, sampler_RockMap), input.positionWS, normalForTex,
-            dpdx, dpdy, detailFade, flatFade) * input.groundColor.rgb;
+            dpdx, dpdy, detailFade, flatFade) * _GroundRockColor.rgb;
         rockAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_SHADOW_DARK, shadow);
         surfaceData.albedo = lerp(rockAlbedo, baseAlbedo, grass);
     }
 
     // Трава с соседей на верх блока земли или камня: та же рваная бахрома с зубцами, от края с травой внутрь блока.
     UNITY_BRANCH
-    if (input.groundGrass.x > 0.5)
+    if (input.groundBlend.y > 0.5)
     {
-        float toGrass = -FringeDistance(input.groundGrass.x, input.groundGrass.yz);
+        float toGrass = -FringeDistance(input.groundBlend.y, input.groundBlend.zw);
         half rim, shadow;
         half grass = GrassCover(0.5 + EMBERHOLD_FRINGE_INSET + toGrass
             + GrassEdgeOffset(input.positionWS, EMBERHOLD_FRINGE_RAGGED, toGrass, dpdx, dpdy), rim, shadow);
-        half3 grassAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_GrassMap, sampler_GrassMap), input.positionWS, normalForTex,
-            dpdx, dpdy, detailFade, flatFade);
+        half3 grassAlbedo = TintGrass(SampleTriplanar(TEXTURE2D_ARGS(_GrassMap, sampler_GrassMap), input.positionWS,
+            normalForTex, dpdx, dpdy, detailFade, flatFade), input.groundColor);
         grassAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_RIM_DARK, rim);
         half3 groundAlbedo = surfaceData.albedo * lerp(1.0h, EMBERHOLD_EDGE_SHADOW_DARK, shadow);
         surfaceData.albedo = lerp(groundAlbedo, grassAlbedo, grass);

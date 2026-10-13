@@ -22,6 +22,9 @@ namespace Emberhold.World.Voxels
         /// </summary>
         public TerrainSurface Surface { get; set; }
 
+        /// <summary>Оттенок травы по миру (по локациям); null — везде нейтральный.</summary>
+        public GroundTint GrassTint { get; set; }
+
         /// <summary>Растёт при каждой смене блока через SetBlock: по нему кэши (например, пути) узнают, что мир изменился.</summary>
         public int Version { get; private set; }
 

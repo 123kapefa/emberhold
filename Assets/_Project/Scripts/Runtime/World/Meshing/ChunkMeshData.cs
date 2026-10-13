@@ -16,10 +16,18 @@ namespace Emberhold.World.Meshing
         public readonly List<Vector2> Uvs = new();
         /// <summary>
         /// Смешивание у каждой вершины (UV3 меша). x — вес камня поверх травы, не ноль только у гладкой земли
-        /// (<see cref="TerrainSurface"/>). y — маска соседей-травы (<see cref="GrassEdge"/>), zw — положение
-        /// вершины в ячейке (0..1): не ноль только у верха блоков земли и камня рядом с травой.
+        /// (<see cref="TerrainSurface"/>). y — маска соседей-травы (<see cref="GrassEdge"/>) у верха блоков земли
+        /// и камня рядом с травой или <see cref="GrassVertex"/> у вершин травы; zw — положение вершины в ячейке (0..1).
         /// </summary>
         public readonly List<Vector4> Blends = new();
+        /// <summary>
+        /// Цвет вершин: оттенок травы своего места (<see cref="GroundTint"/>), rgb — множитель, a — насыщенность.
+        /// Его берут трава (гладкая земля и блоки травы) и бахрома травы на соседних блоках.
+        /// </summary>
+        public readonly List<Color> Colors = new();
+
+        /// <summary>Значение UV3.y у вершин подмеша травы: шейдер красит их оттенком травы.</summary>
+        public const float GrassVertex = -1f;
         /// <summary>Индекс — номер материала блока; для воздуха список всегда пуст.</summary>
         public readonly List<int>[] Triangles;
         /// <summary>
@@ -58,6 +66,7 @@ namespace Emberhold.World.Meshing
             Normals.Clear();
             Uvs.Clear();
             Blends.Clear();
+            Colors.Clear();
             foreach (var list in Triangles)
                 list.Clear();
             foreach (var list in TriangleBlocks)
@@ -125,12 +134,31 @@ namespace Emberhold.World.Meshing
             }
         }
 
+        /// <summary>
+        /// Оттенок травы вершинам по их месту: tint в точке (origin + вершина) по X и Z; вершины подмеша травы
+        /// помечаются <see cref="GrassVertex"/>. Без оттенка цвет остаётся белым.
+        /// </summary>
+        public void ApplyGrassTint(GroundTint tint, Vector3 origin)
+        {
+            if (tint != null)
+            {
+                for (var i = 0; i < Vertices.Count; i++)
+                    Colors[i] = tint.Sample(origin.x + Vertices[i].x, origin.z + Vertices[i].z);
+            }
+            foreach (var index in Triangles[BlockMaterials.Grass])
+            {
+                var b = Blends[index];
+                Blends[index] = new Vector4(b.x, GrassVertex, b.z, b.w);
+            }
+        }
+
         private void AddVertex(Vector3 position, Vector3 normal, Vector2 uv, float blend = 0f)
         {
             Vertices.Add(position);
             Normals.Add(normal);
             Uvs.Add(uv);
             Blends.Add(new Vector4(blend, 0f, 0f, 0f));
+            Colors.Add(Color.white);
         }
 
         private void AddIndices(byte material, int block, int a, int b, int c)
