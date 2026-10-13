@@ -90,6 +90,12 @@ namespace Emberhold.World.Generation
                 throw new ArgumentException($"Нужна сетка углов {size.x + 1}×{size.z + 1}", nameof(corners));
             var topY = new int[size.x, size.z];
             world.Surface = null;
+            if (PixelSlopes.Enabled)
+            {
+                // Макет #79: вместо гладкой поверхности — слои блоков со скосами по ней; поверхность миру не ставится.
+                FillLayers(world, corners, materials, bedLevels, topY);
+                return new TerrainSurface(corners, topY);
+            }
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
             {
@@ -107,6 +113,44 @@ namespace Emberhold.World.Generation
             var surface = new TerrainSurface(corners, topY);
             world.Surface = surface;
             return surface;
+        }
+
+        /// <summary>
+        /// Макет #79: столбец заполняется слоями до поверхности — в каждом слое скос с углами поверхности,
+        /// обрезанными по слою (0..16); ниже самого низкого угла — целые блоки. Слои от слоя середины и выше —
+        /// материал поверхности, ниже — подповерхностный и глубинный по глубине от слоя середины.
+        /// </summary>
+        private static void FillLayers(VoxelWorld world, int[,] corners, TerrainMaterials[,] materials, int[,] bedLevels, int[,] topY)
+        {
+            const int h = BlockShape.MaxHeight;
+            var size = world.SizeInBlocks;
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+            {
+                int c00 = corners[x, z], c10 = corners[x + 1, z], c01 = corners[x, z + 1], c11 = corners[x + 1, z + 1];
+                var center = (c00 + c10 + c01 + c11) / 4f;
+                var max = Math.Max(Math.Max(c00, c10), Math.Max(c01, c11));
+                var middle = Mathf.Clamp(Mathf.CeilToInt(center / h) - 1, 0, size.y - 1);
+                topY[x, z] = middle;
+                var m = materials[x, z];
+                var surfaceMaterial = center < bedLevels[x, z] ? m.Bed : m.Surface;
+                for (var y = 0; y < size.y; y++)
+                {
+                    var floor = y * h;
+                    if (floor >= max && y > 0)
+                    {
+                        world.SetBlock(new Vector3Int(x, y, z), Block.Air);
+                        continue;
+                    }
+                    var shape = new BlockShape(Clip(c00 - floor), Clip(c10 - floor), Clip(c01 - floor), Clip(c11 - floor));
+                    if (shape.IsEmpty)
+                        shape = BlockShape.Flat(1);
+                    var material = y >= middle ? surfaceMaterial : m.Below(middle - y);
+                    world.SetBlock(new Vector3Int(x, y, z), new Block(material, shape));
+                }
+            }
+
+            static int Clip(int v) => Mathf.Clamp(v, 0, h);
         }
 
         // Углы столбца в массиве: 0 — C00, 1 — C10, 2 — C01, 3 — C11.

@@ -1,0 +1,172 @@
+#if UNITY_EDITOR
+using System.Collections;
+using System.Diagnostics;
+using System.IO;
+using System.Text;
+using Emberhold.CameraRig;
+using Emberhold.Core;
+using Emberhold.Gameplay.Building;
+using Emberhold.World;
+using Emberhold.World.Generation;
+using Emberhold.World.Meshing;
+using Emberhold.World.Voxels;
+using NUnit.Framework;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.TestTools;
+using Debug = UnityEngine.Debug;
+
+// Временный: снимки макета #79 по вариантам ступеней (в коммит не идёт).
+namespace Emberhold.Tests.PlayMode.World
+{
+    [Category("Shots")]
+    public sealed class ZzPixelShots
+    {
+        private static readonly (string Name, int Steps)[] Variants = { ("smooth", 0), ("16", 16), ("8", 8), ("4", 4) };
+
+        private static readonly (string Name, Vector3 Focus, float Yaw, float Pitch, float Distance)[] SandboxShots =
+        {
+            ("1_gentle_slope", new Vector3(16, 11, 32), 45, 40, 16),
+            ("2_steep_grass_rock", new Vector3(40, 17, 31), 90, 28, 15),
+            ("3_cliff", new Vector3(13, 12, 49), 0, 28, 18),
+            ("4_pit", new Vector3(42, 5, 54), 30, 55, 16),
+            ("5_patch3_top", new Vector3(16.5f, 8, 15.5f), 0, 89, 7),
+            ("6_patch3_angle", new Vector3(16.5f, 8, 15.5f), 30, 45, 8),
+        };
+
+        private static readonly (string Name, Vector2 Focus, float Yaw, float Pitch, float Distance)[] CampaignShots =
+        {
+            ("7_campaign_d30", new Vector2(190, 255), 45, 45, 30),
+            ("8_campaign_d80", new Vector2(190, 255), 45, 50, 80),
+        };
+
+        [UnityTest, Timeout(3600000)]
+        public IEnumerator Shots()
+        {
+            var root = System.Environment.GetEnvironmentVariable("PIXEL_SHOTS");
+            if (string.IsNullOrEmpty(root))
+                Assert.Ignore("PIXEL_SHOTS не задан");
+            var log = new StringBuilder();
+            foreach (var (variant, steps) in Variants)
+            {
+                PixelSlopes.Steps = steps;
+                var dir = Path.Combine(root, variant);
+                Directory.CreateDirectory(dir);
+
+                yield return EditorSceneManager.LoadSceneAsyncInPlayMode("Assets/_Project/Scenes/Sandbox/GroundTextures.unity",
+                    new LoadSceneParameters(LoadSceneMode.Single));
+                for (var i = 0; i < 5; i++) yield return null;
+                var view = Object.FindAnyObjectByType<VoxelWorldView>();
+                Object.FindAnyObjectByType<CameraRigController>().enabled = false;
+                var camera = UnityEngine.Camera.main;
+                foreach (var shot in SandboxShots)
+                {
+                    Place(camera, view.transform.TransformPoint(shot.Focus), shot.Yaw, shot.Pitch, shot.Distance);
+                    yield return null;
+                    Save(camera, Path.Combine(dir, shot.Name + ".png"));
+                }
+
+                if (steps == 8)
+                {
+                    // Выделение и раскоп одного слоя на ступенчатом склоне.
+                    var editor = Object.FindAnyObjectByType<BlockEditController>();
+                    var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+                    var focus = view.transform.TransformPoint(new Vector3(42.5f, 21f, 31.5f));
+                    Place(camera, focus, 90, 30, 9);
+                    yield return null;
+                    var screen = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+                    var hit = editor.Pick(screen);
+                    typeof(BlockEditController).GetProperty("Hovered", flags).SetValue(editor, hit);
+                    typeof(BlockEditController).GetMethod("UpdateOutline", flags).Invoke(editor, null);
+                    log.AppendLine($"steps 8 hover {hit} shape {(hit.HasValue ? view.World.GetBlock(hit.Value.Block).Shape.ToString() : "-")}");
+                    SaveScreen(camera, Path.Combine(root, "dig_1_hover.png"));
+                    if (hit is { } h)
+                    {
+                        view.World.SetBlock(h.Block, Block.Air);
+                        yield return null;
+                        yield return null;
+                        var after = editor.Pick(screen);
+                        typeof(BlockEditController).GetProperty("Hovered", flags).SetValue(editor, after);
+                        typeof(BlockEditController).GetMethod("UpdateOutline", flags).Invoke(editor, null);
+                        log.AppendLine($"after dig hover {after}");
+                        SaveScreen(camera, Path.Combine(root, "dig_2_after.png"));
+                    }
+                }
+
+                yield return EditorSceneManager.LoadSceneAsyncInPlayMode("Assets/_Project/Scenes/Sandbox/CampaignMap.unity",
+                    new LoadSceneParameters(LoadSceneMode.Single));
+                for (var i = 0; i < 30; i++) yield return null;
+                view = Object.FindAnyObjectByType<VoxelWorldView>();
+                var rig = Object.FindAnyObjectByType<CameraRigController>();
+                if (rig != null) rig.enabled = false;
+                camera = UnityEngine.Camera.main;
+                camera.farClipPlane = 2000f;
+                Physics.SyncTransforms();
+                var triangles = 0L;
+                foreach (var filter in Object.FindObjectsByType<MeshFilter>())
+                    if (filter.sharedMesh != null && filter.GetComponentInParent<VoxelWorldView>() != null)
+                        triangles += filter.sharedMesh.triangles.Length / 3;
+                foreach (var shot in CampaignShots)
+                {
+                    var top = view.transform.TransformPoint(new Vector3(shot.Focus.x, 100f, shot.Focus.y));
+                    var y = Physics.Raycast(top, Vector3.down, out var ground, 200f, Layers.GroundMask) ? ground.point.y : 15f;
+                    Place(camera, new Vector3(top.x, y, top.z), shot.Yaw, shot.Pitch, shot.Distance);
+                    yield return null;
+                    Save(camera, Path.Combine(dir, shot.Name + ".png"));
+                }
+
+                // Меширование всей карты заново (без сцены): время и треугольники.
+                var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>("Assets/_Project/Data/World/Campaign/CampaignTerrain.asset");
+                var world = TerrainGenerator.GenerateCampaign(settings.Map.ToLayout(), settings.Seed, settings.SizeInChunks, out _);
+                var data = new ChunkMeshData();
+                var timer = Stopwatch.StartNew();
+                var meshTriangles = 0L;
+                var vertices = 0L;
+                for (var cz = 0; cz < world.SizeInChunks.z; cz++)
+                for (var cy = 0; cy < world.SizeInChunks.y; cy++)
+                for (var cx = 0; cx < world.SizeInChunks.x; cx++)
+                {
+                    ChunkMesher.Build(world, new Vector3Int(cx, cy, cz), data);
+                    meshTriangles += data.TriangleCount;
+                    vertices += data.Vertices.Count;
+                }
+                timer.Stop();
+                log.AppendLine($"variant {variant}: scene triangles {triangles}, mesher triangles {meshTriangles}, vertices {vertices}, mesh time {timer.ElapsedMilliseconds} ms");
+            }
+            PixelSlopes.Steps = 0;
+            Debug.Log("[PixelShots]\n" + log);
+        }
+
+        private static void Place(UnityEngine.Camera camera, Vector3 focus, float yaw, float pitch, float distance)
+        {
+            var rotation = Quaternion.Euler(pitch, yaw, 0f);
+            camera.transform.SetPositionAndRotation(focus + rotation * Vector3.back * distance, rotation);
+        }
+
+        private static void Save(UnityEngine.Camera camera, string path) => Render(camera, path, 1200, 800);
+
+        private static void SaveScreen(UnityEngine.Camera camera, string path) => Render(camera, path, Screen.width, Screen.height);
+
+        private static void Render(UnityEngine.Camera camera, string path, int width, int height)
+        {
+            var target = new RenderTexture(width, height, 24) { antiAliasing = 4 };
+            var previous = camera.targetTexture;
+            camera.targetTexture = target;
+            camera.Render();
+            camera.targetTexture = previous;
+            var active = RenderTexture.active;
+            RenderTexture.active = target;
+            var texture = new Texture2D(target.width, target.height, TextureFormat.RGB24, false);
+            texture.ReadPixels(new Rect(0, 0, target.width, target.height), 0, 0);
+            texture.Apply();
+            RenderTexture.active = active;
+            target.Release();
+            File.WriteAllBytes(path, texture.EncodeToPNG());
+            Object.Destroy(texture);
+            Object.Destroy(target);
+        }
+    }
+}
+#endif

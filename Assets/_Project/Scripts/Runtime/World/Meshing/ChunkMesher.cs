@@ -63,6 +63,29 @@ namespace Emberhold.World.Meshing
                     }
                 }
 
+                // Макет #79: «пиксельные» скосы — простые формы рисуются ступенями.
+                if (PixelSlopes.Enabled && !s.IsCatalog)
+                {
+                    // Целый блок, окружённый целыми блоками, не виден.
+                    if (s.IsFull && Neighbor(world, data, origin, x, y + 1, z).Shape.IsFull
+                        && Neighbor(world, data, origin, x, y - 1, z).Shape.IsFull
+                        && Neighbor(world, data, origin, x + 1, y, z).Shape.IsFull
+                        && Neighbor(world, data, origin, x - 1, y, z).Shape.IsFull
+                        && Neighbor(world, data, origin, x, y, z + 1).Shape.IsFull
+                        && Neighbor(world, data, origin, x, y, z - 1).Shape.IsFull)
+                        continue;
+                    var global = origin + new Vector3Int(x, y, z);
+                    var shape = s;
+                    StepMesher.AddBlock(output, world, global, p, block, index, start =>
+                    {
+                        if (GrassEdge.TakesGrass(material))
+                            AddGrassEdge(output, world, start, p, shape, global);
+                    });
+                    if (!Neighbor(world, data, origin, x, y - 1, z).Shape.IsFull)
+                        AddBottom(output, material, index, p, s);
+                    continue;
+                }
+
                 if (s.IsCatalog)
                 {
                     AddCatalogForm(output, material, index, p, s, world, data, origin, x, y, z);
