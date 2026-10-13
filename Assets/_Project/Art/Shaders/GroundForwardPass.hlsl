@@ -1,7 +1,8 @@
 // Копия LitForwardPass.hlsl из URP 17.6 с отличиями: текстура материала кладётся по трём проекциям мира
 // (без растяжения на крутых склонах), вблизи камеры добавляется мелкая деталь из альфа-канала, вдали рисунок
 // упрощается, и трава сменяется текстурой камня по весу из UV3.x. Трава окрашена оттенком своего места
-// (по локациям) из цвета вершины. На верх блоков земли и камня рядом с травой заходит трава (_GrassMap)
+// (по локациям) из цвета вершины, а у Топей, Мёртвого города и Гор своя текстура травы — по весам из UV4.
+// На верх блоков земли и камня рядом с травой заходит трава (_GrassMap)
 // по маске соседей из UV3.y и месту в ячейке из UV3.zw. Граница травы везде одна: резкая, рваная,
 // с зубцами-травинками и тёмной каймой. У мешей без UV3 веса 0, и остаётся своя текстура материала.
 #ifndef EMBERHOLD_GROUND_FORWARD_PASS_INCLUDED
@@ -20,6 +21,10 @@ SAMPLER(sampler_RockMap);
 // Текстура травы для бахромы травы на краю блоков земли и камня рядом с травой (вес в UV3.y).
 TEXTURE2D(_GrassMap);
 SAMPLER(sampler_GrassMap);
+// Трава локаций: Топи, Мёртвый город, Горы (веса в UV4.xyz, остаток — обычная трава). Сэмплер общий с _GrassMap.
+TEXTURE2D(_GrassSwampMap);
+TEXTURE2D(_GrassDeadMap);
+TEXTURE2D(_GrassMountainMap);
 // Цвет камня перехода гладкой земли — общее свойство, его ставит VoxelWorldView (цвет материала камня).
 half4 _GroundRockColor;
 
@@ -90,6 +95,28 @@ half3 SampleTriplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, half3
             dx * s, dy * s, w).a;
         color *= lerp(1.0h, clamp(detail * 2.0h, 0.7h, 1.3h), detailFade);
     }
+    return color;
+}
+
+// Трава своего места: обычная трава meadow смешивается с травой локаций по весам kinds (x — топь,
+// y — мёртвый город, z — горы). Текстуры локаций умножаются на scale (цвет материала, как у meadow).
+half3 MixGrassKinds(half3 meadow, half3 kinds, half3 scale, float3 positionWS, half3 normalWS, float3 dpdx, float3 dpdy,
+    half detailFade, half flatFade)
+{
+    kinds = saturate(kinds);
+    half3 color = meadow * saturate(1.0h - kinds.x - kinds.y - kinds.z);
+    UNITY_BRANCH
+    if (kinds.x > 0.001h)
+        color += kinds.x * scale * SampleTriplanar(TEXTURE2D_ARGS(_GrassSwampMap, sampler_GrassMap), positionWS, normalWS,
+            dpdx, dpdy, detailFade, flatFade);
+    UNITY_BRANCH
+    if (kinds.y > 0.001h)
+        color += kinds.y * scale * SampleTriplanar(TEXTURE2D_ARGS(_GrassDeadMap, sampler_GrassMap), positionWS, normalWS,
+            dpdx, dpdy, detailFade, flatFade);
+    UNITY_BRANCH
+    if (kinds.z > 0.001h)
+        color += kinds.z * scale * SampleTriplanar(TEXTURE2D_ARGS(_GrassMountainMap, sampler_GrassMap), positionWS, normalWS,
+            dpdx, dpdy, detailFade, flatFade);
     return color;
 }
 
@@ -225,6 +252,7 @@ struct Attributes
     float2 staticLightmapUV   : TEXCOORD1;
     float2 dynamicLightmapUV  : TEXCOORD2;
     float4 groundBlend  : TEXCOORD3;
+    float4 grassKinds   : TEXCOORD4;
     half4 color         : COLOR;
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
@@ -270,6 +298,8 @@ struct Varyings
     // UV3: x — вес камня гладкой земли, y — маска соседей-травы у блоков земли и камня (−1 — вершина травы),
     // zw — место в ячейке.
     float4 groundBlend              : TEXCOORD12;
+    // UV4: вид травы своего места — веса травы Топей, Мёртвого города и Гор.
+    half3 grassKinds                : TEXCOORD13;
 
     float4 positionCS               : SV_POSITION;
 
@@ -425,6 +455,7 @@ Varyings LitPassVertex(Attributes input)
     output.positionCS = vertexInput.positionCS;
     output.groundColor = input.color;
     output.groundBlend = input.groundBlend;
+    output.grassKinds = input.grassKinds.xyz;
 
     return output;
 }
@@ -465,7 +496,8 @@ void LitPassFragment(
         dpdx, dpdy, detailFade, flatFade) * _BaseColor.rgb;
     // Трава (гладкая земля и блоки травы) — в оттенке своего места.
     if (input.groundBlend.y < -0.5)
-        baseAlbedo = TintGrass(baseAlbedo, input.groundColor);
+        baseAlbedo = TintGrass(MixGrassKinds(baseAlbedo, input.grassKinds, _BaseColor.rgb, input.positionWS, normalForTex,
+            dpdx, dpdy, detailFade, flatFade), input.groundColor);
     surfaceData.albedo = baseAlbedo;
     // Граница травы с камнем резкая и рваная, с зубцами-травинками: вес травы (1 − камень) сдвигается шумом
     // по миру и режется по 0,5. У травы тёмная кайма — рисованный контур, на камне под краем тень.
@@ -495,8 +527,10 @@ void LitPassFragment(
         half rim, shadow;
         half grass = GrassCover(0.5 + EMBERHOLD_FRINGE_INSET + toGrass
             + GrassEdgeOffset(input.positionWS, EMBERHOLD_FRINGE_RAGGED, toGrass, dpdx, dpdy), rim, shadow);
-        half3 grassAlbedo = TintGrass(SampleTriplanar(TEXTURE2D_ARGS(_GrassMap, sampler_GrassMap), input.positionWS,
-            normalForTex, dpdx, dpdy, detailFade, flatFade), input.groundColor);
+        half3 meadow = SampleTriplanar(TEXTURE2D_ARGS(_GrassMap, sampler_GrassMap), input.positionWS,
+            normalForTex, dpdx, dpdy, detailFade, flatFade);
+        half3 grassAlbedo = TintGrass(MixGrassKinds(meadow, input.grassKinds, 1.0h, input.positionWS, normalForTex,
+            dpdx, dpdy, detailFade, flatFade), input.groundColor);
         grassAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_RIM_DARK, rim);
         half3 groundAlbedo = surfaceData.albedo * lerp(1.0h, EMBERHOLD_EDGE_SHADOW_DARK, shadow);
         surfaceData.albedo = lerp(groundAlbedo, grassAlbedo, grass);

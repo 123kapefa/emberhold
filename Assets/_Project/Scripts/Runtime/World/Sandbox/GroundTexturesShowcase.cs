@@ -9,10 +9,12 @@ namespace Emberhold.World.Sandbox
     /// Спереди (малые Z) — ровные площадки травы, земли (блоки) и камня; посередине — пологий склон
     /// и крутой склон с переходом трава → камень; сзади — обрыв, яма со стенками блоков и поставленные блоки.
     /// Каменность углов — по крутизне, как у карты кампании, площадка камня каменная целиком.
+    /// Справа (X 64–96) — полоса видов травы: обычная, Топей, Мёртвого города и Гор с плавными переходами,
+    /// на каждой — площадка блоков земли с бахромой травы этого вида.
     /// </summary>
     public static class GroundTexturesShowcase
     {
-        public static readonly Vector3Int SizeInChunks = new(4, 3, 4);
+        public static readonly Vector3Int SizeInChunks = new(6, 3, 4);
 
         /// <summary>Высота ровной земли в блоках.</summary>
         public const int BaseHeight = 8;
@@ -45,8 +47,27 @@ namespace Emberhold.World.Sandbox
         /// <summary>Как на примере: 3 × 3 блока земли вровень с травой, середина чуть ниже (скосы к ней без ступенек).</summary>
         public static readonly Area SmallDugPatch = new("Вскопанный участок 3×3", new RectInt(15, 14, 3, 3));
 
+        /// <summary>Полоса видов травы: с юга на север обычная, Топей, Мёртвого города и Гор.</summary>
+        public static readonly Area MeadowGrass = new("Обычная трава", new RectInt(66, 0, 28, 16));
+        public static readonly Area SwampGrass = new("Трава Топей", new RectInt(66, 16, 28, 16));
+        public static readonly Area DeadGrass = new("Трава Мёртвого города", new RectInt(66, 32, 28, 16));
+        public static readonly Area MountainGrass = new("Трава Гор", new RectInt(66, 48, 28, 16));
+
+        /// <summary>Виды травы полосы по порядку её площадок.</summary>
+        public static readonly (Area Area, GrassKind Kind)[] GrassKindAreas =
+        {
+            (MeadowGrass, GrassKind.Meadow), (SwampGrass, GrassKind.Swamp), (DeadGrass, GrassKind.Dead),
+            (MountainGrass, GrassKind.Mountain),
+        };
+
+        /// <summary>Ширина перехода между видами травы в блоках.</summary>
+        public const float GrassKindBlend = 6f;
+
         public static readonly Area[] Areas =
-            { GrassPad, DirtPad, RockPad, GentleSlope, SteepSlope, Cliff, Pit, DugPatch, SmallDugPatch };
+        {
+            GrassPad, DirtPad, RockPad, GentleSlope, SteepSlope, Cliff, Pit, DugPatch, SmallDugPatch,
+            MeadowGrass, SwampGrass, DeadGrass, MountainGrass,
+        };
 
         /// <summary>Дно ямы: верхний блок пола.</summary>
         public const int PitFloor = 3;
@@ -118,6 +139,7 @@ namespace Emberhold.World.Sandbox
                 materials[x, z] = weight > 2 * 255 ? rock : grass;
             }
             CornerTerrain.FillSmooth(world, corners, materials, bedLevels).SetRock(rockWeights);
+            world.GrassTint = GrassKindTint(size.x, size.z);
 
             // Площадка земли — блоками: верхний блок сменён на землю, столбец рисуется гранями блоков.
             for (var z = DirtPad.Rect.yMin; z < DirtPad.Rect.yMax; z++)
@@ -135,6 +157,44 @@ namespace Emberhold.World.Sandbox
 
             foreach (var (block, material) in PlacedBlocks)
                 world.SetBlock(block, Block.Full(material));
+
+            // На каждой площадке видов травы — блоки земли 4 × 4: на их край заходит трава этого вида.
+            foreach (var (area, _) in GrassKindAreas)
+            {
+                var r = area.Rect;
+                for (var z = r.yMin + 6; z < r.yMin + 10; z++)
+                for (var x = r.xMax - 8; x < r.xMax - 4; x++)
+                    world.SetBlock(new Vector3Int(x, BaseHeight - 1, z), Block.Full(BlockMaterials.Dirt));
+            }
+        }
+
+        /// <summary>
+        /// Оттенок без изменений и виды травы по углам: в полосе видов травы — вид своей площадки, между
+        /// площадками и у края полосы — плавный переход шириной <see cref="GrassKindBlend"/>; остальное — обычная трава.
+        /// </summary>
+        public static GroundTint GrassKindTint(int sizeX, int sizeZ)
+        {
+            var tints = new Color[sizeX + 1, sizeZ + 1];
+            var kinds = new Color[sizeX + 1, sizeZ + 1];
+            for (var z = 0; z <= sizeZ; z++)
+            for (var x = 0; x <= sizeX; x++)
+            {
+                tints[x, z] = Color.white;
+                var inStrip = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(MeadowGrass.Rect.xMin - GrassKindBlend, MeadowGrass.Rect.xMin, x));
+                var kind = new Color(0f, 0f, 0f, 0f);
+                var total = 0f;
+                foreach (var (area, grassKind) in GrassKindAreas)
+                {
+                    // Вес площадки: 1 внутри, плавно к нулю за краем по Z на ширину перехода.
+                    var r = area.Rect;
+                    var outside = Mathf.Max(r.yMin - z, z - r.yMax, 0f);
+                    var w = 1f - Mathf.SmoothStep(0f, 1f, outside / GrassKindBlend);
+                    kind += w * GrassKinds.Weight(grassKind);
+                    total += w;
+                }
+                kinds[x, z] = total > 0f ? kind * (inStrip / total) : default;
+            }
+            return new GroundTint(tints, kinds);
         }
 
         /// <summary>
@@ -155,6 +215,9 @@ namespace Emberhold.World.Sandbox
         public static float Height(int x, int z)
         {
             float h = BaseHeight;
+            // Полоса видов травы ровная, отделена от плато обрывом.
+            if (x >= 64)
+                return h;
             // Середина: вдоль X пологий подъём 1:4 на 6 блоков, полка, затем склон всё круче и плато.
             // По краям полосы рельеф плавно сходит к ровной земле.
             if (z > 20 && z < 44)
