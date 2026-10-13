@@ -396,7 +396,11 @@ namespace Emberhold.Tests.EditMode.World
         {
             var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>("Assets/_Project/Data/World/TerrainSettings.asset");
             Assert.That(settings, Is.Not.Null);
-            Assert.That(WorldHash(settings.Generate()), Is.EqualTo(DefaultValleyHash));
+            // Рельеф — прежняя долина, поверх неё на дне коренная порода.
+            var valley = Full(TerrainProfileParameters.Valley);
+            Assert.That(WorldHash(valley), Is.EqualTo(DefaultValleyHash));
+            settings.LayBedrock(valley);
+            Assert.That(WorldHash(settings.Generate()), Is.EqualTo(WorldHash(valley)));
         }
 
         private const string ProfilesFolder = "Assets/_Project/Data/World/TerrainProfiles";
