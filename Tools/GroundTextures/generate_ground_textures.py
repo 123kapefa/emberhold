@@ -1,5 +1,5 @@
-"""Рисует бесшовные текстуры земли Emberhold в мультяшном стиле: трава, камень, земля
-и трава трёх локаций: Топи, Мёртвый город, Горы.
+"""Рисует бесшовные текстуры земли Emberhold в мультяшном стиле: трава, камень, земля,
+трава трёх локаций (Топи, Мёртвый город, Горы), скала гор и коренная порода дна.
 
 RGB — рисунок крупными пятнами в 3–4 тона (видно с высоты камеры), A — мелкая деталь в серых тонах
 около 0,5: шейдер Ground.shader накладывает её мельче и только вблизи камеры.
@@ -330,6 +330,58 @@ def grass_mountain():
     save("GroundGrassMountain.png", rgb, np.clip(detail, 0, 1))
 
 
+# ---------- скала и коренная порода (не копаются) ----------
+
+def lit_plates(rng, count, stretch, tones, crack_color, crack_width, edge_light):
+    """Плиты Вороного в 4 тона со светлой стороной к свету сверху-слева и тёмными трещинами по границам.
+    Возвращает цвет и данные ячеек (f1, f2, номер ячейки, центры)."""
+    f1, f2, idx, pts = worley(rng, count, stretch=stretch)
+    base = rng.integers(0, 3, len(pts))[idx] / 3.0
+    blot = bands(normalize(fbm(rng, 4, 2, 0.5, warp_field(rng, 4, 160))) * 0.999, 3)
+    t = np.clip(base + (blot - 0.5) * 0.3, 0, 1)
+    yy, xx = np.mgrid[0:SIZE, 0:SIZE].astype(np.float32)
+    ddx = (xx - pts[idx, 0] + SIZE / 2) % SIZE - SIZE / 2
+    ddy = (yy - pts[idx, 1] + SIZE / 2) % SIZE - SIZE / 2
+    edge = np.clip(1 - (f2 - f1) / 18, 0, 1)
+    lit = (-ddx - ddy) / np.maximum(np.hypot(ddx, ddy), 1)
+    t = np.clip(t + edge * lit * edge_light, 0, 1)
+    rgb = palette(bands(t * 0.999, 4), tones)
+    rgb[(f2 - f1) < crack_width] = crack_color
+    return rgb, (f1, f2, idx, pts)
+
+
+def chip_detail(rng, count, amount):
+    """Деталь вблизи: мелкие сколы и зерно."""
+    f1, f2, _, _ = worley(rng, count)
+    grain = np.clip((f2 - f1) / 6, 0, 1)
+    return np.clip(0.42 + grain * amount + (fbm(rng, 48, 2) - 0.5) * 0.3, 0, 1)
+
+
+def cliff():
+    rng = np.random.default_rng(9711)
+    # Ледниковая скала: сине-серые плиты холоднее и темнее камня, на верхних кромках трещин иней.
+    tones = [(58, 66, 82), (74, 84, 100), (92, 102, 118), (112, 122, 136)]
+    rgb, (f1, f2, idx, pts) = lit_plates(rng, 9, 1.6, tones, (40, 46, 60), 4.0, 0.55)
+    yy = np.mgrid[0:SIZE, 0:SIZE][0].astype(np.float32)
+    ddy = (yy - pts[idx, 1] + SIZE / 2) % SIZE - SIZE / 2
+    gap = f2 - f1
+    frost = (gap < 9) & (ddy < -4) & (fbm(rng, 12, 2) > 0.45)
+    rgb[frost] = (196, 210, 222)
+    streak = bands(normalize(fbm(rng, 3, 3, 0.5, warp_field(rng, 3, 120))) * 0.999, 4)
+    rgb[(streak > 0.9) & (gap > 9)] *= 1.12
+    rgb = soften(rgb, 0.7)
+    save("GroundCliff.png", rgb, chip_detail(rng, 200, 0.16))
+
+
+def bedrock():
+    rng = np.random.default_rng(9703)
+    # Коренная порода: почти чёрный базальт из мелких острых кусков, не путается ни с камнем, ни со скалой.
+    tones = [(26, 26, 32), (38, 38, 46), (52, 51, 60), (70, 68, 78)]
+    rgb, _ = lit_plates(rng, 60, 1.0, tones, (14, 14, 18), 2.6, 0.7)
+    rgb = soften(rgb, 0.6)
+    save("GroundBedrock.png", rgb, chip_detail(rng, 260, 0.2))
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     grass()
@@ -338,4 +390,6 @@ if __name__ == "__main__":
     grass_swamp()
     grass_dead()
     grass_mountain()
+    cliff()
+    bedrock()
     print("Готово:", OUT)

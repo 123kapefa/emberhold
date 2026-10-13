@@ -185,12 +185,17 @@ namespace Emberhold.World.Generation
                 var p = profiles[owner];
                 materials[x, z] = p.Materials;
                 bedLevels[x, z] = Mathf.RoundToInt(p.WaterLevel * BlockShape.MaxHeight);
-                if (owner != CampaignHeights.Ridge || layout.Ridge.GrassLine <= 0f)
+                if (owner != CampaignHeights.Ridge)
                     continue;
-                var top = (corners[x, z] + corners[x + 1, z] + corners[x, z + 1] + corners[x + 1, z + 1]) * 0.25f / BlockShape.MaxHeight;
-                var line = layout.Ridge.GrassLine + (grassNoise.Fbm(x * 0.05f, z * 0.05f, 3) - 0.5f) * 8f;
-                if (top < line)
-                    materials[x, z] = grass;
+                if (layout.Ridge.GrassLine > 0f)
+                {
+                    var top = (corners[x, z] + corners[x + 1, z] + corners[x, z + 1] + corners[x + 1, z + 1]) * 0.25f / BlockShape.MaxHeight;
+                    var line = layout.Ridge.GrassLine + (grassNoise.Fbm(x * 0.05f, z * 0.05f, 3) - 0.5f) * 8f;
+                    if (top < line)
+                        materials[x, z] = grass;
+                }
+                if (layout.Ridge.Cliff)
+                    materials[x, z] = materials[x, z].Mountain();
             }
             CornerTerrain.Fill(world, corners, materials, bedLevels, profiles[0].CliffEdgeRounding,
                 profiles[0].CliffFootRounding);
@@ -266,6 +271,8 @@ namespace Emberhold.World.Generation
                     materials[x, z] = p.Materials.Surface == BlockMaterials.Stone ? p.Materials : rock;
                 else
                     materials[x, z] = p.Materials.Surface == BlockMaterials.Stone ? grass : p.Materials;
+                if (layout.Ridge.Cliff && heights.ColumnOwner(x, z) == CampaignHeights.Ridge)
+                    materials[x, z] = materials[x, z].Mountain();
             }
             CornerTerrain.FillSmooth(world, corners, materials, bedLevels).SetRock(rockWeights);
         }

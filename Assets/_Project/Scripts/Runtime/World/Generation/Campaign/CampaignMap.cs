@@ -20,6 +20,8 @@ namespace Emberhold.World.Generation
         [SerializeField] private float ridgeMaxHeight = 46f;
         [Tooltip("Ниже этой высоты склоны хребта и ущелий травяные, выше — камень профиля хребта. 0 — без травы.")]
         [SerializeField] private float ridgeGrassLine = 30f;
+        [Tooltip("Горы хребта из скалы, которая не копается: под травой склонов скала до самого дна.")]
+        [SerializeField] private bool ridgeCliff = true;
         [Tooltip("Профиль хребта и склонов ущелий: террасы, скалы, материалы, лес. Пусто — как у долины по умолчанию.")]
         [SerializeField] private TerrainProfile ridgeProfile;
 
@@ -46,6 +48,7 @@ namespace Emberhold.World.Generation
                     MinHeight = ridgeMinHeight,
                     MaxHeight = Mathf.Max(ridgeMinHeight, ridgeMaxHeight),
                     GrassLine = ridgeGrassLine,
+                    Cliff = ridgeCliff,
                     Profile = ridgeProfile != null ? ridgeProfile.Parameters : TerrainProfileParameters.Valley,
                     Forest = ridgeProfile != null ? ridgeProfile.Forest : null,
                     GrassTint = ridgeProfile != null ? ridgeProfile.GrassTint : Color.white,

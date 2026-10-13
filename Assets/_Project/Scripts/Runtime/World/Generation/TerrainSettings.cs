@@ -17,6 +17,9 @@ namespace Emberhold.World.Generation
         [SerializeField] private TerrainProfile profile;
         [Tooltip("Карта кампании: хребет, локации и ущелья. Если задана, рельеф строится по ней, а профиль и зоны сцены не действуют.")]
         [SerializeField] private CampaignMap map;
+        [Tooltip("В скольких нижних слоях лежит коренная порода (не копается): нижний слой сплошь, выше всё реже. 0 — без неё.")]
+        [Min(0)]
+        [SerializeField] private int bedrockDepth = 4;
 
         public int Seed => seed;
         public Vector3Int SizeInChunks => sizeInChunks;
@@ -32,10 +35,17 @@ namespace Emberhold.World.Generation
         /// Сгенерировать мир; zones — зоны местности поверх профиля (в координатах сетки блоков).
         /// С картой кампании мир строится по ней, зоны не действуют.
         /// </summary>
-        public VoxelWorld Generate(IReadOnlyList<TerrainZoneArea> zones = null) =>
-            map != null
+        public VoxelWorld Generate(IReadOnlyList<TerrainZoneArea> zones = null)
+        {
+            var world = map != null
                 ? TerrainGenerator.GenerateCampaign(map.ToLayout(), seed, sizeInChunks, out _)
                 : TerrainGenerator.Generate(Profile, seed, sizeInChunks, zones);
+            LayBedrock(world);
+            return world;
+        }
+
+        /// <summary>Положить коренную породу на дно уже построенного мира (<see cref="Bedrock"/>).</summary>
+        public void LayBedrock(VoxelWorld world) => Bedrock.Lay(world, bedrockDepth, seed);
 
         private void OnValidate() => sizeInChunks = Vector3Int.Max(sizeInChunks, Vector3Int.one);
     }

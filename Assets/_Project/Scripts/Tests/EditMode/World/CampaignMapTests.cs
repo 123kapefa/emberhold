@@ -242,6 +242,60 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(heights.ColumnOwner(36, 80), Is.EqualTo(1));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void RidgeCliff_MountainIsCliffToTheBottom_LocationStaysStone(bool smooth)
+        {
+            var layout = TwoLocations();
+            layout.SmoothSurface = smooth;
+            var ridge = layout.Ridge;
+            ridge.Profile.Materials = TerrainMaterials.Default;
+            ridge.Cliff = true;
+            layout.Ridge = ridge;
+
+            var world = TerrainGenerator.GenerateCampaign(layout, Seed, new Vector3Int(10, 3, 10), out var heights);
+
+            Assert.That(heights.ColumnOwner(2, 2), Is.EqualTo(CampaignHeights.Ridge));
+            Assert.That(heights.ColumnOwner(36, 80), Is.EqualTo(1));
+            Assert.That(world.GetBlock(new Vector3Int(2, 0, 2)).Material, Is.EqualTo(BlockMaterials.Cliff), "у гор скала до дна");
+            Assert.That(ColumnMaterials(world, 2, 2), Has.No.Member(BlockMaterials.Stone));
+            Assert.That(ColumnMaterials(world, 36, 80), Has.Member(BlockMaterials.Stone));
+            Assert.That(ColumnMaterials(world, 36, 80), Has.No.Member(BlockMaterials.Cliff), "дно локации копается");
+        }
+
+        [Test]
+        public void RidgeCliff_GrassOnTheSlopesStays_CliffUnderIt()
+        {
+            var layout = TwoLocations();
+            var ridge = layout.Ridge;
+            ridge.Profile.Materials = TerrainMaterials.Default;
+            ridge.Cliff = true;
+            layout.Ridge = ridge;
+
+            var world = TerrainGenerator.GenerateCampaign(layout, Seed, new Vector3Int(10, 3, 10), out _);
+
+            Assert.That(TopBlock(world, 2, 2).Material, Is.EqualTo(BlockMaterials.Grass), "проплешина травы на горе");
+        }
+
+        [Test]
+        public void MapAsset_RidgeIsCliff()
+        {
+            var map = AssetDatabase.LoadAssetAtPath<CampaignMap>(MapPath);
+            Assert.That(map.ToLayout().Ridge.Cliff, Is.True);
+        }
+
+        private static List<byte> ColumnMaterials(VoxelWorld world, int x, int z)
+        {
+            var materials = new List<byte>();
+            for (var y = 0; y < world.SizeInBlocks.y; y++)
+            {
+                var block = world.GetBlock(new Vector3Int(x, y, z));
+                if (!block.IsAir)
+                    materials.Add(block.Material);
+            }
+            return materials;
+        }
+
         private static Block TopBlock(VoxelWorld world, int x, int z)
         {
             for (var y = world.SizeInBlocks.y - 1; y >= 0; y--)

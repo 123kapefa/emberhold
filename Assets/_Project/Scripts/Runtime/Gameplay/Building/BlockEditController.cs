@@ -94,6 +94,9 @@ namespace Emberhold.Gameplay.Building
         private int cracksVersion = -1;
         private int cracksHiddenVersion = -1;
         private float blockedMessageUntil = float.NegativeInfinity;
+        private string blockedMessage = OutOfLightMessage;
+        private const string OutOfLightMessage = "Вне света костра: строить и копать нельзя";
+        private const string UnbreakableMessage = "Скала и коренная порода не копаются";
 
         private BlockGhost ghost;
         private Vector2 rotatePressPosition;
@@ -227,12 +230,14 @@ namespace Emberhold.Gameplay.Building
             if (HoveredTree is { } tree && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
                 if (!ApplyToTree(tree))
-                    blockedMessageUntil = Time.unscaledTime + settings.BlockedMessageSeconds;
+                    ShowBlockedMessage(OutOfLightMessage);
             }
             else if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
-                if (!CanApply(hit))
-                    blockedMessageUntil = Time.unscaledTime + settings.BlockedMessageSeconds;
+                if (IsUnbreakable(hit))
+                    ShowBlockedMessage(UnbreakableMessage);
+                else if (!CanApply(hit))
+                    ShowBlockedMessage(OutOfLightMessage);
                 Apply(hit);
                 // Блок мог исчезнуть или появиться: рамка и предпросмотр должны сразу показать новое состояние.
                 Hovered = worldView.World.GetBlock(hit.Block).IsAir ? null : hit;
@@ -297,7 +302,7 @@ namespace Emberhold.Gameplay.Building
         public bool Apply(BlockHit hit)
         {
             falls.Clear();
-            if (!CanApply(hit))
+            if (IsUnbreakable(hit) || !CanApply(hit))
                 return false;
 
             Vector3Int changed;
@@ -363,6 +368,17 @@ namespace Emberhold.Gameplay.Building
                 BlocksFell?.Invoke(falls);
             }
         }
+
+        private void ShowBlockedMessage(string message)
+        {
+            blockedMessage = message;
+            blockedMessageUntil = Time.unscaledTime + settings.BlockedMessageSeconds;
+        }
+
+        /// <summary>Инструмент убирает блоки (копать, убрать, поручить копать), а блок под курсором — скала или коренная порода.</summary>
+        private bool IsUnbreakable(BlockHit hit) =>
+            Tool is BlockTool.Dig or BlockTool.Remove or BlockTool.DigOrder
+            && !BlockMaterials.IsBreakable(worldView.World.GetBlock(hit.Block).Material);
 
         /// <summary>Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, иначе — блок под курсором.</summary>
         private Vector3Int TargetCell(BlockHit hit) =>
@@ -474,7 +490,7 @@ namespace Emberhold.Gameplay.Building
             }
 
             PlaceInWorld(outline.transform, cell);
-            var color = !CanEdit(cell) ? settings.BlockedColor : Tool switch
+            var color = !CanEdit(cell) || IsUnbreakable(hit) ? settings.BlockedColor : Tool switch
             {
                 BlockTool.Dig => settings.DigColor,
                 BlockTool.Build => settings.BuildColor,
@@ -578,7 +594,7 @@ namespace Emberhold.Gameplay.Building
                 // Подсказка у курсора: GUI считает y сверху, экран — снизу.
                 var mouse = point.ReadValue<Vector2>();
                 var rect = new Rect(mouse.x + 16f, Screen.height - mouse.y - 8f, 360f, 24f);
-                GUI.Label(rect, "Вне света костра: строить и копать нельзя");
+                GUI.Label(rect, blockedMessage);
             }
             if (!PlacesBlocks)
                 return;

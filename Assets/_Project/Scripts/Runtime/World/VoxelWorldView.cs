@@ -103,7 +103,9 @@ namespace Emberhold.World
             // С картой кампании зоны сцены не действуют: ни на рельеф, ни на лес.
             zones.Clear();
             campaignLayout = terrain.Map.ToLayout();
-            return TerrainGenerator.GenerateCampaign(campaignLayout, terrain.Seed, terrain.SizeInChunks, out campaign);
+            var world = TerrainGenerator.GenerateCampaign(campaignLayout, terrain.Seed, terrain.SizeInChunks, out campaign);
+            terrain.LayBedrock(world);
+            return world;
         }
 
         /// <summary>

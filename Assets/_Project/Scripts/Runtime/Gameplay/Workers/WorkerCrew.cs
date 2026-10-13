@@ -143,7 +143,8 @@ namespace Emberhold.Gameplay.Workers
         {
             if (Orders.At(block) is { } existing)
                 return existing.Kind == WorkKind.Dig && Orders.Cancel(existing);
-            return !worldView.World.GetBlock(block).IsAir && Orders.AddDig(block) != null;
+            var current = worldView.World.GetBlock(block);
+            return !current.IsAir && BlockMaterials.IsBreakable(current.Material) && Orders.AddDig(block) != null;
         }
 
         /// <summary>Поручить срубить дерево или снять приказ. true — что-то изменилось.</summary>

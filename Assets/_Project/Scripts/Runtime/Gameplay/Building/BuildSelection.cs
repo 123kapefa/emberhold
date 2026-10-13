@@ -98,6 +98,8 @@ namespace Emberhold.Gameplay.Building
             BlockMaterials.Wood => "Дерево",
             BlockMaterials.Dirt => "Земля",
             BlockMaterials.Grass => "Трава",
+            BlockMaterials.Cliff => "Скала",
+            BlockMaterials.Bedrock => "Коренная порода",
             _ => material.ToString(),
         };
 

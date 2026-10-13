@@ -40,6 +40,12 @@ namespace Emberhold.World.Generation
         /// </summary>
         public float GrassLine;
 
+        /// <summary>
+        /// Горы хребта из скалы (<see cref="TerrainMaterials.Mountain"/>): под травой и землёй склонов — скала до дна,
+        /// каменные места — скала целиком. Скала не копается, поэтому хребет и стены котловин не прорыть.
+        /// </summary>
+        public bool Cliff;
+
         public TerrainProfileParameters Profile;
         public ForestMix Forest;
         /// <summary>Оттенок травы на хребте и его склонах (rgb — множитель, a — насыщенность); null — нейтральный.</summary>
