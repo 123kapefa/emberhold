@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace Emberhold.Tests.EditMode.World
 {
-    /// <summary>Гладкая поверхность нетронутой земли (#72): блоки под ней, отрисовка, высота для ходьбы.</summary>
+    /// <summary>Гладкая поверхность нетронутой земли (#72, #78): блоки под ней, отрисовка, высота для ходьбы.</summary>
     public sealed class SmoothSurfaceTests
     {
         private const int H = BlockShape.MaxHeight;
@@ -36,35 +36,39 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
-        public void UnderSurface_LieWholeBlocks_UpToItsMiddle()
+        public void UnderSurface_BlocksReachHighestCorner_EachCutByItsLayer()
         {
-            // Столбец (4, 4): углы 10 и 20 шестнадцатых, середина 15 — под ней один целый блок, без скосов.
+            // Столбец (4, 4): углы 10 и 20 шестнадцатых — блок слоя 0 и над ним кусок склона слоя 1.
             var world = Flat(10, (5, 4, 20), (5, 5, 20));
 
-            Assert.That(world.GetBlock(new Vector3Int(4, 0, 4)).Shape, Is.EqualTo(BlockShape.Full));
-            Assert.That(world.GetBlock(new Vector3Int(4, 1, 4)).IsAir, Is.True);
-            Assert.That(world.Surface.TopY(4, 4), Is.EqualTo(0));
+            Assert.That(world.GetBlock(new Vector3Int(4, 0, 4)).Shape, Is.EqualTo(new BlockShape(10, 16, 10, 16)));
+            Assert.That(world.GetBlock(new Vector3Int(4, 1, 4)).Shape, Is.EqualTo(new BlockShape(0, 4, 0, 4)));
+            Assert.That(world.GetBlock(new Vector3Int(4, 2, 4)).IsAir, Is.True);
+            Assert.That(world.Surface.TopY(4, 4), Is.EqualTo(1));
         }
 
         [Test]
-        public void DiggingTopBlock_RemovesItWhole()
+        public void DiggingTopBlock_LowersTop_ColumnStaysSmooth()
         {
-            // Склон через границу слоя: раньше после копания оставался косой блок, теперь — целый блок ниже.
             var world = Flat(2 * H + 10, (5, 4, 2 * H + 20), (5, 5, 2 * H + 20));
             var top = world.Surface.TopY(4, 4);
             world.SetBlock(new Vector3Int(4, top, 4), Block.Air);
 
-            Assert.That(world.GetBlock(new Vector3Int(4, top - 1, 4)).Shape, Is.EqualTo(BlockShape.Full));
-            Assert.That(world.Surface.IsNatural(4, 4), Is.False);
+            Assert.That(world.GetBlock(new Vector3Int(4, top - 1, 4)).Shape, Is.EqualTo(new BlockShape(10, 16, 10, 16)));
+            Assert.That(world.Surface.IsNatural(4, 4), Is.True);
+            Assert.That(world.Surface.TopY(4, 4), Is.EqualTo(top - 1));
         }
 
         [Test]
-        public void SteepSurface_KeepsItsSteepness_BlocksAreWholeAtTheMiddle()
+        public void SteepSurface_KeepsItsSteepness_BlocksGoUpToTheHighCorner()
         {
-            // Угол на 4 блока выше соседних: поверхность хранит крутизну, блоки — целые до её середины.
+            // Угол на 4 блока выше соседних: поверхность хранит крутизну, блоки идут до него, у каждого свой слой.
             var world = Flat(2 * H, (5, 5, 6 * H));
 
-            Assert.That(world.GetBlock(new Vector3Int(4, 2, 4)).Shape, Is.EqualTo(BlockShape.Flat(H)));
+            Assert.That(world.GetBlock(new Vector3Int(4, 1, 4)).Shape, Is.EqualTo(BlockShape.Full));
+            for (var y = 2; y < 6; y++)
+                Assert.That(world.GetBlock(new Vector3Int(4, y, 4)).Shape, Is.EqualTo(new BlockShape(0, 0, 0, H)), $"слой {y}");
+            Assert.That(world.GetBlock(new Vector3Int(4, 6, 4)).IsAir, Is.True);
             Assert.That(world.Surface.Corner(5, 5), Is.EqualTo(6 * H), "поверхность хранит крутизну как есть");
         }
 
@@ -75,17 +79,18 @@ namespace Emberhold.Tests.EditMode.World
             var mesh = new ChunkMeshData();
             ChunkMesher.Build(world, Vector3Int.zero, mesh);
 
-            // На каждый столбец ровно два треугольника поверхности и ни одной боковой грани.
-            Assert.That(mesh.TriangleCount, Is.EqualTo(16 * 16 * 2));
+            // Только поверхность, без боковых граней: вся она в подмеше травы и закрывает каждый столбец ровно раз.
+            Assert.That(mesh.TriangleCount, Is.EqualTo(mesh.Triangles[BlockMaterials.Grass].Count / 3));
+            Assert.That(SlopeBlocksTests.UpwardArea(mesh), Is.EqualTo(16f * 16f).Within(1e-3f));
             Assert.That(mesh.Vertices.Max(v => v.y), Is.EqualTo(20f / H).Within(1e-4f));
             Assert.That(mesh.Normals, Has.None.EqualTo(Vector3.right).And.None.EqualTo(Vector3.down));
         }
 
         [Test]
-        public void DiggingTerrain_MakesColumnBlocky_AndNeighboursGetWalls()
+        public void DiggingBelowTop_MakesColumnBlocky_AndNeighboursGetWalls()
         {
             var world = Flat(3 * H + 8);
-            world.SetBlock(new Vector3Int(4, 3, 4), Block.Air);
+            world.SetBlock(new Vector3Int(4, 2, 4), Block.Air);
 
             Assert.That(world.Surface.IsNatural(4, 4), Is.False);
             Assert.That(world.Surface.IsNatural(5, 4), Is.True);
@@ -147,7 +152,7 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void GroundHeight_OnSmoothSurface_IsSurfaceHeight()
         {
-            // Под склоном целый блок с верхом на 1, а земля для ходьбы — середина поверхности.
+            // Под склоном блок и кусок над ним, а земля для ходьбы — середина поверхности.
             var world = Flat(10, (5, 4, 20), (5, 5, 20));
             var expected = (10 + 20 + 10 + 20) / 4f / H;
 
@@ -177,14 +182,17 @@ namespace Emberhold.Tests.EditMode.World
             for (var z = 0; z < size.z; z += 3)
             for (var x = 0; x < size.x; x += 3)
             {
-                var surface = world.Surface.CenterHeight(x, z);
-                var top = world.Surface.TopY(x, z);
-                var block = world.GetBlock(new Vector3Int(x, top, z));
-                Assert.That(block.IsAir, Is.False, $"столбец {x},{z}");
+                var s = world.Surface;
+                var top = s.TopY(x, z);
+                int c00 = s.Corner(x, z), c10 = s.Corner(x + 1, z), c01 = s.Corner(x, z + 1), c11 = s.Corner(x + 1, z + 1);
+                var highest = Mathf.Max(Mathf.Max(c00, c10), Mathf.Max(c01, c11));
+                // Блоки идут до самого высокого угла, каждый — углы поверхности, обрезанные по своему слою.
+                Assert.That(top * H, Is.LessThan(highest), $"столбец {x},{z}");
+                Assert.That((top + 1) * H, Is.GreaterThanOrEqualTo(Mathf.Min(highest, size.y * H)), $"столбец {x},{z}");
                 Assert.That(world.GetBlock(new Vector3Int(x, top + 1, z)).IsAir, Is.True, $"столбец {x},{z}");
-                // Под поверхностью целые блоки до её середины: верх блока не дальше полублока от неё.
-                Assert.That(block.Shape, Is.EqualTo(BlockShape.Full), $"столбец {x},{z}");
-                Assert.That(top + 1f, Is.EqualTo(Mathf.Max(surface, 1f)).Within(0.51f), $"столбец {x},{z}");
+                for (var y = 0; y <= top; y++)
+                    Assert.That(world.GetBlock(new Vector3Int(x, y, z)).Shape,
+                        Is.EqualTo(new BlockShape(c00 - y * H, c10 - y * H, c01 - y * H, c11 - y * H)), $"блок {x},{y},{z}");
             }
         }
     }

@@ -14,7 +14,7 @@ namespace Emberhold.Tests.EditMode.World
     public sealed class CampaignMapTests
     {
         private const string MapPath = "Assets/_Project/Data/World/Campaign/CampaignMap.asset";
-        private const string TerrainPath = "Assets/_Project/Data/World/Campaign/CampaignTerrain.asset";
+        internal const string TerrainPath = "Assets/_Project/Data/World/Campaign/CampaignTerrain.asset";
         private const int Size = 160;
         private const int Seed = 12345;
 

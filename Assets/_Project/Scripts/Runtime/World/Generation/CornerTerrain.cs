@@ -77,10 +77,11 @@ namespace Emberhold.World.Generation
 
         /// <summary>
         /// Блоки под гладкой поверхностью (<see cref="TerrainSurface"/>): corners — её высоты в шестнадцатых
-        /// с любой крутизной. Под поверхностью лежат только целые блоки: столько, сколько слоёв помещается
-        /// под её серединой (с округлением), но не меньше одного. Поверхность — лишь картинка нетронутой
-        /// земли; выкопанный блок уходит целиком, и столбец дальше показывается целыми блоками, без косых
-        /// остатков. Возвращает поверхность с верхним слоем земли каждого столбца и ставит её миру.
+        /// с любой крутизной. Столбец заполняется блоками до самого высокого угла: каждый блок — высоты углов
+        /// поверхности, обрезанные по его слою (ниже поверхности целиком — полный блок, выше её угла — 0 в этом углу).
+        /// Материалы — как у столбца с целыми блоками до середины поверхности (с округлением, не меньше одного):
+        /// верхний из них — материал поверхности, ниже — по глубине; куски склона над ним — трава (земля с травой сверху).
+        /// Возвращает поверхность с верхним слоем земли каждого столбца и ставит её миру.
         /// </summary>
         public static TerrainSurface FillSmooth(VoxelWorld world, int[,] corners, TerrainMaterials[,] materials, int[,] bedLevels)
         {
@@ -93,14 +94,24 @@ namespace Emberhold.World.Generation
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
             {
-                var center = (corners[x, z] + corners[x + 1, z] + corners[x, z + 1] + corners[x + 1, z + 1]) / 4f;
-                var count = Mathf.Clamp(Mathf.RoundToInt(center / h), 1, size.y - 1);
-                var top = count - 1;
+                int c00 = corners[x, z], c10 = corners[x + 1, z], c01 = corners[x, z + 1], c11 = corners[x + 1, z + 1];
+                var center = (c00 + c10 + c01 + c11) / 4f;
+                // Слой целых блоков до середины поверхности: по нему материалы, как у столбца без кусков склона.
+                var middle = Mathf.Clamp(Mathf.RoundToInt(center / h), 1, size.y - 1) - 1;
+                var highest = Mathf.Max(Mathf.Max(c00, c10), Mathf.Max(c01, c11));
+                var top = Mathf.Clamp((highest - 1) / h, middle, size.y - 1);
                 topY[x, z] = top;
                 var m = materials[x, z];
-                for (var y = 0; y < top; y++)
-                    world.SetBlock(new Vector3Int(x, y, z), Block.Full(m.Below(top - y)));
-                world.SetBlock(new Vector3Int(x, top, z), Block.Full(center < bedLevels[x, z] ? m.Bed : m.Surface));
+                for (var y = 0; y <= top; y++)
+                {
+                    var floor = y * h;
+                    var shape = new BlockShape(c00 - floor, c10 - floor, c01 - floor, c11 - floor);
+                    var material = y < middle ? m.Below(middle - y)
+                        : y == middle ? center < bedLevels[x, z] ? m.Bed : m.Surface
+                        : BlockMaterials.Grass;
+                    // Пустым блок не бывает: до верхнего слоя самый высокий угол выше пола каждого слоя.
+                    world.SetBlock(new Vector3Int(x, y, z), new Block(material, shape));
+                }
                 for (var y = top + 1; y < size.y; y++)
                     world.SetBlock(new Vector3Int(x, y, z), Block.Air);
             }

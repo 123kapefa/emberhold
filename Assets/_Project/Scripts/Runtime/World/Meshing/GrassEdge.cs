@@ -70,7 +70,7 @@ namespace Emberhold.World.Meshing
                 var top = surface.TopY(x, z);
                 if (top + 1 < size.y && !world.GetBlock(new Vector3Int(x, top + 1, z)).IsAir)
                     return false;
-                return Mathf.Abs(surface.Corner(cx, cz) - height) <= MaxStep && surface.Rock(cx, cz) < 0.5f;
+                return Mathf.Abs(surface.CornerIn(x, z, cx, cz) - height) <= MaxStep && surface.Rock(cx, cz) < 0.5f;
             }
 
             // Блоки: сверху вниз первый непустой блок около нужной высоты; если над ним не воздух,
