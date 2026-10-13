@@ -10,17 +10,27 @@ namespace Emberhold.Tests.EditMode.World
         private static Vector2Int Center(GroundTexturesShowcase.Area area) =>
             Vector2Int.FloorToInt(area.Rect.center);
 
+        private static bool IsPatch(GroundTexturesShowcase.Area area) =>
+            area.Name == GroundTexturesShowcase.DugPatch.Name || area.Name == GroundTexturesShowcase.SmallDugPatch.Name;
+
         [Test]
         public void Areas_FitInWorld_AndDoNotOverlap()
         {
             var size = GroundTexturesShowcase.Build().SizeInBlocks;
             var areas = GroundTexturesShowcase.Areas;
+            // Вскопанные участки лежат на площадке травы.
+            foreach (var patch in new[] { GroundTexturesShowcase.DugPatch, GroundTexturesShowcase.SmallDugPatch })
+            {
+                var grass = GroundTexturesShowcase.GrassPad.Rect;
+                Assert.That(grass.Contains(patch.Rect.min) && grass.Contains(patch.Rect.max), Is.True, patch.Name);
+            }
             for (var i = 0; i < areas.Length; i++)
             {
                 Assert.That(areas[i].Rect.xMax, Is.LessThanOrEqualTo(size.x), areas[i].Name);
                 Assert.That(areas[i].Rect.yMax, Is.LessThanOrEqualTo(size.z), areas[i].Name);
                 for (var j = i + 1; j < areas.Length; j++)
-                    Assert.That(areas[i].Rect.Overlaps(areas[j].Rect), Is.False, $"{areas[i].Name} / {areas[j].Name}");
+                    if (!IsPatch(areas[i]) && !IsPatch(areas[j]))
+                        Assert.That(areas[i].Rect.Overlaps(areas[j].Rect), Is.False, $"{areas[i].Name} / {areas[j].Name}");
             }
         }
 

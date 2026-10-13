@@ -47,9 +47,10 @@ namespace Emberhold.Tests.EditMode.World
 
             world.SetBlock(new Vector3Int(16, 5, 31), Block.Full(BlockMaterials.Stone));
 
+            // Угол чанка по X и Z: соседи по сторонам и по диагонали (там меняется бахрома травы).
             Assert.That(TakeDirty(world), Is.EquivalentTo(new[]
             {
-                new Vector3Int(1, 0, 1), new Vector3Int(0, 0, 1), new Vector3Int(1, 0, 2),
+                new Vector3Int(1, 0, 1), new Vector3Int(0, 0, 1), new Vector3Int(1, 0, 2), new Vector3Int(0, 0, 2),
             }));
         }
 

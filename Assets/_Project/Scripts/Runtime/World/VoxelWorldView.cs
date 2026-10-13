@@ -474,7 +474,8 @@ namespace Emberhold.World
             mesh.SetVertices(data.Vertices);
             mesh.SetNormals(data.Normals);
             mesh.SetUVs(0, data.Uvs);
-            // Гладкая земля смешивает цвет травы с цветом камня: вес в UV3, цвет камня — в цвете вершин.
+            // Гладкая земля смешивает цвет травы с цветом камня: вес в UV3.x, цвет камня — в цвете вершин.
+            // Верх блоков земли и камня у травы получает бахрому травы: маска соседей и место в ячейке в UV3.yzw.
             if (visual)
             {
                 mesh.SetUVs(3, data.Blends);

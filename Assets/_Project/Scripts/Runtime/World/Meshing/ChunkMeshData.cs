@@ -15,10 +15,11 @@ namespace Emberhold.World.Meshing
         public readonly List<Vector3> Normals = new();
         public readonly List<Vector2> Uvs = new();
         /// <summary>
-        /// Вес смешивания цвета у каждой вершины (в UV3.x меша): 0 — цвет материала, 1 — цвет камня.
-        /// Не ноль только у гладкой земли (<see cref="TerrainSurface"/>).
+        /// Смешивание у каждой вершины (UV3 меша). x — вес камня поверх травы, не ноль только у гладкой земли
+        /// (<see cref="TerrainSurface"/>). y — маска соседей-травы (<see cref="GrassEdge"/>), zw — положение
+        /// вершины в ячейке (0..1): не ноль только у верха блоков земли и камня рядом с травой.
         /// </summary>
-        public readonly List<Vector2> Blends = new();
+        public readonly List<Vector4> Blends = new();
         /// <summary>Индекс — номер материала блока; для воздуха список всегда пуст.</summary>
         public readonly List<int>[] Triangles;
         /// <summary>
@@ -110,12 +111,26 @@ namespace Emberhold.World.Meshing
             AddIndices(material, block, start, start + 1, start + 2);
         }
 
+        /// <summary>
+        /// Маска соседей-травы (UV3.y) и положение в ячейке (UV3.zw) вершинам, добавленным начиная с start, —
+        /// верху блока в ячейке p.
+        /// </summary>
+        public void SetGrass(int start, Vector3 p, int mask)
+        {
+            for (var i = start; i < Vertices.Count; i++)
+            {
+                var u = Mathf.Clamp01(Vertices[i].x - p.x);
+                var v = Mathf.Clamp01(Vertices[i].z - p.z);
+                Blends[i] = new Vector4(Blends[i].x, mask, u, v);
+            }
+        }
+
         private void AddVertex(Vector3 position, Vector3 normal, Vector2 uv, float blend = 0f)
         {
             Vertices.Add(position);
             Normals.Add(normal);
             Uvs.Add(uv);
-            Blends.Add(new Vector2(blend, 0f));
+            Blends.Add(new Vector4(blend, 0f, 0f, 0f));
         }
 
         private void AddIndices(byte material, int block, int a, int b, int c)

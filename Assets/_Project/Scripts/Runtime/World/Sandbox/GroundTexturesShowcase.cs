@@ -40,8 +40,13 @@ namespace Emberhold.World.Sandbox
         public static readonly Area SteepSlope = new("Крутой склон: трава → камень", new RectInt(32, 24, 14, 16));
         public static readonly Area Cliff = new("Обрыв", new RectInt(0, 46, 26, 18));
         public static readonly Area Pit = new("Яма", new RectInt(36, 50, 12, 9));
+        /// <summary>Вскопанный участок посреди травы: по краю скосы вниз на полблока, внутри ровная земля.</summary>
+        public static readonly Area DugPatch = new("Вскопанный участок 6×6", new RectInt(6, 13, 6, 6));
+        /// <summary>Как на примере: 3 × 3 блока земли вровень с травой, середина чуть ниже (скосы к ней без ступенек).</summary>
+        public static readonly Area SmallDugPatch = new("Вскопанный участок 3×3", new RectInt(15, 14, 3, 3));
 
-        public static readonly Area[] Areas = { GrassPad, DirtPad, RockPad, GentleSlope, SteepSlope, Cliff, Pit };
+        public static readonly Area[] Areas =
+            { GrassPad, DirtPad, RockPad, GentleSlope, SteepSlope, Cliff, Pit, DugPatch, SmallDugPatch };
 
         /// <summary>Дно ямы: верхний блок пола.</summary>
         public const int PitFloor = 3;
@@ -125,8 +130,25 @@ namespace Emberhold.World.Sandbox
             for (var y = PitFloor + 1; y < BaseHeight; y++)
                 world.SetBlock(new Vector3Int(x, y, z), Block.Air);
 
+            Dig(world, DugPatch.Rect, BlockShape.MaxHeight / 2);
+            Dig(world, SmallDugPatch.Rect, BlockShape.MaxHeight * 3 / 4);
+
             foreach (var (block, material) in PlacedBlocks)
                 world.SetBlock(block, Block.Full(material));
+        }
+
+        /// <summary>
+        /// Вскопанный участок: верхний блок столбцов — земля, углы на краю участка на уровне травы,
+        /// внутренние углы — на высоте inner (шестнадцатые): у края скосы, внутри ровно.
+        /// </summary>
+        private static void Dig(VoxelWorld world, RectInt rect, int inner)
+        {
+            int Corner(int cx, int cz) =>
+                cx == rect.xMin || cx == rect.xMax || cz == rect.yMin || cz == rect.yMax ? BlockShape.MaxHeight : inner;
+            for (var z = rect.yMin; z < rect.yMax; z++)
+            for (var x = rect.xMin; x < rect.xMax; x++)
+                world.SetBlock(new Vector3Int(x, BaseHeight - 1, z), new Block(BlockMaterials.Dirt,
+                    new BlockShape(Corner(x, z), Corner(x + 1, z), Corner(x, z + 1), Corner(x + 1, z + 1))));
         }
 
         /// <summary>Высота угла сетки (x, z) в блоках.</summary>

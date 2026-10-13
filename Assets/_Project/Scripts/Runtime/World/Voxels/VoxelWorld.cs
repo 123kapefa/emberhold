@@ -84,6 +84,11 @@ namespace Emberhold.World.Voxels
             if (local.y == last) MarkDirty(chunk + Vector3Int.up);
             if (local.z == 0) MarkDirty(chunk + Vector3Int.back);
             if (local.z == last) MarkDirty(chunk + Vector3Int.forward);
+            // Бахрома травы на верхе блоков смотрит и на соседей по диагонали (GrassEdge).
+            var dx = local.x == 0 ? -1 : local.x == last ? 1 : 0;
+            var dz = local.z == 0 ? -1 : local.z == last ? 1 : 0;
+            if (dx != 0 && dz != 0)
+                MarkDirty(chunk + new Vector3Int(dx, 0, dz));
         }
 
         public void MarkDirty(Vector3Int chunk)
@@ -92,14 +97,15 @@ namespace Emberhold.World.Voxels
                 dirtyChunks.Add(chunk);
         }
 
-        /// <summary>Пометить чанки всех слоёв под столбцом (x, z) и его соседями по сторонам.</summary>
+        /// <summary>
+        /// Пометить чанки всех слоёв под столбцом (x, z) и его соседями по сторонам и диагоналям
+        /// (у соседей по сторонам появляются стенки, у всех — меняется бахрома травы).
+        /// </summary>
         private void MarkColumnsAround(int x, int z)
         {
             for (var dz = -1; dz <= 1; dz++)
             for (var dx = -1; dx <= 1; dx++)
             {
-                if (dx != 0 && dz != 0)
-                    continue;
                 var cx = Math.DivRem(x + dx, ChunkData.Size, out var rx);
                 var cz = Math.DivRem(z + dz, ChunkData.Size, out var rz);
                 if (rx < 0 || rz < 0)
