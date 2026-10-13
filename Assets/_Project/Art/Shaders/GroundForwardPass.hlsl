@@ -11,7 +11,7 @@
 
 // Для трёх проекций текстуры нужна точка в мире.
 #ifndef REQUIRES_WORLD_SPACE_POS_INTERPOLATOR
-    #define REQUIRES_WORLD_SPACE_POS_INTERPOLATOR 1
+    #define REQUIRES_WORLD_SPACE_POS_INTERPOLATOR
 #endif
 #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
 
