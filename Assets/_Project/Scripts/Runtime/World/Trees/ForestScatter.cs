@@ -8,7 +8,7 @@ namespace Emberhold.World.Trees
 {
     /// <summary>
     /// Рассадка леса по карте: в каждом столбце лес берётся у профиля, который там главный
-    /// (зона с наибольшим весом или фон, как у рельефа в <see cref="TerrainGenerator"/>). Дерево растёт на траве
+    /// (зона с наибольшим весом или фон, как у рельефа в <see cref="TerrainGenerator"/>; на карте кампании — локация). Дерево растёт на траве
     /// (а у горного леса и на камне) с вероятностью густоты этого леса, вид выбирается по долям. Соседние столбцы (и по диагонали) не заняты
     /// двумя деревьями сразу. Одинаковые seed, мир и зоны дают одинаковый лес.
     /// </summary>
@@ -21,16 +21,24 @@ namespace Emberhold.World.Trees
         public static int Scatter(VoxelWorld world, int seed, ForestMix background, IReadOnlyList<TerrainZoneArea> zones,
             Forest forest, Func<Vector2Int, bool> keepClear = null)
         {
-            var size = world.SizeInBlocks;
             var weights = new float[(zones?.Count ?? 0) + 1];
+            return Scatter(world, seed, column => MixAt(background, zones, new Vector2(column.x + 0.5f, column.y + 0.5f), weights),
+                forest, keepClear);
+        }
+
+        /// <summary>То же, но лес столбца даёт mixAt (например, карта кампании по локациям); null — без деревьев.</summary>
+        public static int Scatter(VoxelWorld world, int seed, Func<Vector2Int, ForestMix> mixAt, Forest forest,
+            Func<Vector2Int, bool> keepClear = null)
+        {
+            var size = world.SizeInBlocks;
             var planted = 0;
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
             {
-                var mix = MixAt(background, zones, new Vector2(x + 0.5f, z + 0.5f), weights);
+                var column = new Vector2Int(x, z);
+                var mix = mixAt(column);
                 if (mix == null || mix.IsEmpty || Random01(seed, x, z, 0) >= mix.Density)
                     continue;
-                var column = new Vector2Int(x, z);
                 if (keepClear != null && keepClear(column) || HasNeighbour(forest, column))
                     continue;
                 if (!TryGroundTop(world, x, z, mix.GrowsOnStone, out var cell))

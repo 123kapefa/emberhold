@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29ce1b5e2b244deaa8cdda52241b05d6, type: 3}
+  m_Name: Peaks
+  m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.TerrainProfile
+  parameters:
+    Shape: 2
+    BaseHeight: 0
+    ShapeHeight: 24
+    ShapeWidth: 0.45
+    MeanderAmplitude: 0
+    MeanderWaves: 0
+    NoiseScale: 20
+    NoiseAmplitude: 4
+    HeightStep: 4
+    TerraceHeight: 4
+    TerraceSlope: 0.35
+    CliffAmount: 0.5
+    CliffNoiseScale: 12
+    CliffEdgeRounding: 0
+    CliffFootRounding: 4
+    CapDepth: 2
+    CapWidth: 5
+    Materials:
+      Surface: 3
+      Subsurface: 3
+      SubsurfaceDepth: 0
+      Deep: 3
+      Bed: 2
+    WaterLevel: 0
+  forest:
+    density: 0.03
+    growsOnStone: 1
+    species:
+    - species: {fileID: 11400000, guid: ef6a73afa52244d9a1661a05a5ae5e57, type: 2}
+      weight: 0.7
+    - species: {fileID: 11400000, guid: 411ea2ddf30a4b128b3cba21055fcff6, type: 2}
+      weight: 0.3

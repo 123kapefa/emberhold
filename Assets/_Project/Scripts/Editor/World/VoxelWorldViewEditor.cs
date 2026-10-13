@@ -34,14 +34,26 @@ namespace Emberhold.Editor.World
             }
 
             EditorGUILayout.HelpBox(
-                "Строит рельеф по настройкам и зонам местности сцены. После изменений нажмите ещё раз. " +
+                "Строит рельеф по настройкам и зонам местности сцены (или по карте кампании, если она задана в настройках). " +
+                "После изменений нажмите ещё раз. " +
                 "Построенные чанки временные: в сцену не сохраняются и убираются перед Play.",
                 MessageType.None);
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button(hasPreview ? "Перестроить" : "Сгенерировать"))
-                    foreach (var view in targets)
-                        ((VoxelWorldView)view).BuildPreview();
+                {
+                    // Большой мир (карта кампании 512×512) строится несколько секунд: показываем, что редактор занят.
+                    EditorUtility.DisplayProgressBar("Предпросмотр рельефа", "Генерация и сборка чанков…", 0.5f);
+                    try
+                    {
+                        foreach (var view in targets)
+                            ((VoxelWorldView)view).BuildPreview();
+                    }
+                    finally
+                    {
+                        EditorUtility.ClearProgressBar();
+                    }
+                }
                 using (new EditorGUI.DisabledScope(!hasPreview))
                 {
                     if (GUILayout.Button("Очистить"))

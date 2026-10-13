@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29ce1b5e2b244deaa8cdda52241b05d6, type: 3}
+  m_Name: Meadow
+  m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.TerrainProfile
+  parameters:
+    Shape: 0
+    BaseHeight: 0
+    ShapeHeight: 0
+    ShapeWidth: 0.5
+    MeanderAmplitude: 0
+    MeanderWaves: 0
+    NoiseScale: 16
+    NoiseAmplitude: 1
+    HeightStep: 4
+    TerraceHeight: 0
+    TerraceSlope: 0.3
+    CliffAmount: 0
+    CliffNoiseScale: 16
+    CliffEdgeRounding: 0
+    CliffFootRounding: 4
+    CapDepth: 0
+    CapWidth: 6
+    Materials:
+      Surface: 1
+      Subsurface: 2
+      SubsurfaceDepth: 1
+      Deep: 3
+      Bed: 2
+    WaterLevel: 0
+  forest:
+    density: 0.012
+    growsOnStone: 0
+    species:
+    - species: {fileID: 11400000, guid: 6c72b2e90e52486fb0dd64cf8ef77439, type: 2}
+      weight: 1

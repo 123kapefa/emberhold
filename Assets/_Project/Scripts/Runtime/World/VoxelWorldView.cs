@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Emberhold.Core;
 using Emberhold.World.Generation;
 using Emberhold.World.Meshing;
+using Emberhold.World.Trees;
 using Emberhold.World.Voxels;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -45,6 +46,9 @@ namespace Emberhold.World
         /// <summary>Куда кладутся чанки: сам вид в Play, временный объект предпросмотра вне Play.</summary>
         private Transform chunkParent;
         private List<TerrainZoneArea> zones = new();
+        private CampaignLayout campaignLayout;
+        private CampaignHeights campaign;
+        private float[] zoneWeights = new float[1];
 
         /// <summary>Имя временного объекта с чанками предпросмотра.</summary>
         public const string PreviewName = "Предпросмотр (не сохраняется)";
@@ -89,7 +93,29 @@ namespace Emberhold.World
         private VoxelWorld Generate()
         {
             zones = CollectZones(terrain.SizeInChunks * ChunkData.Size);
-            return terrain.Generate(zones);
+            zoneWeights = new float[zones.Count + 1];
+            campaign = null;
+            campaignLayout = null;
+            if (terrain.Map == null)
+                return terrain.Generate(zones);
+            // С картой кампании зоны сцены не действуют: ни на рельеф, ни на лес.
+            zones.Clear();
+            campaignLayout = terrain.Map.ToLayout();
+            return TerrainGenerator.GenerateCampaign(campaignLayout, terrain.Seed, terrain.SizeInChunks, out campaign);
+        }
+
+        /// <summary>
+        /// Лес столбца мира, построенного при старте: у локации карты кампании, иначе у главного профиля
+        /// (зона или фон). null — деревья не растут.
+        /// </summary>
+        public ForestMix ForestAt(Vector2Int column)
+        {
+            if (terrain == null)
+                return null;
+            if (campaign == null)
+                return ForestScatter.MixAt(terrain.Forest, zones, new Vector2(column.x + 0.5f, column.y + 0.5f), zoneWeights);
+            var owner = campaign.ColumnOwner(column.x, column.y);
+            return owner == CampaignHeights.Ridge ? campaignLayout.Ridge.Forest : campaignLayout.Locations[owner - 1].Forest;
         }
 
         /// <summary>

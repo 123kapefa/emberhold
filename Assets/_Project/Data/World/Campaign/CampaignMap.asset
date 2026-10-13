@@ -1,0 +1,317 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b7c1b4a17174f74ad1178706ff2469c, type: 3}
+  m_Name: CampaignMap
+  m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.CampaignMap
+  ridgeMinHeight: 36
+  ridgeMaxHeight: 46
+  ridgeGrassLine: 30
+  ridgeProfile: {fileID: 11400000, guid: e1b4646b657448c9bfbd8144d1f15603, type: 2}
+  locations:
+  - id: pass
+    name: Перевал
+    center: {x: 38, y: 40}
+    radius: {x: 13, y: 13}
+    profile: {fileID: 11400000, guid: a02b407313fd4b1dbc758f6aad48c693, type: 2}
+    floorHeight: 24
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  - id: birch
+    name: Берёзовая долина
+    center: {x: 112, y: 102}
+    radius: {x: 48, y: 34}
+    profile: {fileID: 11400000, guid: 784bcd72f8a841fbb039799d0879cb4c, type: 2}
+    floorHeight: 14
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  - id: mill
+    name: Старая мельница
+    center: {x: 172, y: 194}
+    radius: {x: 26, y: 22}
+    profile: {fileID: 11400000, guid: 0b0c8d8903934aeb99c8424236dad769, type: 2}
+    floorHeight: 11
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  - id: plain
+    name: Речная пойма
+    center: {x: 86, y: 300}
+    radius: {x: 60, y: 46}
+    profile: {fileID: 11400000, guid: 66133786c0e64bc68785d5e5f2a8cafb, type: 2}
+    floorHeight: 7.5
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  - id: hills
+    name: Сосновые холмы
+    center: {x: 214, y: 324}
+    radius: {x: 56, y: 46}
+    profile: {fileID: 11400000, guid: 4ef88cba06c245b69c5f1b3c488e0497, type: 2}
+    floorHeight: 15
+    rise: 15
+    riseDirection: 0
+    roughness: 1
+  - id: ford
+    name: Брод у заставы
+    center: {x: 292, y: 182}
+    radius: {x: 26, y: 22}
+    profile: {fileID: 11400000, guid: 0b0c8d8903934aeb99c8424236dad769, type: 2}
+    floorHeight: 9
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  - id: quarry
+    name: Каменоломня
+    center: {x: 300, y: 72}
+    radius: {x: 52, y: 38}
+    profile: {fileID: 11400000, guid: 0b7c4625b7cb4d29976b637ea9dea66d, type: 2}
+    floorHeight: 13
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  - id: mount
+    name: Горы
+    center: {x: 424, y: 98}
+    radius: {x: 62, y: 50}
+    profile: {fileID: 11400000, guid: 1c7d0b6eb59247b3b408c85e56f2572a, type: 2}
+    floorHeight: 18
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  - id: city
+    name: Мёртвый город
+    center: {x: 340, y: 346}
+    radius: {x: 50, y: 36}
+    profile: {fileID: 11400000, guid: e8ef45f78dc5478291455b6f3ac28dcc, type: 2}
+    floorHeight: 20
+    rise: 3
+    riseDirection: 0
+    roughness: 1
+  - id: swamp
+    name: Топи
+    center: {x: 404, y: 250}
+    radius: {x: 50, y: 36}
+    profile: {fileID: 11400000, guid: 45b0cc4ff9e949819720c8e3e1007180, type: 2}
+    floorHeight: 5
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  - id: cedar
+    name: Кедровое плато
+    center: {x: 462, y: 362}
+    radius: {x: 34, y: 30}
+    profile: {fileID: 11400000, guid: 542b4e21baf443ee932651dcdfef0950, type: 2}
+    floorHeight: 25
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  - id: rock
+    name: Скала маяка
+    center: {x: 468, y: 454}
+    radius: {x: 14, y: 12}
+    profile: {fileID: 11400000, guid: a02b407313fd4b1dbc758f6aad48c693, type: 2}
+    floorHeight: 36
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  - id: secret
+    name: Скрытая долина
+    center: {x: 124, y: 420}
+    radius: {x: 30, y: 22}
+    profile: {fileID: 11400000, guid: 542b4e21baf443ee932651dcdfef0950, type: 2}
+    floorHeight: 19
+    rise: 0
+    riseDirection: 0
+    roughness: 1
+  gorges:
+  - name: 
+    from: pass
+    to: birch
+    waypoints:
+    - {x: 64, y: 60}
+    - {x: 86, y: 74}
+    widthStart: 14
+    widthEnd: 26
+    heightStart: 24
+    heightEnd: 14
+    bump: 0
+    wiggle: 18
+  - name: 
+    from: birch
+    to: mill
+    waypoints:
+    - {x: 146, y: 132}
+    - {x: 148, y: 164}
+    widthStart: 24
+    widthEnd: 18
+    heightStart: 14
+    heightEnd: 11
+    bump: 0
+    wiggle: 18
+  - name: 
+    from: mill
+    to: plain
+    waypoints:
+    - {x: 142, y: 212}
+    - {x: 130, y: 244}
+    - {x: 108, y: 264}
+    widthStart: 16
+    widthEnd: 18
+    heightStart: 11
+    heightEnd: 7.5
+    bump: 0
+    wiggle: 18
+  - name: 
+    from: mill
+    to: hills
+    waypoints:
+    - {x: 196, y: 224}
+    - {x: 190, y: 260}
+    - {x: 208, y: 284}
+    widthStart: 14
+    widthEnd: 14
+    heightStart: 11
+    heightEnd: 17
+    bump: 0
+    wiggle: 18
+  - name: 
+    from: mill
+    to: ford
+    waypoints:
+    - {x: 206, y: 176}
+    - {x: 246, y: 194}
+    - {x: 268, y: 178}
+    widthStart: 18
+    widthEnd: 18
+    heightStart: 11
+    heightEnd: 9
+    bump: 0
+    wiggle: 18
+  - name: 
+    from: ford
+    to: quarry
+    waypoints:
+    - {x: 278, y: 146}
+    - {x: 300, y: 114}
+    widthStart: 12
+    widthEnd: 14
+    heightStart: 9
+    heightEnd: 13
+    bump: 0
+    wiggle: 18
+  - name: 
+    from: ford
+    to: mount
+    waypoints:
+    - {x: 328, y: 160}
+    - {x: 356, y: 124}
+    - {x: 384, y: 116}
+    widthStart: 14
+    widthEnd: 16
+    heightStart: 9
+    heightEnd: 20
+    bump: 0
+    wiggle: 18
+  - name: 
+    from: ford
+    to: swamp
+    waypoints:
+    - {x: 326, y: 200}
+    - {x: 346, y: 226}
+    - {x: 372, y: 230}
+    widthStart: 20
+    widthEnd: 24
+    heightStart: 9
+    heightEnd: 5
+    bump: 0
+    wiggle: 18
+  - name: 
+    from: hills
+    to: city
+    waypoints:
+    - {x: 256, y: 344}
+    - {x: 282, y: 362}
+    - {x: 306, y: 350}
+    widthStart: 12
+    widthEnd: 14
+    heightStart: 24
+    heightEnd: 21
+    bump: 0
+    wiggle: 18
+  - name: 
+    from: city
+    to: swamp
+    waypoints:
+    - {x: 356, y: 316}
+    - {x: 376, y: 298}
+    - {x: 388, y: 276}
+    widthStart: 10
+    widthEnd: 12
+    heightStart: 21
+    heightEnd: 5
+    bump: 0
+    wiggle: 18
+  - name: Серпантин
+    from: swamp
+    to: cedar
+    waypoints:
+    - {x: 436, y: 276}
+    - {x: 424, y: 306}
+    - {x: 450, y: 326}
+    widthStart: 10
+    widthEnd: 12
+    heightStart: 5
+    heightEnd: 25
+    bump: 0
+    wiggle: 18
+  - name: 
+    from: cedar
+    to: rock
+    waypoints:
+    - {x: 476, y: 392}
+    - {x: 458, y: 416}
+    - {x: 470, y: 436}
+    widthStart: 8
+    widthEnd: 8
+    heightStart: 25
+    heightEnd: 36
+    bump: 0
+    wiggle: 18
+  - name: Карниз
+    from: city
+    to: cedar
+    waypoints:
+    - {x: 372, y: 372}
+    - {x: 398, y: 392}
+    - {x: 430, y: 384}
+    widthStart: 5
+    widthEnd: 6
+    heightStart: 21
+    heightEnd: 25
+    bump: 5
+    wiggle: 18
+  - name: Восточный перевал
+    from: mount
+    to: cedar
+    waypoints:
+    - {x: 472, y: 140}
+    - {x: 490, y: 200}
+    - {x: 484, y: 268}
+    - {x: 478, y: 316}
+    widthStart: 10
+    widthEnd: 10
+    heightStart: 24
+    heightEnd: 25
+    bump: 9
+    wiggle: 18
