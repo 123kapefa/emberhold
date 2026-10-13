@@ -1,5 +1,5 @@
-// Копия URP/Lit 17.6, проход ForwardLit берёт GroundForwardPass.hlsl: цвет смешивается с цветом вершины
-// по весу из UV3.x (переход травы в камень на гладкой земле). Остальные проходы как у Lit.
+// Копия URP/Lit 17.6, проход ForwardLit берёт GroundForwardPass.hlsl: текстуры по трём проекциям мира
+// и переход в текстуру камня по весу из UV3.x (гладкая земля). Остальные проходы как у Lit.
 Shader "Emberhold/World/Ground"
 {
     Properties
@@ -9,6 +9,7 @@ Shader "Emberhold/World/Ground"
 
         [MainTexture] _BaseMap("Albedo", 2D) = "white" {}
         [MainColor] _BaseColor("Color", Color) = (1,1,1,1)
+        _RockMap("Rock (переход гладкой земли)", 2D) = "white" {}
 
         _Cutoff("Alpha Cutoff", Range(0.0, 1.0)) = 0.5
 

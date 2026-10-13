@@ -1,10 +1,41 @@
-// Копия LitForwardPass.hlsl из URP 17.6 с одним отличием: цвет поверхности смешивается с цветом вершины
-// по весу из UV3.x. Так гладкая земля (TerrainSurface) плавно переходит из травы в камень. У мешей без
-// UV3 вес 0, и материал выглядит в точности как URP/Lit.
+// Копия LitForwardPass.hlsl из URP 17.6 с двумя отличиями: текстура материала кладётся по трём проекциям
+// мира (без растяжения на крутых склонах), и цвет смешивается с текстурой камня, окрашенной цветом вершины,
+// по весу из UV3.x. Так гладкая земля (TerrainSurface) плавно переходит из травы в камень. У мешей без UV3
+// вес 0, и остаётся только своя текстура материала.
 #ifndef EMBERHOLD_GROUND_FORWARD_PASS_INCLUDED
 #define EMBERHOLD_GROUND_FORWARD_PASS_INCLUDED
 
+// Для трёх проекций текстуры нужна точка в мире.
+#define REQUIRES_WORLD_SPACE_POS_INTERPOLATOR
 #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
+
+// Текстура камня для перехода гладкой земли из травы в камень. Текстуры не входят в UnityPerMaterial,
+// поэтому SRP Batcher не ломается.
+TEXTURE2D(_RockMap);
+SAMPLER(sampler_RockMap);
+
+// Сколько блоков занимает текстура по каждой проекции.
+#define EMBERHOLD_GROUND_TILE 6.0
+
+// Текстура по трём проекциям мира: на крутых склонах не растягивается. Вес проекции — по нормали.
+half3 SampleTriplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, half3 normalWS)
+{
+    half3 w = pow(abs(normalWS), 4.0h);
+    w /= max(w.x + w.y + w.z, 1e-4h);
+    float3 p = positionWS / EMBERHOLD_GROUND_TILE;
+    half3 x = SAMPLE_TEXTURE2D(tex, samplerTex, p.zy).rgb;
+    half3 y = SAMPLE_TEXTURE2D(tex, samplerTex, p.xz).rgb;
+    half3 z = SAMPLE_TEXTURE2D(tex, samplerTex, p.xy).rgb;
+    half3 near = x * w.x + y * w.y + z * w.z;
+    // Та же текстура в несколько раз крупнее даёт пятна светлее и темнее: повтор плитки не читается.
+    float3 q = p / 5.3;
+    half3 far = SAMPLE_TEXTURE2D(tex, samplerTex, q.zy + 0.37).rgb * w.x
+              + SAMPLE_TEXTURE2D(tex, samplerTex, q.xz + 0.61).rgb * w.y
+              + SAMPLE_TEXTURE2D(tex, samplerTex, q.xy + 0.13).rgb * w.z;
+    half lumNear = dot(near, half3(0.3h, 0.59h, 0.11h));
+    half lumFar = dot(far, half3(0.3h, 0.59h, 0.11h));
+    return near * clamp(0.55h + 0.9h * lumFar / max(lumNear * 0.5h + lumFar * 0.5h, 0.05h) * 0.5h, 0.75h, 1.25h);
+}
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
 #if defined(LOD_FADE_CROSSFADE)
@@ -254,7 +285,11 @@ void LitPassFragment(
 
     SurfaceData surfaceData;
     InitializeStandardLitSurfaceData(input.uv, surfaceData);
-    surfaceData.albedo = lerp(surfaceData.albedo, input.groundColor.rgb, saturate(input.groundColor.a));
+    // Своя текстура материала и текстура камня кладутся по трём проекциям мира, а не по UV меша.
+    half3 normalForTex = normalize(input.normalWS);
+    half3 baseAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap), input.positionWS, normalForTex) * _BaseColor.rgb;
+    half3 rockAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_RockMap, sampler_RockMap), input.positionWS, normalForTex) * input.groundColor.rgb;
+    surfaceData.albedo = lerp(baseAlbedo, rockAlbedo, saturate(input.groundColor.a));
 
 #ifdef LOD_FADE_CROSSFADE
     LODFadeCrossFade(input.positionCS);
