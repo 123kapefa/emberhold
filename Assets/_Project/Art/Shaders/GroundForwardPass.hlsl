@@ -197,6 +197,10 @@ float GroundValueNoise(float2 p)
 // Зубцы-травинки: сколько на блок вдоль края и какой глубины, в блоках.
 #define EMBERHOLD_TEETH_PER_BLOCK 7.0
 #define EMBERHOLD_TEETH_DEPTH 0.28
+// Издалека травинки тоньше пикселя: пропадают, а их тёмная кайма и тень остаются рядом чёрточек. Поэтому
+// с TEETH_NEAR до TEETH_FAR блоков от камеры зубцы плавно сходят на нет, край остаётся просто рваным.
+#define EMBERHOLD_TEETH_NEAR 15.0
+#define EMBERHOLD_TEETH_FAR 25.0
 #define EMBERHOLD_EDGE_RIM 0.12
 #define EMBERHOLD_EDGE_RIM_DARK 0.7
 #define EMBERHOLD_EDGE_SHADOW 0.1
@@ -212,7 +216,8 @@ float GroundValueNoise(float2 p)
 // weight — вес травы из вершин (без шума): по его наклону на экране находим направление края в мире,
 // зубцы — треугольники вдоль края с вогнутыми боками (острые кончики), разной высоты, глубиной
 // до TEETH_DEPTH блока при любом наклоне веса. Где наклон не найти (вес ровный, грань вертикальна), зубцов нет.
-float GrassEdgeOffset(float3 positionWS, float ragged, float weight, float3 dpdx, float3 dpdy)
+// Издалека (cameraDistance — до камеры) зубцы гаснут, см. TEETH_NEAR и TEETH_FAR.
+float GrassEdgeOffset(float3 positionWS, float ragged, float weight, float3 dpdx, float3 dpdy, float cameraDistance)
 {
     // Шум зависит и от высоты, чтобы на обрывах край тоже был неровным.
     float2 q = positionWS.xz + positionWS.y * float2(0.61, -0.43);
@@ -241,7 +246,8 @@ float GrassEdgeOffset(float3 positionWS, float ragged, float weight, float3 dpdx
         float height = GroundHash(float2(floor(a), 7.1 + layer * 3.3));
         teeth = max(teeth, tooth * tooth * height * sqrt(height) * (layer == 0 ? 1.0 : 0.8));
     }
-    return offset + teeth * EMBERHOLD_TEETH_DEPTH * slope;
+    float teethFade = 1.0 - saturate((cameraDistance - EMBERHOLD_TEETH_NEAR) / (EMBERHOLD_TEETH_FAR - EMBERHOLD_TEETH_NEAR));
+    return offset + teeth * EMBERHOLD_TEETH_DEPTH * slope * teethFade;
 }
 
 float GroundSmoothMin(float a, float b, float k)
@@ -562,7 +568,8 @@ void LitPassFragment(
     half rockWeight = saturate(input.groundBlend.x);
     half rockRim, rockShadow;
     half rockGrass = GrassCover(1.0 - rockWeight
-        + GrassEdgeOffset(input.positionWS, EMBERHOLD_EDGE_RAGGED, 1.0 - rockWeight, dpdx, dpdy), rockRim, rockShadow);
+        + GrassEdgeOffset(input.positionWS, EMBERHOLD_EDGE_RAGGED, 1.0 - rockWeight, dpdx, dpdy, cameraDistance),
+        rockRim, rockShadow);
     // Камень сэмплируем только там, где он есть: у блоков и в сцене без гладкой земли вес 0.
     UNITY_BRANCH
     if (rockWeight > 0.001h)
@@ -582,7 +589,7 @@ void LitPassFragment(
         float toGrass = -FringeDistance(input.groundBlend.y, input.groundBlend.zw);
         half rim, shadow;
         half grass = GrassCover(0.5 + EMBERHOLD_FRINGE_INSET + toGrass
-            + GrassEdgeOffset(input.positionWS, EMBERHOLD_FRINGE_RAGGED, toGrass, dpdx, dpdy), rim, shadow);
+            + GrassEdgeOffset(input.positionWS, EMBERHOLD_FRINGE_RAGGED, toGrass, dpdx, dpdy, cameraDistance), rim, shadow);
         half3 meadow = SampleTriplanar(TEXTURE2D_ARGS(_GrassMap, sampler_GrassMap), input.positionWS,
             normalForTex, dpdx, dpdy, detailFade, flatFade);
         half3 grassAlbedo = TintGrass(MixGrassKinds(meadow, input.grassKinds, 1.0h, input.positionWS, normalForTex,
