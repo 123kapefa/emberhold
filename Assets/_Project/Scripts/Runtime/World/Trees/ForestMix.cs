@@ -1,4 +1,5 @@
 using System;
+using Emberhold.World.Vegetation;
 using UnityEngine;
 
 namespace Emberhold.World.Trees
@@ -7,6 +8,7 @@ namespace Emberhold.World.Trees
     /// Лес профиля местности: как густо растут деревья, какие виды в какой доле и сколько деревьев собрано в рощи.
     /// Лежит в профиле (<see cref="Generation.TerrainProfile"/>), поэтому каждая зона местности приносит свой лес.
     /// Густота — среднее по всей площади: рощи забирают свою долю деревьев, остальные стоят по одному между ними.
+    /// Здесь же мелочь на земле профиля (<see cref="GroundCover"/>): трава, цветы, папоротник, грибы — только для вида.
     /// </summary>
     [Serializable]
     public sealed class ForestMix
@@ -42,6 +44,9 @@ namespace Emberhold.World.Trees
         [Range(0f, 1f)]
         [SerializeField] private float groveMainShare = 0.75f;
 
+        [Header("Мелочь на земле")]
+        [SerializeField] private GroundCoverMix groundCover = new();
+
         public ForestMix()
         {
         }
@@ -63,6 +68,9 @@ namespace Emberhold.World.Trees
         public float GroveRadius => groveRadius;
         public float GroveDensity => groveDensity;
         public float GroveMainShare => groveMainShare;
+
+        /// <summary>Мелочь на земле этой местности (только для вида).</summary>
+        public GroundCoverMix GroundCover => groundCover;
 
         /// <summary>Есть ли у леса рощи.</summary>
         public bool HasGroves => groveShare > 0f && groveDensity > 0f && groveRadius > 0f;
@@ -88,6 +96,13 @@ namespace Emberhold.World.Trees
             groveRadius = radius;
             this.groveDensity = groveDensity;
             groveMainShare = Mathf.Clamp01(mainShare);
+            return this;
+        }
+
+        /// <summary>Мелочь на земле для тестов и настройки из кода; возвращает этот же лес.</summary>
+        public ForestMix WithGroundCover(GroundCoverMix cover)
+        {
+            groundCover = cover ?? new GroundCoverMix();
             return this;
         }
 

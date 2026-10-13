@@ -1035,6 +1035,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1310000003}
   - component: {fileID: 1310000002}
+  - component: {fileID: 1310000004}
   m_Layer: 0
   m_Name: Forest
   m_TagString: Untagged
@@ -1060,6 +1061,25 @@ MonoBehaviour:
   material: {fileID: 2100000, guid: 8b62bdf6948e4af1bdd8edce22358654, type: 2}
   maxLean: 4
   sizeSpread: 0.1
+--- !u!114 &1310000004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1310000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7491ad6c07fd47e19788ca70492bc15e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Trees.GroundCoverView
+  worldView: {fileID: 520718230}
+  forestView: {fileID: 1310000002}
+  clearAroundFire: 1.5
+  material: {fileID: 2100000, guid: 8b62bdf6948e4af1bdd8edce22358654, type: 2}
+  drawDistance: 96
+  regionsPerFrame: 8
+  castShadows: 1
 --- !u!4 &1310000003
 Transform:
   m_ObjectHideFlags: 0

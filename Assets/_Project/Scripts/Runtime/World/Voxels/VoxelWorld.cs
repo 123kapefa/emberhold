@@ -28,6 +28,9 @@ namespace Emberhold.World.Voxels
         /// <summary>Растёт при каждой смене блока через SetBlock: по нему кэши (например, пути) узнают, что мир изменился.</summary>
         public int Version { get; private set; }
 
+        /// <summary>Блок сменился через SetBlock (уже после смены и пометки чанков): так вещи на земле узнают, что под ними копали или строили.</summary>
+        public event Action<Vector3Int> BlockChanged;
+
         public VoxelWorld(Vector3Int sizeInChunks)
         {
             if (sizeInChunks.x <= 0 || sizeInChunks.y <= 0 || sizeInChunks.z <= 0)
@@ -93,6 +96,7 @@ namespace Emberhold.World.Voxels
             for (var dz = z0; dz <= z1; dz++)
             for (var dx = x0; dx <= x1; dx++)
                 MarkDirty(chunk + new Vector3Int(dx, dy, dz));
+            BlockChanged?.Invoke(block);
         }
 
         public void MarkDirty(Vector3Int chunk)
