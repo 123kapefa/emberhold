@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using Emberhold.CameraRig;
 using Emberhold.Core;
 using Emberhold.Gameplay.Building;
 using Emberhold.Gameplay.DayNight;
@@ -9,6 +10,7 @@ using Emberhold.Gameplay.Trees;
 using Emberhold.Gameplay.Workers;
 using Emberhold.World;
 using Emberhold.World.Trees;
+using Emberhold.World.Vegetation;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -77,6 +79,35 @@ namespace Emberhold.Tests.PlayMode.Trees
             foreach (var patch in cover.Patches)
                 Assert.That(forest.At(new Vector2Int(patch.Cell.x, patch.Cell.z)), Is.Null, "Не в столбце дерева");
             Assert.That(view.ShownRegions, Is.GreaterThan(0), "У камеры участки нарисованы");
+        }
+
+        [UnityTest]
+        public IEnumerator PrototypeScene_GroundCoverHidesWhenCameraIsFar()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+            yield return null;
+
+            var view = Object.FindAnyObjectByType<GroundCoverView>();
+            Assert.That(view.ThinningLevel, Is.EqualTo(GroundCoverThinning.Steps), "У земли видна вся мелочь");
+            Assert.That(view.ShownRegions, Is.GreaterThan(0));
+
+            // Камеру ведём руками: риг иначе вернёт её на место.
+            foreach (var rig in Object.FindObjectsByType<CameraRigController>())
+                rig.enabled = false;
+            var camera = Camera.main.transform;
+            var start = camera.position;
+            camera.position = start + Vector3.up * 400f;
+            yield return null;
+            yield return null;
+            Assert.That(view.ThinningLevel, Is.EqualTo(0), "Издалека мелочь скрыта");
+            Assert.That(view.ShownRegions, Is.EqualTo(0), "И её участки убраны");
+
+            camera.position = start;
+            for (var i = 0; i < 60 && view.ShownRegions == 0; i++)
+                yield return null;
+            Assert.That(view.ThinningLevel, Is.EqualTo(GroundCoverThinning.Steps), "Вернулись — мелочь снова вся");
+            Assert.That(view.ShownRegions, Is.GreaterThan(0), "И участки снова нарисованы");
         }
 
         [UnityTest]
