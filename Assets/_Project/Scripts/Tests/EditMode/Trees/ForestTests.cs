@@ -117,8 +117,8 @@ namespace Emberhold.Tests.EditMode.Trees
         [Test]
         public void Scatter_OnSmoothGround_RockyPlacesCountAsStone()
         {
-            // Гладкая земля: на каменной половине (x < 32) верх — кусок склона из травы над камнем,
-            // но место каменное, и обычный лес там не растёт.
+            // Гладкая земля: столбцы из травы, но углы на половине x < 32 каменные (как на краю скалы).
+            // Место каменное по поверхности, и обычный лес там не растёт.
             const int h = BlockShape.MaxHeight;
             var smooth = new VoxelWorld(new Vector3Int(4, 1, 4));
             var corners = new int[65, 65];
@@ -129,15 +129,10 @@ namespace Emberhold.Tests.EditMode.Trees
                 corners[x, z] = Ground * h + 4;
                 rockWeights[x, z] = x <= 32 ? (byte)255 : (byte)0;
             }
-            var rock = new TerrainMaterials
-            {
-                Surface = BlockMaterials.Stone, Subsurface = BlockMaterials.Stone, SubsurfaceDepth = 1,
-                Deep = BlockMaterials.Stone, Bed = BlockMaterials.Stone,
-            };
             var materials = new TerrainMaterials[64, 64];
             for (var z = 0; z < 64; z++)
             for (var x = 0; x < 64; x++)
-                materials[x, z] = x < 32 ? rock : TerrainMaterials.Default;
+                materials[x, z] = TerrainMaterials.Default;
             CornerTerrain.FillSmooth(smooth, corners, materials, new int[64, 64]).SetRock(rockWeights);
             Assert.That(smooth.GetBlock(new Vector3Int(10, Ground, 10)).Material, Is.EqualTo(BlockMaterials.Grass));
 

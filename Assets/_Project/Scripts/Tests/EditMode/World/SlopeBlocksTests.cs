@@ -38,8 +38,8 @@ namespace Emberhold.Tests.EditMode.World
             Bed = BlockMaterials.Stone,
         };
 
-        /// <summary>Мир 1×2×1 чанк: ровный камень на высоте Base, угол (5, 5) поднят до Bump.</summary>
-        private static VoxelWorld BumpWorld(int bedLevel = 0)
+        /// <summary>Мир 1×2×1 чанк: ровный камень (или column) на высоте Base, угол (5, 5) поднят до Bump.</summary>
+        private static VoxelWorld BumpWorld(int bedLevel = 0, TerrainMaterials? column = null)
         {
             var world = new VoxelWorld(new Vector3Int(1, 2, 1));
             var size = world.SizeInBlocks;
@@ -51,7 +51,7 @@ namespace Emberhold.Tests.EditMode.World
             var materials = new TerrainMaterials[size.x, size.z];
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
-                materials[x, z] = Rock;
+                materials[x, z] = column ?? Rock;
             var beds = new int[size.x, size.z];
             for (var z = 0; z < size.z; z++)
             for (var x = 0; x < size.x; x++)
@@ -62,14 +62,23 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
-        public void PieceAboveStone_IsItsOwnBlock_GrassOverStone()
+        public void PieceAboveStone_IsItsOwnBlock_OfStone()
         {
             var world = BumpWorld();
 
-            Assert.That(world.GetBlock(Piece), Is.EqualTo(new Block(BlockMaterials.Grass, new BlockShape(0, 0, 0, 12))));
+            Assert.That(world.GetBlock(Piece), Is.EqualTo(new Block(BlockMaterials.Stone, new BlockShape(0, 0, 0, 12))));
             Assert.That(world.GetBlock(Stone), Is.EqualTo(new Block(BlockMaterials.Stone, new BlockShape(8, 8, 8, 16))));
             Assert.That(world.GetBlock(Piece + Vector3Int.up).IsAir, Is.True);
             Assert.That(world.Surface.TopY(4, 4), Is.EqualTo(3));
+        }
+
+        [Test]
+        public void PieceAboveGrass_IsGrass()
+        {
+            var world = BumpWorld(column: TerrainMaterials.Default);
+
+            Assert.That(world.GetBlock(Piece).Material, Is.EqualTo(BlockMaterials.Grass));
+            Assert.That(world.GetBlock(Stone).Material, Is.EqualTo(TerrainMaterials.Default.Surface));
         }
 
         [Test]
@@ -163,19 +172,21 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
-        public void DiggingPartialStone_DropsLikeWholeStone_PieceLikeGrass()
+        public void DiggingPieceAndStone_EachDropsStone()
         {
             var world = BumpWorld();
             var damage = new BlockDamage(new UniformBlockDurability(100f));
             var items = new DroppedItems(new StoneDrops());
             damage.Destroyed += (block, destroyed) => items.OnBlockDestroyed(world, block, destroyed);
 
+            // Кусок склона на скале — камень: после копания в столбце не остаётся травы.
             Assert.That(damage.Hit(world, Piece, 100f), Is.True);
-            Assert.That(items.Items, Is.Empty, "трава ничего не даёт");
+            Assert.That(items.Items.Sum(i => i.Drop.Count), Is.EqualTo(1));
             Assert.That(damage.Hit(world, Stone, 100f), Is.True);
 
-            Assert.That(items.Items, Has.Count.EqualTo(1));
-            Assert.That(items.Items[0].Drop, Is.EqualTo(new ItemDrop("stone", 1)));
+            // Оба камня в одном столбце — одна кучка из двух.
+            Assert.That(items.Items.All(i => i.Drop.ItemId == "stone"), Is.True);
+            Assert.That(items.Items.Sum(i => i.Drop.Count), Is.EqualTo(2));
         }
 
         [Test]
@@ -204,7 +215,7 @@ namespace Emberhold.Tests.EditMode.World
                 Assert.That(world.GetBlock(Piece).IsAir, Is.True);
                 Assert.That(world.GetBlock(Stone).IsAir, Is.True);
                 Assert.That(world.Surface.IsNatural(4, 4), Is.True);
-                Assert.That(items.Items.Sum(i => i.Drop.Count), Is.EqualTo(1));
+                Assert.That(items.Items.Sum(i => i.Drop.Count), Is.EqualTo(2));
             }
             finally
             {
