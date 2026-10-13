@@ -41,3 +41,7 @@ MonoBehaviour:
     density: 0
     growsOnStone: 0
     species: []
+    groveShare: 0
+    groveRadius: 6
+    groveDensity: 0.4
+    groveMainShare: 0.75
