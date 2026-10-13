@@ -261,6 +261,9 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(ColumnMaterials(world, 2, 2), Has.No.Member(BlockMaterials.Stone));
             Assert.That(ColumnMaterials(world, 36, 80), Has.Member(BlockMaterials.Stone));
             Assert.That(ColumnMaterials(world, 36, 80), Has.No.Member(BlockMaterials.Cliff), "дно локации копается");
+            // Переход гладкой земли на хребте рисуется скалой, у локации — камнем (доля скалы в альфе смеси видов травы).
+            Assert.That(world.GrassTint.SampleKinds(2f, 2f).a, Is.EqualTo(1f));
+            Assert.That(world.GrassTint.SampleKinds(36f, 80f).a, Is.EqualTo(0f));
         }
 
         [Test]

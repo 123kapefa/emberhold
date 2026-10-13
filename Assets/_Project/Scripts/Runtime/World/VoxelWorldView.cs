@@ -499,6 +499,7 @@ namespace Emberhold.World
             if (visual)
             {
                 Shader.SetGlobalColor(GroundRockColorId, RockColor());
+                Shader.SetGlobalTexture(GroundCliffMapId, CliffTexture());
                 SetGroundBlend(mesh, data, groundColors);
             }
 
@@ -522,7 +523,18 @@ namespace Emberhold.World
             return rockColor.Value;
         }
 
+        /// <summary>Текстура скалы для перехода гладкой земли на хребте: основная текстура материала скалы.</summary>
+        private Texture CliffTexture()
+        {
+            var cliff = blockMaterials != null && BlockMaterials.Cliff < blockMaterials.Length ? blockMaterials[BlockMaterials.Cliff] : null;
+            return cliff != null && cliff.HasProperty(BaseMapId) && cliff.GetTexture(BaseMapId) != null
+                ? cliff.GetTexture(BaseMapId)
+                : Texture2D.grayTexture;
+        }
+
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
+        private static readonly int GroundCliffMapId = Shader.PropertyToID("_GroundCliffMap");
         private static readonly int GroundRockColorId = Shader.PropertyToID("_GroundRockColor");
 
         /// <summary>Материалы для подмешей: подмеш i — материал блока i + 1 (воздух не рисуется).</summary>

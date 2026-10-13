@@ -137,6 +137,8 @@ namespace Emberhold.World.Generation
         {
             var size = world.SizeInBlocks;
             var heights = CampaignHeights.Build(layout, seed, size.x, size.z, size.y - 2);
+            if (layout.Ridge.Cliff)
+                MarkCliff(heights);
             world.GrassTint = new GroundTint(heights.GrassTints, heights.GrassKinds);
             var random = new System.Random(seed);
             var cliffOffset = new Vector2((float)random.NextDouble() * 10000f, (float)random.NextDouble() * 10000f);
@@ -200,6 +202,17 @@ namespace Emberhold.World.Generation
             CornerTerrain.Fill(world, corners, materials, bedLevels, profiles[0].CliffEdgeRounding,
                 profiles[0].CliffFootRounding);
             return heights;
+        }
+
+        /// <summary>
+        /// Доля скалы в углах (альфа смеси видов травы, <see cref="GroundTint"/>): 1 у хребта, 0 у локаций.
+        /// По ней шейдер земли рисует переход гладкой земли на хребте скалой, а не камнем.
+        /// </summary>
+        private static void MarkCliff(CampaignHeights heights)
+        {
+            for (var z = 0; z < heights.Owners.GetLength(1); z++)
+            for (var x = 0; x < heights.Owners.GetLength(0); x++)
+                heights.GrassKinds[x, z].a = heights.Owners[x, z] == CampaignHeights.Ridge ? 1f : 0f;
         }
 
         /// <summary>
