@@ -95,7 +95,7 @@ namespace Emberhold.World.Vegetation
         private static void BuildFlowers(Builder b, GroundCoverKind kind, System.Random random)
         {
             var head = Pick(kind.Accents, random, Color.white).linear.WithAlpha(0f);
-            var stem = StemColor.linear.WithAlpha(1f);
+            var stem = StemColor.linear.WithAlpha(kind.TintedByGrass ? 1f : 0f);
             var small = kind.Height < 0.2f;
             var count = 3 + random.Next(4);
             for (var i = 0; i < count; i++)
@@ -116,6 +116,7 @@ namespace Emberhold.World.Vegetation
         private static void BuildFern(Builder b, GroundCoverKind kind, System.Random random)
         {
             var color = Pick(kind.Colors, random, StemColor).linear;
+            var tint = kind.TintedByGrass ? 1f : 0f;
             var count = 6 + random.Next(3);
             const int segments = 5;
             for (var i = 0; i < count; i++)
@@ -137,9 +138,9 @@ namespace Emberhold.World.Vegetation
                     for (var sign = -1; sign <= 1; sign += 2)
                     {
                         var tip = p1 + side * (sign * w1 * 1.2f) - direction * 0.02f + Vector3.down * 0.04f;
-                        b.Flat(p0, p1, tip, (color * (0.8f + 0.3f * t1)).WithAlpha(1f));
+                        b.Flat(p0, p1, tip, (color * (0.8f + 0.3f * t1)).WithAlpha(tint));
                         var middle = (p0 + p1) * 0.5f + side * (sign * w0) + Vector3.down * 0.02f;
-                        b.Flat(p0, middle, p1, (color * (0.75f + 0.3f * t0)).WithAlpha(1f));
+                        b.Flat(p0, middle, p1, (color * (0.75f + 0.3f * t0)).WithAlpha(tint));
                     }
                 }
             }
@@ -176,6 +177,7 @@ namespace Emberhold.World.Vegetation
         {
             var color = Pick(kind.Colors, random, StemColor).linear;
             var headColor = Pick(kind.Accents, random, new Color(0.416f, 0.29f, 0.188f)).linear.WithAlpha(0f);
+            var tint = kind.TintedByGrass ? 1f : 0f;
             var count = 7 + random.Next(5);
             for (var i = 0; i < count; i++)
             {
@@ -183,7 +185,7 @@ namespace Emberhold.World.Vegetation
                 var height = kind.Height * Range(random, 0.62f, 1f);
                 var lean = new Vector3(Range(random, -0.08f, 0.08f), 0f, Range(random, -0.08f, 0.08f));
                 var top = root + lean + Vector3.up * height;
-                var col = (color * Range(random, 0.9f, 1.05f)).WithAlpha(1f);
+                var col = (color * Range(random, 0.9f, 1.05f)).WithAlpha(tint);
                 const float w = 0.025f;
                 b.Quad(root - Vector3.right * w, root + Vector3.right * w, top + Vector3.right * (w * 0.4f), top - Vector3.right * (w * 0.4f), col);
                 b.Quad(root - Vector3.forward * w, root + Vector3.forward * w, top + Vector3.forward * (w * 0.4f), top - Vector3.forward * (w * 0.4f), col);
@@ -196,6 +198,7 @@ namespace Emberhold.World.Vegetation
         private static void BuildMoss(Builder b, GroundCoverKind kind, System.Random random)
         {
             var color = Pick(kind.Colors, random, StemColor).linear;
+            var tint = kind.TintedByGrass ? 1f : 0f;
             var count = 3 + random.Next(4);
             for (var i = 0; i < count; i++)
             {
@@ -203,7 +206,7 @@ namespace Emberhold.World.Vegetation
                 var center = new Vector3(Range(random, -0.3f, 0.3f), 0f, Range(random, -0.3f, 0.3f));
                 var shade = Range(random, 0.95f, 1.12f);
                 b.Blob(center, new Vector3(size, Mathf.Max(0.02f, kind.Height) * size / 0.2f, size * Range(random, 0.8f, 1.2f)), random, 0.15f,
-                    y => (color * (y > center.y + 0.02f ? shade : 0.7f)).WithAlpha(1f));
+                    y => (color * (y > center.y + 0.02f ? shade : 0.7f)).WithAlpha(tint));
             }
         }
 

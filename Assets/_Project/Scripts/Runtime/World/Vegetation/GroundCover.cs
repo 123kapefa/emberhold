@@ -49,6 +49,12 @@ namespace Emberhold.World.Vegetation
         /// <summary>Пучок пропал (под ним копали или строили).</summary>
         public event Action<GroundCoverPatch> Removed;
 
+        /// <summary>
+        /// В столбце пучка сменился блок, а пучок остался: его основание могло сдвинуться (например, столбец
+        /// перестал быть нетронутой гладкой землёй, когда копали сбоку под верхом).
+        /// </summary>
+        public event Action<GroundCoverPatch> Changed;
+
         public GroundCoverPatch At(Vector2Int column) => byColumn.TryGetValue(column, out var patch) ? patch : null;
 
         /// <summary>Добавить пучок; false — столбец уже занят.</summary>
@@ -81,28 +87,15 @@ namespace Emberhold.World.Vegetation
             return true;
         }
 
-        private void OnBlockChanged(Vector3Int block) => Settle(watched, new Vector2Int(block.x, block.z));
-
-        /// <summary>
-        /// Высота основания пучка: на нетронутой земле — гладкая поверхность в его точке (а не в центре клетки),
-        /// иначе верх блока под ним.
-        /// </summary>
-        public static float BaseHeight(VoxelWorld world, GroundCoverPatch patch)
+        private void OnBlockChanged(Vector3Int block)
         {
-            var surface = world.Surface;
-            var cell = patch.Cell;
-            if (surface != null && surface.IsNatural(cell.x, cell.z) && cell.y - 1 <= surface.TopY(cell.x, cell.z))
-            {
-                var p = patch.Position;
-                var u = Mathf.Clamp01(p.x - cell.x);
-                var v = Mathf.Clamp01(p.y - cell.z);
-                var h00 = surface.CornerIn(cell.x, cell.z, cell.x, cell.z);
-                var h10 = surface.CornerIn(cell.x, cell.z, cell.x + 1, cell.z);
-                var h01 = surface.CornerIn(cell.x, cell.z, cell.x, cell.z + 1);
-                var h11 = surface.CornerIn(cell.x, cell.z, cell.x + 1, cell.z + 1);
-                return Mathf.Lerp(Mathf.Lerp(h00, h10, u), Mathf.Lerp(h01, h11, u), v) / BlockShape.MaxHeight;
-            }
-            return Items.DroppedItems.RestHeight(world, cell);
+            var column = new Vector2Int(block.x, block.z);
+            if (!Settle(watched, column) && byColumn.TryGetValue(column, out var patch))
+                Changed?.Invoke(patch);
         }
+
+        /// <summary>Высота основания пучка: земля в его точке, а не в центре клетки (<see cref="Trees.Forest.GroundHeight"/>).</summary>
+        public static float BaseHeight(VoxelWorld world, GroundCoverPatch patch) =>
+            Trees.Forest.GroundHeight(world, patch.Cell, patch.Position);
     }
 }

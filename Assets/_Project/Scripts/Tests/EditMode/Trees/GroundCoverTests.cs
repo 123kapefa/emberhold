@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Emberhold.World.Generation;
 using Emberhold.World.Items;
 using Emberhold.World.Trees;
 using Emberhold.World.Vegetation;
@@ -126,7 +127,9 @@ namespace Emberhold.Tests.EditMode.Trees
             var cover = Scatter(1f, 13);
             cover.Watch(world);
             var removed = new List<GroundCoverPatch>();
+            var changed = new List<GroundCoverPatch>();
             cover.Removed += removed.Add;
+            cover.Changed += changed.Add;
             var patches = cover.Patches.Take(3).ToList();
 
             world.SetBlock(patches[0].Cell, Block.Full(BlockMaterials.Stone));
@@ -137,6 +140,7 @@ namespace Emberhold.Tests.EditMode.Trees
             Assert.That(removed, Is.EquivalentTo(new[] { patches[0], patches[1] }));
             Assert.That(cover.At(new Vector2Int(patches[0].Cell.x, patches[0].Cell.z)), Is.Null);
             Assert.That(cover.At(new Vector2Int(patches[2].Cell.x, patches[2].Cell.z)), Is.SameAs(patches[2]));
+            Assert.That(changed, Is.EqualTo(new[] { patches[2] }), "Столбец сменился, пучок остался — участок надо перестроить");
 
             cover.Watch(null);
             world.SetBlock(patches[2].Cell, Block.Full(BlockMaterials.Stone));
@@ -148,6 +152,40 @@ namespace Emberhold.Tests.EditMode.Trees
         {
             var patch = Scatter(1f, 2).Patches.First();
             Assert.That(GroundCover.BaseHeight(world, patch), Is.EqualTo(Ground).Within(1e-4f));
+        }
+
+        [Test]
+        public void BaseHeight_OnSmoothSlope_FollowsSurfaceUntilColumnIsEdited()
+        {
+            // Гладкий склон вдоль X: восьмая блока на столбец. Пучок стоит на поверхности в своей точке.
+            const int h = BlockShape.MaxHeight;
+            var size = world.SizeInBlocks;
+            var slope = new VoxelWorld(world.SizeInChunks);
+            var corners = new int[size.x + 1, size.z + 1];
+            for (var z = 0; z <= size.z; z++)
+            for (var x = 0; x <= size.x; x++)
+                corners[x, z] = Ground * h + x;
+            var materials = new TerrainMaterials[size.x, size.z];
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+                materials[x, z] = TerrainMaterials.Default;
+            CornerTerrain.FillSmooth(slope, corners, materials, new int[size.x, size.z]);
+            world = slope;
+            var cover = Scatter(1f, 5);
+            var patch = cover.Patches.First(p => Mathf.Abs(p.Offset.x) > 0.05f);
+            Assert.That(GroundCover.BaseHeight(slope, patch), Is.EqualTo(Ground + patch.Position.x / h).Within(1e-4f));
+
+            cover.Watch(slope);
+            var changed = new List<GroundCoverPatch>();
+            cover.Changed += changed.Add;
+            // Копнули сбоку под верхом: столбец тронут и рисуется блоками, пучок стоит на верхнем блоке.
+            slope.SetBlock(new Vector3Int(patch.Cell.x, 0, patch.Cell.z), Block.Air);
+
+            Assert.That(slope.Surface.IsNatural(patch.Cell.x, patch.Cell.z), Is.False);
+            Assert.That(cover.At(new Vector2Int(patch.Cell.x, patch.Cell.z)), Is.SameAs(patch));
+            Assert.That(changed, Is.EqualTo(new[] { patch }));
+            Assert.That(GroundCover.BaseHeight(slope, patch), Is.EqualTo(DroppedItems.RestHeight(slope, patch.Cell)).Within(1e-4f));
+            cover.Watch(null);
         }
 
         [Test]
@@ -184,6 +222,21 @@ namespace Emberhold.Tests.EditMode.Trees
 
             var color = new Color(0.2f, 0.5f, 0.1f, 1f);
             Assert.That(GroundCoverMeshBuilder.Tint(color, Color.white), Is.EqualTo(color), "Белый оттенок — как есть");
+        }
+
+        [TestCase(GroundCoverShape.Moss)]
+        [TestCase(GroundCoverShape.Fern)]
+        [TestCase(GroundCoverShape.Reeds)]
+        [TestCase(GroundCoverShape.Flowers)]
+        public void MeshBuilder_TintFlagWorksForEveryShape(GroundCoverShape shape)
+        {
+            var kind = Kind(shape.ToString(), shape, shape == GroundCoverShape.Reeds ? 1.1f : 0.3f, Color.red);
+            Assert.That(GroundCoverMeshBuilder.Build(kind, 0).Colors.Any(c => c.a > 0.5f), Is.True, "С флагом — подкрашивается");
+
+            var serialized = new UnityEditor.SerializedObject(kind);
+            serialized.FindProperty("tintedByGrass").boolValue = false;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            Assert.That(GroundCoverMeshBuilder.Build(kind, 0).Colors.All(c => c.a < 0.5f), Is.True, "Без флага — нет");
         }
 
         private GroundCover Scatter(float density, int seed, bool onStone = false, System.Func<Vector2Int, bool> keepClear = null)

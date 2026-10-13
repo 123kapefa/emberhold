@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Emberhold.Gameplay.Lighting;
 using Emberhold.World;
@@ -43,6 +44,14 @@ namespace Emberhold.Gameplay.Trees
         private readonly Dictionary<(GroundCoverKind kind, int variant), GroundCoverMeshBuilder.Shape> shapes = new();
         private readonly List<Vector2Int> wanted = new();
         private readonly List<Vector2Int> far = new();
+        // Буферы сетки участка: общие для всех, чтобы перестройка не мусорила.
+        private readonly List<Vector3> vertices = new();
+        private readonly List<Vector3> normals = new();
+        private readonly List<Color> colors = new();
+        private readonly List<int> indices = new();
+        private Comparison<Vector2Int> byDistance;
+        private Vector2 sortCenter;
+        private Vector2Int? lastMiddle;
         private GroundCover cover;
         // Свой корень для участков с позой мира: детьми вида мира могут быть только чанки.
         private Transform container;
@@ -118,6 +127,7 @@ namespace Emberhold.Gameplay.Trees
             foreach (var patch in cover.Patches)
                 RegionList(RegionOf(patch)).Add(patch);
             cover.Removed += OnRemoved;
+            cover.Changed += OnChanged;
             cover.Watch(worldView.World);
             Debug.Log($"[GroundCover] Посажено пучков: {planted}.", this);
         }
@@ -127,6 +137,14 @@ namespace Emberhold.Gameplay.Trees
             var region = RegionOf(patch);
             if (regions.TryGetValue(region, out var list))
                 list.Remove(patch);
+            if (shown.ContainsKey(region))
+                dirty.Add(region);
+        }
+
+        // Пучок остался, но земля под ним сменилась: его участок перестраивается.
+        private void OnChanged(GroundCoverPatch patch)
+        {
+            var region = RegionOf(patch);
             if (shown.ContainsKey(region))
                 dirty.Add(region);
         }
@@ -141,6 +159,10 @@ namespace Emberhold.Gameplay.Trees
             var eye = space.InverseTransformPoint(camera.transform.position);
             var center = new Vector2(eye.x, eye.z);
             var keep = drawDistance + RegionSize;
+            var middle = new Vector2Int(Mathf.FloorToInt(center.x / RegionSize), Mathf.FloorToInt(center.y / RegionSize));
+            // Камера в том же участке, всё нужное построено и ничего не менялось — делать нечего.
+            if (middle == lastMiddle && dirty.Count == 0 && wanted.Count == 0)
+                return;
 
             far.Clear();
             foreach (var key in shown.Keys)
@@ -164,7 +186,6 @@ namespace Emberhold.Gameplay.Trees
 
             wanted.Clear();
             var reach = Mathf.CeilToInt(drawDistance / RegionSize) + 1;
-            var middle = new Vector2Int(Mathf.FloorToInt(center.x / RegionSize), Mathf.FloorToInt(center.y / RegionSize));
             for (var dz = -reach; dz <= reach; dz++)
             for (var dx = -reach; dx <= reach; dx++)
             {
@@ -172,9 +193,15 @@ namespace Emberhold.Gameplay.Trees
                 if (!shown.ContainsKey(key) && regions.ContainsKey(key) && Distance(key, center) <= drawDistance)
                     wanted.Add(key);
             }
-            wanted.Sort((a, b) => Distance(a, center).CompareTo(Distance(b, center)));
-            for (var i = 0; i < wanted.Count && i < budget; i++)
+            sortCenter = center;
+            byDistance ??= (a, b) => Distance(a, sortCenter).CompareTo(Distance(b, sortCenter));
+            wanted.Sort(byDistance);
+            var built = Mathf.Min(wanted.Count, budget);
+            for (var i = 0; i < built; i++)
                 shown[wanted[i]] = Create(wanted[i]);
+            // Построенные убираем из очереди: пустая очередь — всё у камеры уже нарисовано.
+            wanted.RemoveRange(0, built);
+            lastMiddle = middle;
         }
 
         private Region Create(Vector2Int key)
@@ -202,9 +229,9 @@ namespace Emberhold.Gameplay.Trees
         // Сетка участка: формы всех его пучков, поставленные на землю, повёрнутые и подкрашенные оттенком травы.
         private void Fill(Vector2Int key, Mesh mesh)
         {
-            var vertices = new List<Vector3>();
-            var normals = new List<Vector3>();
-            var colors = new List<Color>();
+            vertices.Clear();
+            normals.Clear();
+            colors.Clear();
             var world = worldView.World;
             if (regions.TryGetValue(key, out var list))
             {
@@ -232,10 +259,9 @@ namespace Emberhold.Gameplay.Trees
             mesh.SetVertices(vertices);
             mesh.SetNormals(normals);
             mesh.SetColors(colors);
-            var triangles = new int[vertices.Count];
-            for (var i = 0; i < triangles.Length; i++)
-                triangles[i] = i;
-            mesh.SetTriangles(triangles, 0);
+            for (var i = indices.Count; i < vertices.Count; i++)
+                indices.Add(i);
+            mesh.SetTriangles(indices, 0, vertices.Count, 0);
             mesh.RecalculateBounds();
         }
 
