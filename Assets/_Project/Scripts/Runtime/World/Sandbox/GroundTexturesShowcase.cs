@@ -170,7 +170,8 @@ namespace Emberhold.World.Sandbox
 
         /// <summary>
         /// Оттенок без изменений и виды травы по углам: в полосе видов травы — вид своей площадки, между
-        /// площадками и у края полосы — плавный переход шириной <see cref="GrassKindBlend"/>; остальное — обычная трава.
+        /// площадками — плавный переход шириной <see cref="GrassKindBlend"/>, у края полосы — от начала ровной земли;
+        /// остальное — обычная трава.
         /// </summary>
         public static GroundTint GrassKindTint(int sizeX, int sizeZ)
         {
@@ -180,7 +181,8 @@ namespace Emberhold.World.Sandbox
             for (var x = 0; x <= sizeX; x++)
             {
                 tints[x, z] = Color.white;
-                var inStrip = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(MeadowGrass.Rect.xMin - GrassKindBlend, MeadowGrass.Rect.xMin, x));
+                // Полоса ровная с x = 64 (Height): переход начинается там, плато и обрыв остаются обычной травой.
+                var inStrip = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(64f, MeadowGrass.Rect.xMin, x));
                 var kind = new Color(0f, 0f, 0f, 0f);
                 var total = 0f;
                 foreach (var (area, grassKind) in GrassKindAreas)
