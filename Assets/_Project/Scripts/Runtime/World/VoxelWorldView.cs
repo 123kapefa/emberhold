@@ -39,8 +39,8 @@ namespace Emberhold.World
         private readonly List<(Vector3Int block, Block value)> hiddenNearChunk = new();
         // Чанки, у которых изменилась только картинка (спрятали или вернули блок): коллайдер у них прежний.
         private readonly HashSet<Vector3Int> visualDirty = new();
-        private readonly List<Color> groundColors = new();
-        private Color? rockColor;
+        private readonly List<Color32> groundColors = new();
+        private Color32? rockColor;
         private ChunkMeshData meshData;
         private ChunkMeshData colliderData;
         private readonly SurfaceNormals surfaceNormals = new();
@@ -372,7 +372,7 @@ namespace Emberhold.World
                 (view.Mesh, view.ColliderMesh) = (view.ColliderMesh != null ? view.ColliderMesh : NewChunkMesh(view.Mesh.name), view.Mesh);
                 view.Filter.sharedMesh = view.Mesh;
             }
-            FillMesh(view.Mesh, meshData);
+            FillMesh(view.Mesh, meshData, true);
             ReportUnmappedMaterials();
             view.Renderer.enabled = !meshData.IsEmpty;
             if (rebuildCollider)
@@ -457,7 +457,7 @@ namespace Emberhold.World
             {
                 if (view.ColliderMesh == null)
                     view.ColliderMesh = NewChunkMesh(view.Mesh.name);
-                FillMesh(view.ColliderMesh, colliderData);
+                FillMesh(view.ColliderMesh, colliderData, false);
                 colliderMesh = view.ColliderMesh;
             }
             // Коллайдер берёт меш при назначении, поэтому переназначаем после каждой перестройки.
@@ -466,7 +466,8 @@ namespace Emberhold.World
                 view.Collider.sharedMesh = colliderMesh;
         }
 
-        private void FillMesh(Mesh mesh, ChunkMeshData data)
+        /// <param name="visual">Меш картинки: ему нужны вес и цвет перехода в камень; коллайдеру — нет.</param>
+        private void FillMesh(Mesh mesh, ChunkMeshData data, bool visual)
         {
             mesh.Clear();
             mesh.indexFormat = data.Vertices.Count > ushort.MaxValue ? IndexFormat.UInt32 : IndexFormat.UInt16;
@@ -474,12 +475,15 @@ namespace Emberhold.World
             mesh.SetNormals(data.Normals);
             mesh.SetUVs(0, data.Uvs);
             // Гладкая земля смешивает цвет травы с цветом камня: вес в UV3, цвет камня — в цвете вершин.
-            mesh.SetUVs(3, data.Blends);
-            groundColors.Clear();
-            var rock = RockColor();
-            for (var i = 0; i < data.Vertices.Count; i++)
-                groundColors.Add(rock);
-            mesh.SetColors(groundColors);
+            if (visual)
+            {
+                mesh.SetUVs(3, data.Blends);
+                groundColors.Clear();
+                var rock = RockColor();
+                for (var i = 0; i < data.Vertices.Count; i++)
+                    groundColors.Add(rock);
+                mesh.SetColors(groundColors);
+            }
 
             // Подмеш на каждый материал, даже пустой: у рендерера всегда один и тот же список материалов.
             // Если список менять при каждой перестройке, GPU Resident Drawer может остаться со старым
@@ -491,7 +495,7 @@ namespace Emberhold.World
         }
 
         /// <summary>Цвет камня для перехода гладкой земли из травы в камень: основной цвет материала камня.</summary>
-        private Color RockColor()
+        private Color32 RockColor()
         {
             if (rockColor.HasValue)
                 return rockColor.Value;

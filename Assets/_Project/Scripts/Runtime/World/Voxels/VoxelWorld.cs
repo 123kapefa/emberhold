@@ -71,8 +71,8 @@ namespace Emberhold.World.Voxels
             data.Set(local.x, local.y, local.z, value);
             Version++;
 
-            // Тронули землю нетронутого столбца: он и соседи (у них появляются стенки к нему) перерисовываются целиком.
-            if (Surface != null && Surface.IsNatural(block.x, block.z) && block.y <= Surface.TopY(block.x, block.z)
+            // Тронули землю нетронутого столбца (блок под поверхностью): он и соседи (у них появляются стенки к нему) перерисовываются целиком.
+            if (Surface != null && Surface.IsNatural(block.x, block.z) && Surface.Covers(block.x, block.y, block.z)
                 && Surface.MarkEdited(block.x, block.z))
                 MarkColumnsAround(block.x, block.z);
 

@@ -99,6 +99,43 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void PitWall_EachLayerBelongsToItsBlock()
+        {
+            // Клик по стенке ямы у дна должен попадать в блок этого слоя, а не в верхний блок соседа.
+            var world = Flat(3 * H + 8);
+            for (var y = 0; y <= 3; y++)
+                world.SetBlock(new Vector3Int(4, y, 4), Block.Air);
+            var mesh = new ChunkMeshData();
+            ChunkMesher.Build(world, Vector3Int.zero, mesh);
+
+            var blocks = mesh.TriangleBlocks.SelectMany(list => list).ToHashSet();
+            for (var y = 0; y <= 3; y++)
+                Assert.That(blocks, Does.Contain(ChunkData.Index(5, y, 4)), $"слой {y}");
+        }
+
+        [Test]
+        public void BlockOnSmoothGround_HasNoGapsBelow()
+        {
+            // Верх нетронутой земли не прячет грани: под постройкой видно её дно, щели не остаётся.
+            var world = Flat(3 * H + 8);
+            world.SetBlock(new Vector3Int(4, 4, 4), Block.Full(BlockMaterials.Wood));
+            var mesh = new ChunkMeshData();
+            ChunkMesher.Build(world, Vector3Int.zero, mesh);
+
+            Assert.That(mesh.Triangles[BlockMaterials.Wood].Count / 3, Is.EqualTo(12), "все шесть граней");
+        }
+
+        [Test]
+        public void BuildingInsideTheSurface_MakesColumnBlocky()
+        {
+            // Угол столбца поднят выше слоя 4: блок на слое 4 частично под поверхностью — это уже земля.
+            var world = Flat(3 * H + 8, (5, 5, 4 * H + 14));
+            world.SetBlock(new Vector3Int(4, 4, 4), Block.Full(BlockMaterials.Wood));
+
+            Assert.That(world.Surface.IsNatural(4, 4), Is.False);
+        }
+
+        [Test]
         public void BuildingAboveGround_KeepsColumnSmooth()
         {
             var world = Flat(3 * H + 8);

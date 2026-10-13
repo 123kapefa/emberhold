@@ -44,14 +44,21 @@ namespace Emberhold.World.Meshing
                 var p = new Vector3(x, y, z);
 
                 // Земля нетронутого столбца рисуется гладкой поверхностью, а не гранями блоков.
+                // Стенки к тронутым соседям — по слою на каждый блок, чтобы клик по стенке ямы попадал в свой блок.
                 if (surface != null && surface.IsNatural(origin.x + x, origin.z + z))
                 {
-                    var top = surface.TopY(origin.x + x, origin.z + z);
-                    if (origin.y + y < top)
-                        continue;
-                    if (origin.y + y == top)
+                    var global = origin + new Vector3Int(x, y, z);
+                    var top = surface.TopY(global.x, global.z);
+                    if (global.y < top)
                     {
-                        AddSurface(output, world, surface, material, index, p, origin + new Vector3Int(x, y, z));
+                        AddSurfaceWalls(output, surface, material, index, p, global, false);
+                        continue;
+                    }
+                    if (global.y == top)
+                    {
+                        AddSurface(output, surface, index, p, global);
+                        AddSurfaceWalls(output, surface, material == BlockMaterials.Grass ? BlockMaterials.Dirt : material,
+                            index, p, global, true);
                         continue;
                     }
                 }
@@ -85,11 +92,10 @@ namespace Emberhold.World.Meshing
 
         /// <summary>
         /// Гладкая поверхность нетронутого столбца (<see cref="TerrainSurface"/>): верх по высотам углов
-        /// поверхности с нормалями по соседним углам и весом камня в вершинах, а к тронутым соседям — стенки от дна мира до края
-        /// поверхности (стенки ям и подкопов). Треугольники принадлежат верхнему блоку земли столбца.
+        /// поверхности с нормалями по соседним углам и весом камня в вершинах. Треугольники принадлежат
+        /// верхнему блоку земли столбца.
         /// </summary>
-        private static void AddSurface(ChunkMeshData output, VoxelWorld world, TerrainSurface surface, byte material,
-            int index, Vector3 p, Vector3Int block)
+        private static void AddSurface(ChunkMeshData output, TerrainSurface surface, int index, Vector3 p, Vector3Int block)
         {
             int gx = block.x, gz = block.z;
             var floor = block.y * BlockShape.MaxHeight;
@@ -119,23 +125,43 @@ namespace Emberhold.World.Meshing
                 AddSurfaceTriangle(output, index, c01, c11, c10, n01, n11, n10, uv01, uv11, uv10, r01, r11, r10);
                 AddSurfaceTriangle(output, index, c01, c10, c00, n01, n10, n00, uv01, uv10, uv00, r01, r10, r00);
             }
-
-            // Стенки к тронутым соседям: под ними подкоп или яма, и землю под поверхностью видно сбоку.
-            // Стенка — из того, что под верхом: трава бывает только сверху, под ней земля.
-            var below = world.GetBlock(block + Vector3Int.down);
-            var wall = below.IsAir ? material : below.Material;
-            if (wall == BlockMaterials.Grass)
-                wall = BlockMaterials.Dirt;
-            var bottom = -floor;
-            if (!IsSurfaceNeighbour(surface, gx + 1, gz))
-                AddSideQuad(output, wall, index, p, Side.Right, (0f, bottom), (0f, h10), (1f, h11), (1f, bottom));
-            if (!IsSurfaceNeighbour(surface, gx - 1, gz))
-                AddSideQuad(output, wall, index, p, Side.Left, (0f, bottom), (0f, h00), (1f, h01), (1f, bottom));
-            if (!IsSurfaceNeighbour(surface, gx, gz + 1))
-                AddSideQuad(output, wall, index, p, Side.Forward, (0f, bottom), (0f, h01), (1f, h11), (1f, bottom));
-            if (!IsSurfaceNeighbour(surface, gx, gz - 1))
-                AddSideQuad(output, wall, index, p, Side.Back, (0f, bottom), (0f, h00), (1f, h10), (1f, bottom));
         }
+
+        /// <summary>
+        /// Стенки блока нетронутого столбца к тронутым соседям (стенки ям и подкопов): от пола слоя до края
+        /// поверхности, у засыпанных блоков — не выше своего слоя. Каждый слой принадлежит своему блоку.
+        /// </summary>
+        private static void AddSurfaceWalls(ChunkMeshData output, TerrainSurface surface, byte material, int index,
+            Vector3 p, Vector3Int block, bool isTop)
+        {
+            int gx = block.x, gz = block.z;
+            var floor = block.y * BlockShape.MaxHeight;
+            int Edge(int cx, int cz)
+            {
+                var h = surface.Corner(cx, cz) - floor;
+                return isTop ? Mathf.Max(h, 0) : Mathf.Clamp(h, 0, BlockShape.MaxHeight);
+            }
+
+            void Wall(Side side, int ax, int az, int bx, int bz)
+            {
+                int ha = Edge(ax, az), hb = Edge(bx, bz);
+                if (ha > 0 || hb > 0)
+                    AddSideQuad(output, material, index, p, side, (0f, 0), (0f, ha), (1f, hb), (1f, 0));
+            }
+
+            if (!IsSurfaceNeighbour(surface, gx + 1, gz))
+                Wall(Side.Right, gx + 1, gz, gx + 1, gz + 1);
+            if (!IsSurfaceNeighbour(surface, gx - 1, gz))
+                Wall(Side.Left, gx, gz, gx, gz + 1);
+            if (!IsSurfaceNeighbour(surface, gx, gz + 1))
+                Wall(Side.Forward, gx, gz + 1, gx + 1, gz + 1);
+            if (!IsSurfaceNeighbour(surface, gx, gz - 1))
+                Wall(Side.Back, gx, gz, gx + 1, gz);
+        }
+
+        /// <summary>Сосед тоже рисуется поверхностью или это край мира: стенка к нему не нужна.</summary>
+        private static bool IsSurfaceNeighbour(TerrainSurface surface, int x, int z) =>
+            !surface.Contains(x, z) || surface.IsNatural(x, z);
 
         /// <summary>
         /// Треугольник гладкой земли в подмеше травы. Трава освещается мягко (нормали по соседним углам),
@@ -150,22 +176,21 @@ namespace Emberhold.World.Meshing
                 uva, uvb, uvc, ra, rb, rc);
         }
 
-        /// <summary>Сосед тоже рисуется поверхностью или это край мира: стенка к нему не нужна.</summary>
-        private static bool IsSurfaceNeighbour(TerrainSurface surface, int x, int z) =>
-            !surface.Contains(x, z) || surface.IsNatural(x, z);
-
         /// <summary>
         /// Сосед по локальной координате: внутри чанка — напрямую, снаружи — через мир.
         /// Ниже дна мира считаем сплошной камень, чтобы не рисовать невидимое дно.
         /// </summary>
         private static Block Neighbor(VoxelWorld world, ChunkData data, Vector3Int origin, int x, int y, int z)
         {
-            if (ChunkData.IsInside(x, y, z))
-                return data.Get(x, y, z);
             var global = origin + new Vector3Int(x, y, z);
-            if (global.y < 0)
-                return Block.Full(BlockMaterials.Stone);
-            return world.GetBlock(global);
+            var block = ChunkData.IsInside(x, y, z) ? data.Get(x, y, z)
+                : global.y < 0 ? Block.Full(BlockMaterials.Stone) : world.GetBlock(global);
+            // Верхний блок нетронутой земли не виден: на его месте гладкая поверхность, которая может быть
+            // ниже его верха. Грани соседей к нему рисуем, иначе у построек на земле остаются щели.
+            var surface = world.Surface;
+            if (surface != null && !block.IsAir && surface.IsNatural(global.x, global.z) && global.y == surface.TopY(global.x, global.z))
+                return Block.Air;
+            return block;
         }
 
         /// <summary>

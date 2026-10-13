@@ -6,7 +6,9 @@
 #define EMBERHOLD_GROUND_FORWARD_PASS_INCLUDED
 
 // Для трёх проекций текстуры нужна точка в мире.
-#define REQUIRES_WORLD_SPACE_POS_INTERPOLATOR
+#ifndef REQUIRES_WORLD_SPACE_POS_INTERPOLATOR
+    #define REQUIRES_WORLD_SPACE_POS_INTERPOLATOR 1
+#endif
 #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
 
 // Текстура камня для перехода гладкой земли из травы в камень. Текстуры не входят в UnityPerMaterial,
@@ -18,23 +20,28 @@ SAMPLER(sampler_RockMap);
 #define EMBERHOLD_GROUND_TILE 6.0
 
 // Текстура по трём проекциям мира: на крутых склонах не растягивается. Вес проекции — по нормали.
-half3 SampleTriplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, half3 normalWS)
+// Производные позиции (dpdx, dpdy) считаются снаружи: функцию зовут и внутри ветвления, где своих производных нет.
+half3 SampleTriplanar(TEXTURE2D_PARAM(tex, samplerTex), float3 positionWS, half3 normalWS, float3 dpdx, float3 dpdy)
 {
     half3 w = pow(abs(normalWS), 4.0h);
     w /= max(w.x + w.y + w.z, 1e-4h);
     float3 p = positionWS / EMBERHOLD_GROUND_TILE;
-    half3 x = SAMPLE_TEXTURE2D(tex, samplerTex, p.zy).rgb;
-    half3 y = SAMPLE_TEXTURE2D(tex, samplerTex, p.xz).rgb;
-    half3 z = SAMPLE_TEXTURE2D(tex, samplerTex, p.xy).rgb;
-    half3 near = x * w.x + y * w.y + z * w.z;
-    // Та же текстура в несколько раз крупнее даёт пятна светлее и темнее: повтор плитки не читается.
-    float3 q = p / 5.3;
-    half3 far = SAMPLE_TEXTURE2D(tex, samplerTex, q.zy + 0.37).rgb * w.x
-              + SAMPLE_TEXTURE2D(tex, samplerTex, q.xz + 0.61).rgb * w.y
-              + SAMPLE_TEXTURE2D(tex, samplerTex, q.xy + 0.13).rgb * w.z;
+    float3 dx = dpdx / EMBERHOLD_GROUND_TILE;
+    float3 dy = dpdy / EMBERHOLD_GROUND_TILE;
+    half3 near = SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, p.zy, dx.zy, dy.zy).rgb * w.x
+               + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, p.xz, dx.xz, dy.xz).rgb * w.y
+               + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, p.xy, dx.xy, dy.xy).rgb * w.z;
+    // Та же текстура в 5,3 раза крупнее: её яркость относительно плитки даёт пятна светлее и темнее,
+    // и повтор плитки не читается.
+    const float macro = 5.3;
+    float3 q = p / macro;
+    half3 far = SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, q.zy + 0.37, dx.zy / macro, dy.zy / macro).rgb * w.x
+              + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, q.xz + 0.61, dx.xz / macro, dy.xz / macro).rgb * w.y
+              + SAMPLE_TEXTURE2D_GRAD(tex, samplerTex, q.xy + 0.13, dx.xy / macro, dy.xy / macro).rgb * w.z;
     half lumNear = dot(near, half3(0.3h, 0.59h, 0.11h));
     half lumFar = dot(far, half3(0.3h, 0.59h, 0.11h));
-    return near * clamp(0.55h + 0.9h * lumFar / max(lumNear * 0.5h + lumFar * 0.5h, 0.05h) * 0.5h, 0.75h, 1.25h);
+    half variation = lumFar / max((lumNear + lumFar) * 0.5h, 0.05h);
+    return near * clamp(0.55h + 0.45h * variation, 0.75h, 1.25h);
 }
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
@@ -287,9 +294,18 @@ void LitPassFragment(
     InitializeStandardLitSurfaceData(input.uv, surfaceData);
     // Своя текстура материала и текстура камня кладутся по трём проекциям мира, а не по UV меша.
     half3 normalForTex = normalize(input.normalWS);
-    half3 baseAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap), input.positionWS, normalForTex) * _BaseColor.rgb;
-    half3 rockAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_RockMap, sampler_RockMap), input.positionWS, normalForTex) * input.groundColor.rgb;
-    surfaceData.albedo = lerp(baseAlbedo, rockAlbedo, saturate(input.groundColor.a));
+    float3 dpdx = ddx(input.positionWS);
+    float3 dpdy = ddy(input.positionWS);
+    half3 baseAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap), input.positionWS, normalForTex, dpdx, dpdy) * _BaseColor.rgb;
+    surfaceData.albedo = baseAlbedo;
+    // Камень сэмплируем только там, где он есть: у блоков и в сцене без гладкой земли вес 0.
+    half rockWeight = saturate(input.groundColor.a);
+    UNITY_BRANCH
+    if (rockWeight > 0.001h)
+    {
+        half3 rockAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_RockMap, sampler_RockMap), input.positionWS, normalForTex, dpdx, dpdy) * input.groundColor.rgb;
+        surfaceData.albedo = lerp(baseAlbedo, rockAlbedo, rockWeight);
+    }
 
 #ifdef LOD_FADE_CROSSFADE
     LODFadeCrossFade(input.positionCS);

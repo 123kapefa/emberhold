@@ -246,7 +246,8 @@ namespace Emberhold.World.Generation
                 if (rockWeights[x, z] == 0)
                     continue;
                 var bump = (rockNoise.Ridged(x * 0.23f + 17f, z * 0.23f - 5f) - 0.3f) * RockBumps;
-                corners[x, z] = Mathf.Max(1, corners[x, z] + Mathf.RoundToInt(bump * rockWeights[x, z] / 255f * BlockShape.MaxHeight));
+                corners[x, z] = Mathf.Clamp(corners[x, z] + Mathf.RoundToInt(bump * rockWeights[x, z] / 255f * BlockShape.MaxHeight),
+                    1, size.y * BlockShape.MaxHeight);
             }
 
             // Блоки столбца: камень, если углы в среднем больше чем наполовину каменные.
