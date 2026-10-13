@@ -1,10 +1,14 @@
 #if UNITY_EDITOR
 using System.Collections;
+using Emberhold.CameraRig;
 using Emberhold.Core;
+using Emberhold.Gameplay.Building;
 using Emberhold.Gameplay.DayNight;
 using Emberhold.Gameplay.Lighting;
 using Emberhold.World;
+using Emberhold.World.Editing;
 using Emberhold.World.Sandbox;
+using Emberhold.World.Voxels;
 using NUnit.Framework;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -43,6 +47,35 @@ namespace Emberhold.Tests.PlayMode.World
             var top = view.transform.TransformPoint(new Vector3(steep.xMax + 4f, 45f, steep.center.y));
             Assert.That(Physics.Raycast(top, Vector3.down, out var hit, 60f, Layers.GroundMask), Is.True);
             Assert.That(hit.point.y, Is.GreaterThan(GroundTexturesShowcase.BaseHeight + 20f));
+        }
+
+        [UnityTest]
+        public IEnumerator Hover_FloorOfOuterCornerSlope_PicksSlope()
+        {
+            yield return EditorSceneManager.LoadSceneAsyncInPlayMode(ScenePath, new LoadSceneParameters(LoadSceneMode.Single));
+            yield return null;
+
+            // На траве полный блок земли, над ним внешний угол ската: половина его верха — на полу ячейки.
+            var view = Object.FindAnyObjectByType<VoxelWorldView>();
+            var editor = Object.FindAnyObjectByType<BlockEditController>();
+            var below = new Vector3Int(2, GroundTexturesShowcase.BaseHeight, 2);
+            var slope = below + Vector3Int.up;
+            view.World.SetBlock(below, Block.Full(BlockMaterials.Dirt));
+            view.World.SetBlock(slope, new Block(BlockMaterials.Dirt, new BlockShape(16, 0, 0, 0)));
+            yield return null;
+            Physics.SyncTransforms();
+
+            Object.FindAnyObjectByType<CameraRigController>().enabled = false;
+            var camera = UnityEngine.Camera.main;
+            camera.transform.SetPositionAndRotation(view.transform.TransformPoint(new Vector3(2.5f, 20f, 2.5f)),
+                Quaternion.Euler(90f, 0f, 0f));
+
+            // Пол ската (дальний от высокого угла треугольник) и сам скат — оба выбирают скат.
+            foreach (var point in new[] { new Vector3(2.8f, slope.y, 2.8f), new Vector3(2.2f, slope.y + 0.5f, 2.2f) })
+            {
+                var screen = camera.WorldToScreenPoint(view.transform.TransformPoint(point));
+                Assert.That(editor.Pick(screen), Is.EqualTo((BlockHit?)new BlockHit(slope, Vector3Int.up)), point.ToString());
+            }
         }
     }
 }

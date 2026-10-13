@@ -69,6 +69,42 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(hit.Block, Is.EqualTo(Cell));
         }
 
+        [Test]
+        public void TryPick_FloorOfOuterCornerSlope_PicksSlopeNotBlockBelow()
+        {
+            // Полный блок, над ним внешний угол ската: половина верха ската лежит на полу ячейки,
+            // и луч туда попадает в верх нижнего блока.
+            var world = new VoxelWorld(Vector3Int.one);
+            var above = Cell + Vector3Int.up;
+            world.SetBlock(Cell, Block.Full(BlockMaterials.Dirt));
+            world.SetBlock(above, new Block(BlockMaterials.Dirt, new BlockShape(16, 0, 0, 0)));
+
+            Assert.That(BlockPicking.TryPick(world, new Vector3(3.8f, 5f, 2.8f), Vector3.up, out var hit), Is.True);
+            Assert.That(hit, Is.EqualTo(new BlockHit(above, Vector3Int.up)));
+        }
+
+        [Test]
+        public void PreferSlopeAbove_OnlyForUpFaceUnderOpenFloorSlope()
+        {
+            var world = new VoxelWorld(Vector3Int.one);
+            var above = Cell + Vector3Int.up;
+            world.SetBlock(Cell, Block.Full(BlockMaterials.Dirt));
+            var top = new BlockHit(Cell, Vector3Int.up);
+
+            Assert.That(BlockPicking.PreferSlopeAbove(world, top), Is.EqualTo(top), "Над блоком воздух");
+
+            world.SetBlock(above, new Block(BlockMaterials.Dirt, new BlockShape(16, 16, 0, 0)));
+            Assert.That(BlockPicking.PreferSlopeAbove(world, top), Is.EqualTo(top), "Скат закрывает весь пол — верх нижнего не виден");
+
+            world.SetBlock(above, new Block(BlockMaterials.Dirt, BlockShape.Catalog(BlockForm.SquarePillar, 0)));
+            Assert.That(BlockPicking.PreferSlopeAbove(world, top), Is.EqualTo(top), "Пол вокруг столба — верх нижнего блока");
+
+            world.SetBlock(above, new Block(BlockMaterials.Dirt, new BlockShape(0, 0, 0, 16)));
+            Assert.That(BlockPicking.PreferSlopeAbove(world, top), Is.EqualTo(new BlockHit(above, Vector3Int.up)));
+            var side = new BlockHit(Cell, Vector3Int.right);
+            Assert.That(BlockPicking.PreferSlopeAbove(world, side), Is.EqualTo(side), "Боковая грань нижнего блока");
+        }
+
         private static BlockDamage NewDamage() => new(new UniformBlockDurability(100f));
 
         [TestCase(16, 4)]

@@ -400,7 +400,8 @@ namespace Emberhold.Gameplay.Building
             return tree;
         }
 
-        private BlockHit? Pick(Vector2 screenPosition)
+        /// <summary>Блок под точкой экрана: по треугольнику меша, с поправкой на скос над ним (<see cref="BlockPicking.PreferSlopeAbove"/>).</summary>
+        public BlockHit? Pick(Vector2 screenPosition)
         {
             var ray = targetCamera.ScreenPointToRay(screenPosition);
             if (!Physics.Raycast(ray, out var raycast, settings.MaxRayDistance, settings.GroundMask, QueryTriggerInteraction.Ignore))
@@ -413,7 +414,8 @@ namespace Emberhold.Gameplay.Building
             // Точно — по треугольнику меша; по точке — запасной путь, если попали не в чанк.
             // Коллайдер перестраивается в LateUpdate, поэтому проверяем, что блок ещё на месте.
             if (worldView.TryGetBlock(raycast.collider, raycast.triangleIndex, out var block))
-                return worldView.World.GetBlock(block).IsAir ? null : new BlockHit(block, BlockPicking.DominantAxis(localNormal));
+                return worldView.World.GetBlock(block).IsAir ? null
+                    : BlockPicking.PreferSlopeAbove(worldView.World, new BlockHit(block, BlockPicking.DominantAxis(localNormal)));
             return BlockPicking.TryPick(worldView.World, localPoint, localNormal, out var hit) ? hit : null;
         }
 

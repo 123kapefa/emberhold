@@ -47,7 +47,28 @@ namespace Emberhold.World.Editing
         public static bool TryPick(VoxelWorld world, Vector3 point, Vector3 normal, out BlockHit hit)
         {
             hit = FromSurface(point, normal);
-            return world.IsInsideBlocks(hit.Block) && !world.GetBlock(hit.Block).IsAir;
+            if (!world.IsInsideBlocks(hit.Block) || world.GetBlock(hit.Block).IsAir)
+                return false;
+            hit = PreferSlopeAbove(world, hit);
+            return true;
+        }
+
+        /// <summary>
+        /// Попали в верх блока, а над ним скос, у которого часть верха лежит на полу ячейки (внешний угол ската):
+        /// там виден верх нижнего блока, но глазом это пол самого скоса — выбираем скос. Фигурные формы
+        /// (столб, балка) не трогаем: пол вокруг них — верх нижнего блока.
+        /// </summary>
+        public static BlockHit PreferSlopeAbove(VoxelWorld world, BlockHit hit)
+        {
+            if (hit.Face != Vector3Int.up)
+                return hit;
+            var above = hit.Block + Vector3Int.up;
+            if (!world.IsInsideBlocks(above))
+                return hit;
+            var shape = world.GetBlock(above).Shape;
+            if (world.GetBlock(above).IsAir || shape.IsCatalog || shape.CoversFloor)
+                return hit;
+            return new BlockHit(above, Vector3Int.up);
         }
 
         /// <summary>
