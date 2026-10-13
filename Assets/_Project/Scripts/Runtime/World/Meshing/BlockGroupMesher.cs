@@ -16,8 +16,9 @@ namespace Emberhold.World.Meshing
         /// Построить меш блоков blocks[i] в клетках cells[i] (координаты мира блоков) в output.
         /// Возвращает начало координат меша: вершина + начало = точка в координатах мира блоков.
         /// </summary>
+        /// <param name="grassTint">Оттенок травы мира: вершины получают оттенок своего места, как в чанках мира.</param>
         public static Vector3Int Build(IReadOnlyList<Vector3Int> cells, IReadOnlyList<Block> blocks, ChunkMeshData output,
-            ChunkMeshData scratch = null)
+            ChunkMeshData scratch = null, GroundTint grassTint = null)
         {
             output.Clear();
             if (cells.Count == 0)
@@ -47,6 +48,11 @@ namespace Emberhold.World.Meshing
                 ChunkMesher.Build(group, chunk, scratch);
                 Append(scratch, chunk * ChunkData.Size, output);
             }
+            if (grassTint != null)
+            {
+                for (var i = 0; i < output.Vertices.Count; i++)
+                    output.Colors[i] = grassTint.Sample(origin.x + output.Vertices[i].x, origin.z + output.Vertices[i].z);
+            }
             return origin;
         }
 
@@ -60,6 +66,7 @@ namespace Emberhold.World.Meshing
             to.Normals.AddRange(from.Normals);
             to.Uvs.AddRange(from.Uvs);
             to.Blends.AddRange(from.Blends);
+            to.Colors.AddRange(from.Colors);
             for (var material = 0; material < from.Triangles.Length; material++)
             {
                 foreach (var index in from.Triangles[material])

@@ -47,6 +47,7 @@ namespace Emberhold.World.Generation
                     GrassLine = ridgeGrassLine,
                     Profile = ridgeProfile != null ? ridgeProfile.Parameters : TerrainProfileParameters.Valley,
                     Forest = ridgeProfile != null ? ridgeProfile.Forest : null,
+                    GrassTint = ridgeProfile != null ? ridgeProfile.GrassTint : Color.white,
                 },
             };
             var indices = new Dictionary<string, int>();
@@ -89,6 +90,14 @@ namespace Emberhold.World.Generation
             [Tooltip("Неровность краёв: 0 — ровный эллипс, 1 — как в наброске, больше — ещё рваннее.")]
             [Range(0f, 2f)]
             public float roughness = 1f;
+            [Tooltip("Свой оттенок травы; выключено — оттенок профиля.")]
+            public bool overrideGrassTint;
+            [Tooltip("Оттенок травы локации (умножается на текстуру травы, можно больше 1 — ярче); альфа — насыщенность: 1 — как есть, меньше — блёклее.")]
+            [ColorUsage(true, true)]
+            public Color grassTint = Color.white;
+
+            /// <summary>Оттенок травы: свой, если задан, иначе профиля, иначе нейтральный.</summary>
+            public Color GrassTint => overrideGrassTint ? grassTint : profile != null ? profile.GrassTint : Color.white;
 
             public CampaignLocationShape ToShape() => new()
             {
@@ -101,6 +110,7 @@ namespace Emberhold.World.Generation
                 Roughness = roughness,
                 Profile = profile != null ? profile.Parameters : FlatFloor,
                 Forest = profile != null ? profile.Forest : null,
+                GrassTint = GrassTint,
             };
         }
 

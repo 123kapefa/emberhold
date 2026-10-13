@@ -38,6 +38,7 @@ namespace Emberhold.Gameplay.Building
         private readonly List<Vector3Int> groupCells = new();
         private readonly List<Block> groupBlocks = new();
         private readonly List<Material> groupMaterials = new();
+        private readonly List<Color> groupColors = new();
         private readonly ChunkMeshData meshData = new();
         private readonly ChunkMeshData scratch = new();
         private VoxelWorld flightsWorld;
@@ -153,7 +154,8 @@ namespace Emberhold.Gameplay.Building
                 groupCells.Add(fall.From);
                 groupBlocks.Add(fall.Block);
             }
-            flight.Origin = BlockGroupMesher.Build(groupCells, groupBlocks, meshData, scratch) + Vector3.up * flight.Lift;
+            flight.Origin = BlockGroupMesher.Build(groupCells, groupBlocks, meshData, scratch, worldView.World.GrassTint)
+                + Vector3.up * flight.Lift;
 
             var mesh = flight.Mesh;
             mesh.Clear();
@@ -161,6 +163,8 @@ namespace Emberhold.Gameplay.Building
             mesh.SetVertices(meshData.Vertices);
             mesh.SetNormals(meshData.Normals);
             mesh.SetUVs(0, meshData.Uvs);
+            // Трава в полёте — того же оттенка и с той же бахромой, что и в мире.
+            VoxelWorldView.SetGroundBlend(mesh, meshData, groupColors);
             groupMaterials.Clear();
             var subMesh = 0;
             mesh.subMeshCount = CountMaterials(meshData);

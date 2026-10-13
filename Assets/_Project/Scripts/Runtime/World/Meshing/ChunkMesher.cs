@@ -72,7 +72,12 @@ namespace Emberhold.World.Meshing
                 // Верх закрыт, только если блок полный, а блок сверху закрывает весь пол своей ячейки
                 // (у внешнего угла ската половина пола открыта — там видна земля снизу).
                 if (!s.IsFull || !Neighbor(world, data, origin, x, y + 1, z).Shape.CoversFloor)
+                {
+                    var start = output.Vertices.Count;
                     AddTop(output, material, index, p, s, smoothNormals, (origin.y + y) * BlockShape.MaxHeight);
+                    if (GrassEdge.TakesGrass(material))
+                        AddGrassEdge(output, world, start, p, s, origin + new Vector3Int(x, y, z));
+                }
 
                 // Низ закрыт только полным блоком снизу; у воздуха форма пустая.
                 if (!Neighbor(world, data, origin, x, y - 1, z).Shape.IsFull)
@@ -88,6 +93,8 @@ namespace Emberhold.World.Meshing
                 n = Neighbor(world, data, origin, x, y, z - 1).Shape;
                 AddSide(output, material, index, p, Side.Back, s.C00, s.C10, n.C01, n.C11);
             }
+
+            output.ApplyGrassTint(world.GrassTint, origin);
         }
 
         /// <summary>
@@ -191,6 +198,18 @@ namespace Emberhold.World.Meshing
             if (surface != null && !block.IsAir && surface.IsNatural(global.x, global.z) && global.y == surface.TopY(global.x, global.z))
                 return Block.Air;
             return block;
+        }
+
+        /// <summary>
+        /// Трава с соседних столбцов на верх блока земли или камня: маска соседей-травы (<see cref="GrassEdge"/>)
+        /// в вершины верха, добавленные начиная с start.
+        /// </summary>
+        private static void AddGrassEdge(ChunkMeshData output, VoxelWorld world, int start, Vector3 p, BlockShape s,
+            Vector3Int block)
+        {
+            var mask = GrassEdge.NeighbourMask(world, block, s);
+            if (mask != 0)
+                output.SetGrass(start, p, mask);
         }
 
         /// <summary>

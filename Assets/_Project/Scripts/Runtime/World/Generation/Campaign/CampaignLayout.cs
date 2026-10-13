@@ -41,6 +41,8 @@ namespace Emberhold.World.Generation
 
         public TerrainProfileParameters Profile;
         public ForestMix Forest;
+        /// <summary>Оттенок травы на хребте и его склонах (rgb — множитель, a — насыщенность); null — нейтральный.</summary>
+        public Color? GrassTint;
 
         public static CampaignRidge Default => new()
         {
@@ -80,6 +82,8 @@ namespace Emberhold.World.Generation
 
         public TerrainProfileParameters Profile;
         public ForestMix Forest;
+        /// <summary>Оттенок травы локации (rgb — множитель, a — насыщенность); null — нейтральный.</summary>
+        public Color? GrassTint;
     }
 
     /// <summary>
