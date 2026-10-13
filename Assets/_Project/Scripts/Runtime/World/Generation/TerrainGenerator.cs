@@ -239,6 +239,16 @@ namespace Emberhold.World.Generation
                 rockWeights[x, z] = (byte)Mathf.RoundToInt(weight * 255f);
             }
 
+            // Камень шероховатый: на каменных местах поверхность в мелких буграх и гранях, трава остаётся гладкой.
+            for (var z = 0; z <= size.z; z++)
+            for (var x = 0; x <= size.x; x++)
+            {
+                if (rockWeights[x, z] == 0)
+                    continue;
+                var bump = (rockNoise.Ridged(x * 0.23f + 17f, z * 0.23f - 5f) - 0.3f) * RockBumps;
+                corners[x, z] = Mathf.Max(1, corners[x, z] + Mathf.RoundToInt(bump * rockWeights[x, z] / 255f * BlockShape.MaxHeight));
+            }
+
             // Блоки столбца: камень, если углы в среднем больше чем наполовину каменные.
             var grass = TerrainMaterials.Default;
             var rock = layout.Ridge.Profile.Materials;
@@ -257,6 +267,9 @@ namespace Emberhold.World.Generation
             }
             CornerTerrain.FillSmooth(world, corners, materials, bedLevels).SetRock(rockWeights);
         }
+
+        /// <summary>Высота бугров на камне гладкой земли, в блоках.</summary>
+        private const float RockBumps = 1.6f;
 
         /// <summary>С какой крутизны (блоков подъёма на блок) гладкая земля становится каменной.</summary>
         private const float SteepRock = 1.25f;

@@ -106,18 +106,18 @@ namespace Emberhold.World.Meshing
             var uv01 = new Vector2(p.x, p.z + 1);
             var uv11 = new Vector2(p.x + 1, p.z + 1);
             // Вся гладкая земля — в подмеше травы: её материал смешивает траву с камнем по весу в вершинах.
+            // Камень ещё и освещается гранями (AddSurfaceTriangle), трава — мягко.
             float r00 = surface.Rock(gx, gz), r10 = surface.Rock(gx + 1, gz);
             float r01 = surface.Rock(gx, gz + 1), r11 = surface.Rock(gx + 1, gz + 1);
-            const byte top = BlockMaterials.Grass;
             if (Mathf.Abs(h00 - h11) <= Mathf.Abs(h10 - h01))
             {
-                output.AddTriangle(top, index, c00, c01, c11, n00, n01, n11, uv00, uv01, uv11, r00, r01, r11);
-                output.AddTriangle(top, index, c00, c11, c10, n00, n11, n10, uv00, uv11, uv10, r00, r11, r10);
+                AddSurfaceTriangle(output, index, c00, c01, c11, n00, n01, n11, uv00, uv01, uv11, r00, r01, r11);
+                AddSurfaceTriangle(output, index, c00, c11, c10, n00, n11, n10, uv00, uv11, uv10, r00, r11, r10);
             }
             else
             {
-                output.AddTriangle(top, index, c01, c11, c10, n01, n11, n10, uv01, uv11, uv10, r01, r11, r10);
-                output.AddTriangle(top, index, c01, c10, c00, n01, n10, n00, uv01, uv10, uv00, r01, r10, r00);
+                AddSurfaceTriangle(output, index, c01, c11, c10, n01, n11, n10, uv01, uv11, uv10, r01, r11, r10);
+                AddSurfaceTriangle(output, index, c01, c10, c00, n01, n10, n00, uv01, uv10, uv00, r01, r10, r00);
             }
 
             // Стенки к тронутым соседям: под ними подкоп или яма, и землю под поверхностью видно сбоку.
@@ -135,6 +135,19 @@ namespace Emberhold.World.Meshing
                 AddSideQuad(output, wall, index, p, Side.Forward, (0f, bottom), (0f, h01), (1f, h11), (1f, bottom));
             if (!IsSurfaceNeighbour(surface, gx, gz - 1))
                 AddSideQuad(output, wall, index, p, Side.Back, (0f, bottom), (0f, h00), (1f, h10), (1f, bottom));
+        }
+
+        /// <summary>
+        /// Треугольник гладкой земли в подмеше травы. Трава освещается мягко (нормали по соседним углам),
+        /// камень — гранями: чем каменнее вершина, тем ближе её нормаль к нормали самого треугольника.
+        /// </summary>
+        private static void AddSurfaceTriangle(ChunkMeshData output, int index, Vector3 a, Vector3 b, Vector3 c,
+            Vector3 na, Vector3 nb, Vector3 nc, Vector2 uva, Vector2 uvb, Vector2 uvc, float ra, float rb, float rc)
+        {
+            var face = Normal(a, b, c);
+            output.AddTriangle(BlockMaterials.Grass, index, a, b, c,
+                Vector3.Lerp(na, face, ra).normalized, Vector3.Lerp(nb, face, rb).normalized, Vector3.Lerp(nc, face, rc).normalized,
+                uva, uvb, uvc, ra, rb, rc);
         }
 
         /// <summary>Сосед тоже рисуется поверхностью или это край мира: стенка к нему не нужна.</summary>
