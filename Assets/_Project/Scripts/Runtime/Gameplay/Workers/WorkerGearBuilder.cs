@@ -55,7 +55,7 @@ namespace Emberhold.Gameplay.Workers
         public static void Add(FacetedMesh mesh, Matrix4x4 scale, WorkerLook look)
         {
             var gear = new Gear(mesh, scale);
-            // Каждая вещь — в своей части: в руке — в предплечье, шапка — в голове, остальное — в корпусе.
+            // Каждая вещь — в своей части: в руке — в предплечье, шапка — в голове, всё ниже пояса — в подоле, остальное — в корпусе.
             void On(WorkerPart part) => mesh.Part = (int)part;
             switch (look.Role)
             {
@@ -66,8 +66,8 @@ namespace Emberhold.Gameplay.Workers
                     RopeCoil(gear);
                     break;
                 case WorkerRole.Digger:
-                    On(WorkerPart.Torso);
                     LeatherApron(gear);
+                    On(WorkerPart.Hips);
                     MinerPouch(gear);
                     On(WorkerPart.ForearmRight);
                     Pickaxe(gear);
@@ -75,6 +75,7 @@ namespace Emberhold.Gameplay.Workers
                 case WorkerRole.Builder:
                     On(WorkerPart.Torso);
                     Planks(gear);
+                    On(WorkerPart.Hips);
                     ToolBag(gear);
                     On(WorkerPart.ForearmRight);
                     Hammer(gear);
@@ -91,6 +92,7 @@ namespace Emberhold.Gameplay.Workers
                     On(WorkerPart.Torso);
                     MailShirt(gear);
                     Shield(gear, look.Hood);
+                    On(WorkerPart.Hips);
                     SheathedSword(gear);
                     On(WorkerPart.Head);
                     Helmet(gear);
@@ -301,12 +303,14 @@ namespace Emberhold.Gameplay.Workers
 
         private static void LeatherApron(Gear g)
         {
-            // Тёмный промасленный фартук: юбка до колен поверх рубахи, нагрудник до груди, завязки на поясе.
+            // Тёмный промасленный фартук: юбка до колен поверх подола, нагрудник до груди, завязки на поясе.
+            g.OnPart(WorkerPart.Hips);
             g.Loft(new[]
             {
                 new LoftRing(0.3f, 0.158f, 0.112f, 0.006f), new LoftRing(0.44f, 0.137f, 0.097f, 0.002f), new LoftRing(0.52f, 0.122f, 0.088f),
             }, WorkerMeshBuilder.Sides, OiledLeather, capStart: false, capEnd: false, arc: 0.44f, arcMiddle: 0.5f, twoSided: true,
                 inner: OiledLeather * 0.7f);
+            g.OnPart(WorkerPart.Torso);
             g.Loft(new[]
             {
                 new LoftRing(0.52f, 0.122f, 0.088f), new LoftRing(0.6f, 0.14f, 0.1f, 0.011f), new LoftRing(0.665f, 0.156f, 0.1f, 0.01f),
@@ -405,10 +409,17 @@ namespace Emberhold.Gameplay.Workers
 
         private static void MailShirt(Gear g)
         {
+            // Подол кольчуги ниже пояса ходит с подолом рубахи, верх — с корпусом; шов закрывает пояс.
+            g.OnPart(WorkerPart.Hips);
             g.Loft(new[]
             {
                 new LoftRing(0.33f, 0.16f, 0.11f, 0.002f), new LoftRing(0.4f, 0.152f, 0.104f, 0.001f), new LoftRing(0.44f, 0.137f, 0.094f),
-                new LoftRing(0.51f, 0.118f, 0.082f),
+                new LoftRing(0.515f, 0.118f, 0.082f),
+            }, WorkerMeshBuilder.Sides, Mail, capStart: false, capEnd: false, twoSided: true, inner: Mail * 0.6f);
+            g.OnPart(WorkerPart.Torso);
+            g.Loft(new[]
+            {
+                new LoftRing(0.505f, 0.118f, 0.082f),
                 new LoftRing(0.6f, 0.136f, 0.094f, 0.01f), new LoftRing(0.68f, 0.154f, 0.094f, 0.008f), new LoftRing(0.735f, 0.146f, 0.08f),
                 new LoftRing(0.772f, 0.072f, 0.056f),
             }, WorkerMeshBuilder.Sides, Mail, capStart: false, capEnd: false, twoSided: true, inner: Mail * 0.6f);
@@ -418,19 +429,27 @@ namespace Emberhold.Gameplay.Workers
 
         private static void Gambeson(Gear g)
         {
-            // Стёганка: толще рубахи, по ней тёмные строчки.
+            // Стёганка: толще рубахи, по ней тёмные строчки. Ниже пояса — в подоле.
+            g.OnPart(WorkerPart.Hips);
             g.Loft(new[]
             {
                 new LoftRing(0.34f, 0.163f, 0.113f, 0.002f), new LoftRing(0.4f, 0.155f, 0.107f, 0.001f), new LoftRing(0.44f, 0.139f, 0.097f),
-                new LoftRing(0.51f, 0.122f, 0.086f),
+                new LoftRing(0.515f, 0.122f, 0.086f),
+            }, WorkerMeshBuilder.Sides, Linen, capStart: false, capEnd: false, twoSided: true, inner: Linen * 0.6f);
+            g.OnPart(WorkerPart.Torso);
+            g.Loft(new[]
+            {
+                new LoftRing(0.505f, 0.122f, 0.086f),
                 new LoftRing(0.6f, 0.139f, 0.097f, 0.01f), new LoftRing(0.68f, 0.157f, 0.097f, 0.008f), new LoftRing(0.735f, 0.148f, 0.082f),
                 new LoftRing(0.772f, 0.072f, 0.056f),
             }, WorkerMeshBuilder.Sides, Linen, capStart: false, capEnd: false, twoSided: true, inner: Linen * 0.6f);
             foreach (var (y, rx, rz, cz) in new[] { (0.4f, 0.155f, 0.107f, 0.001f), (0.465f, 0.133f, 0.093f, 0f), (0.565f, 0.134f, 0.094f, 0.006f), (0.63f, 0.149f, 0.099f, 0.009f) })
             {
+                g.OnPart(y < 0.5f ? WorkerPart.Hips : WorkerPart.Torso);
                 g.Loft(new[] { new LoftRing(y, rx + 0.002f, rz + 0.002f, cz), new LoftRing(y + 0.007f, rx + 0.002f, rz + 0.002f, cz) },
                     WorkerMeshBuilder.Sides, Linen * 0.62f, capStart: false, capEnd: false);
             }
+            g.OnPart(WorkerPart.Torso);
             Sleeves(g, Linen, 0.007f);
             Belt(g, 0.127f, 0.092f);
         }

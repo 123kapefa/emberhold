@@ -57,7 +57,7 @@ namespace Emberhold.Tests.EditMode.Workers
         public void EveryClip_KeepsLowestSupportOnGround()
         {
             var matrices = new Matrix4x4[WorkerPose.PartCount];
-            var motion = new WorkerMotion(0.3f, 2.5f, Height, true, false);
+            var motion = new WorkerMotion(0.3f, 2.5f, Height, true, false, WorkerCarry.StoneSack);
             foreach (WorkerClip clip in Enum.GetValues(typeof(WorkerClip)))
             {
                 for (var k = 0; k <= 20; k++)
@@ -65,13 +65,9 @@ namespace Emberhold.Tests.EditMode.Workers
                     var time = WorkerAnimation.IsOneShot(clip) ? k / 20f : k * 0.13f;
                     var pose = WorkerAnimation.Sample(clip, time, motion);
                     WorkerSkeleton.Evaluate(pose, Height, matrices);
-                    var lowest = float.MaxValue;
-                    foreach (var shin in new[] { WorkerPart.ShinLeft, WorkerPart.ShinRight })
-                    {
-                        foreach (var z in new[] { -0.03f, 0.085f })
-                            lowest = Mathf.Min(lowest, matrices[(int)shin].MultiplyPoint3x4(new Vector3(0f, -0.265f, z) * Height).y);
-                    }
-                    lowest = Mathf.Min(lowest, matrices[(int)WorkerPart.Torso].MultiplyPoint3x4(new Vector3(0f, -0.075f, -0.035f) * Height).y);
+                    var lowest = WorkerSkeleton.LowestSupport(matrices, Height);
+                    foreach (var foot in new[] { WorkerPart.FootLeft, WorkerPart.FootRight })
+                        Assert.That(Vector3.Dot(matrices[(int)foot].rotation * Vector3.up, Vector3.up), Is.GreaterThan(0.999f), $"{clip}: стопа ровно");
                     Assert.That(lowest, Is.EqualTo(0f).Within(1e-3f), $"{clip} в {time}: опора на земле");
                     foreach (var m in matrices)
                         Assert.That(float.IsNaN(m.m03) || float.IsNaN(m.m13), Is.False, $"{clip}: без NaN");
@@ -84,18 +80,38 @@ namespace Emberhold.Tests.EditMode.Workers
         {
             var matrices = new Matrix4x4[WorkerPose.PartCount];
             var motion = new WorkerMotion(0f, 2.5f, Height, false, false);
-            float FootZ(WorkerPart shin) => matrices[(int)shin].MultiplyPoint3x4(new Vector3(0f, -0.265f, 0f) * Height).z;
+            float FootZ(WorkerPart foot) => matrices[(int)foot].GetColumn(3).z;
 
             var quarter = 0.25f / (2.5f / 1.45f);
             WorkerSkeleton.Evaluate(WorkerAnimation.Sample(WorkerClip.Walk, quarter, motion), Height, matrices);
-            Assert.That(FootZ(WorkerPart.ShinLeft), Is.GreaterThan(FootZ(WorkerPart.ShinRight)), "Левая нога впереди");
+            Assert.That(FootZ(WorkerPart.FootLeft), Is.GreaterThan(FootZ(WorkerPart.FootRight)), "Левая нога впереди");
             WorkerSkeleton.Evaluate(WorkerAnimation.Sample(WorkerClip.Walk, quarter * 3f, motion), Height, matrices);
-            Assert.That(FootZ(WorkerPart.ShinRight), Is.GreaterThan(FootZ(WorkerPart.ShinLeft)), "Правая нога впереди");
+            Assert.That(FootZ(WorkerPart.FootRight), Is.GreaterThan(FootZ(WorkerPart.FootLeft)), "Правая нога впереди");
 
             WorkerSkeleton.Evaluate(WorkerAnimation.Sample(WorkerClip.Idle, 0f, motion), Height, matrices);
             var standing = matrices[(int)WorkerPart.Head].GetColumn(3).y;
             WorkerSkeleton.Evaluate(WorkerAnimation.Sample(WorkerClip.PickUp, 0.5f, motion), Height, matrices);
             Assert.That(matrices[(int)WorkerPart.Head].GetColumn(3).y, Is.LessThan(standing - 0.3f), "Присел за ресурсом");
+        }
+
+        [Test]
+        public void CarriedLoad_IsHeldByLeftHand_AndPutOnGround()
+        {
+            var matrices = new Matrix4x4[WorkerPose.PartCount];
+            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.StoneSack })
+            {
+                var motion = new WorkerMotion(0f, 0f, Height, true, false, carry);
+                var pose = WorkerAnimation.Sample(WorkerClip.Carry, 0.3f, motion);
+                WorkerSkeleton.Evaluate(pose, Height, matrices);
+                var fist = matrices[(int)WorkerPart.ForearmLeft].MultiplyPoint3x4(
+                    WorkerSkeleton.FistCenter(-1f, Height) - WorkerSkeleton.Pivot(WorkerPart.ForearmLeft, Height));
+                var grip = Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one).MultiplyPoint3x4(WorkerCarryBuilder.Grip(carry, Height));
+                Assert.That(Vector3.Distance(fist, grip), Is.LessThan(0.02f), $"{carry}: кисть на ноше");
+
+                var put = WorkerAnimation.Sample(WorkerClip.Put, 0.9f, motion);
+                var ground = WorkerCarryBuilder.Ground(carry, Height);
+                Assert.That(Vector3.Distance(put.LoadPosition, ground.GetColumn(3)), Is.LessThan(1e-3f), $"{carry}: положил на землю");
+            }
         }
 
         [Test]

@@ -36,6 +36,9 @@ namespace Emberhold.Gameplay.Workers
 
         internal static int Part(WorkerPart part) => (int)part;
 
+        /// <summary>Дальше скольки долей роста от середины пелерина — край над плечом, который ходит за рукой.</summary>
+        private const float CapeFlapX = 0.1f;
+
         internal static WorkerPart Side(float side, WorkerPart left, WorkerPart right) => side < 0f ? left : right;
 
         private static FacetedMesh BuildFaceted(WorkerLook look, float height)
@@ -54,12 +57,17 @@ namespace Emberhold.Gameplay.Workers
             foreach (var side in new[] { -1f, 1f })
             {
                 var x = side * 0.058f;
-                mesh.Part = Part(Side(side, WorkerPart.ShinLeft, WorkerPart.ShinRight));
+                // Стопа сапога — своя часть: при сгибе колена она остаётся ровно на земле.
+                mesh.Part = Part(Side(side, WorkerPart.FootLeft, WorkerPart.FootRight));
                 mesh.AddLoft(new[]
                 {
                     new LoftRing(0f, 0.036f, 0.062f, 0.022f, x), new LoftRing(0.03f, 0.038f, 0.066f, 0.024f, x),
-                    new LoftRing(0.05f, 0.034f, 0.044f, 0.008f, x), new LoftRing(0.13f, 0.034f, 0.036f, 0f, x),
+                    new LoftRing(0.058f, 0.034f, 0.042f, 0.007f, x),
                 }, LimbSides, Paint(Boots));
+                mesh.AddBlob(new Vector3(x, 0.05f, 0.006f), new Vector3(0.034f, 0.022f, 0.038f), 1, 0f, null, Paint(Boots));
+                mesh.Part = Part(Side(side, WorkerPart.ShinLeft, WorkerPart.ShinRight));
+                mesh.AddLoft(new[] { new LoftRing(0.045f, 0.034f, 0.04f, 0.006f, x), new LoftRing(0.13f, 0.034f, 0.036f, 0f, x) },
+                    LimbSides, Paint(Boots));
                 // Отворот голенища.
                 mesh.AddLoft(new[] { new LoftRing(0.112f, 0.039f, 0.041f, 0f, x), new LoftRing(0.14f, 0.04f, 0.043f, 0f, x) }, LimbSides, Paint(Leather));
                 // Голень до колена, колено — шар, чтобы сгиб не разрывал штанину; выше — бедро.
@@ -71,24 +79,29 @@ namespace Emberhold.Gameplay.Workers
                 mesh.AddLoft(new[] { knee, new LoftRing(0.36f, 0.046f, 0.05f, 0.004f, x * 0.95f), new LoftRing(0.44f, 0.054f, 0.055f, 0f, x * 0.85f) },
                     LimbSides, Paint(Pants));
             }
-            mesh.Part = Part(WorkerPart.Torso);
-
-            // Рубаха: подол расходится, бёдра, талия уже, грудь, покатые плечи, ворот у шеи.
-            mesh.AddLoft(new[]
-            {
-                new LoftRing(0.37f, 0.148f, 0.098f, 0.002f), new LoftRing(0.44f, 0.128f, 0.086f), new LoftRing(0.51f, 0.112f, 0.076f),
-                new LoftRing(0.6f, 0.13f, 0.088f, 0.01f), new LoftRing(0.68f, 0.148f, 0.088f, 0.008f), new LoftRing(0.735f, 0.14f, 0.074f),
-                new LoftRing(0.765f, 0.07f, 0.052f), new LoftRing(0.775f, 0.047f, 0.046f, 0.004f),
-            }, Sides, tunic);
+            // Рубаха ниже пояса — подол, своя часть: при шаге и приседе она уходит вперёд за бёдрами.
+            mesh.Part = Part(WorkerPart.Hips);
+            mesh.AddLoft(new[] { new LoftRing(0.37f, 0.148f, 0.098f, 0.002f), new LoftRing(0.44f, 0.128f, 0.086f), new LoftRing(0.515f, 0.112f, 0.076f) },
+                Sides, tunic, capEnd: false);
             // Тёмная кайма по подолу.
             mesh.AddLoft(new[] { new LoftRing(0.369f, 0.15f, 0.1f, 0.002f), new LoftRing(0.39f, 0.145f, 0.097f, 0.0015f) }, Sides,
                 Paint(look.Tunic * 0.72f), capStart: false, capEnd: false);
-            // Пояс с пряжкой и сумка на боку.
-            mesh.AddLoft(new[] { new LoftRing(0.5f, 0.116f, 0.08f), new LoftRing(0.528f, 0.116f, 0.08f) }, Sides, Paint(Leather));
-            mesh.AddBox(new Vector3(0f, 0.514f, 0.081f), new Vector3(0.03f, 0.024f, 0.01f), Paint(Buckle));
+            // Сумка на боку.
             mesh.Transform = scale * Matrix4x4.TRS(new Vector3(0.095f, 0.49f, 0.045f), Quaternion.Euler(0f, 35f, 0f), Vector3.one);
             mesh.AddBox(Vector3.zero, new Vector3(0.045f, 0.055f, 0.03f), Paint(Leather));
             mesh.Transform = scale;
+
+            // Рубаха выше пояса: талия, грудь, покатые плечи, ворот у шеи. Шов с подолом закрывает пояс.
+            mesh.Part = Part(WorkerPart.Torso);
+            mesh.AddLoft(new[]
+            {
+                new LoftRing(0.505f, 0.112f, 0.076f),
+                new LoftRing(0.6f, 0.13f, 0.088f, 0.01f), new LoftRing(0.68f, 0.148f, 0.088f, 0.008f), new LoftRing(0.735f, 0.14f, 0.074f),
+                new LoftRing(0.765f, 0.07f, 0.052f), new LoftRing(0.775f, 0.047f, 0.046f, 0.004f),
+            }, Sides, tunic);
+            // Пояс с пряжкой.
+            mesh.AddLoft(new[] { new LoftRing(0.5f, 0.116f, 0.08f), new LoftRing(0.528f, 0.116f, 0.08f) }, Sides, Paint(Leather));
+            mesh.AddBox(new Vector3(0f, 0.514f, 0.081f), new Vector3(0.03f, 0.024f, 0.01f), Paint(Buckle));
 
             // Руки начинаются внутри плеч, под пелериной: локоть чуть назад, предплечье вперёд; плоская кисть с большим пальцем.
             foreach (var side in new[] { -1f, 1f })
@@ -211,11 +224,15 @@ namespace Emberhold.Gameplay.Workers
                 new LoftRing(0.695f, 0.058f, 0.015f, -0.117f), new LoftRing(0.735f, 0.065f, 0.016f, -0.097f), new LoftRing(0.767f, 0.06f, 0.017f, -0.074f),
                 new LoftRing(0.792f, 0.05f, 0.02f, -0.058f),
             }, Sides, hood, capStart: true, capEnd: false, twoSided: true, innerColor: lining);
+            // Края пелерины над плечами — свои части: поднимается рука — поднимается и край, плечо не прорывает ткань.
+            var flapX = CapeFlapX * height;
+            mesh.PartBy = c => c.x < -flapX ? Part(WorkerPart.CapeLeft) : c.x > flapX ? Part(WorkerPart.CapeRight) : Part(WorkerPart.Torso);
             mesh.AddLoft(new[]
             {
                 new LoftRing(0.655f, 0.196f, 0.112f, -0.002f), new LoftRing(0.7f, 0.2f, 0.108f), new LoftRing(0.745f, 0.135f, 0.082f),
                 new LoftRing(0.776f, 0.06f, 0.052f),
             }, Sides, hood, capStart: false, capEnd: false, twoSided: true, innerColor: lining);
+            mesh.PartBy = null;
 
             WorkerGearBuilder.Add(mesh, scale, look);
             mesh.Transform = Matrix4x4.identity;

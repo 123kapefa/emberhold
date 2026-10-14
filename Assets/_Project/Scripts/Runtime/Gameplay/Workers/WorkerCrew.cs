@@ -206,7 +206,10 @@ namespace Emberhold.Gameplay.Workers
                         animator.Play(worker.Carrying != null ? WorkerClip.Carry : WorkerClip.Idle);
                     break;
             }
-            var pose = animator.Update(deltaTime, WorkerMotion.For(visual.Look, settings.Height, visual.Speed, visual.Seed));
+            // Ноша — по тому, что несут; пока поднимает — то, за чем пришёл.
+            var itemId = worker.Carrying?.ItemId ?? (worker.State == WorkerState.PickingUp ? worker.Order?.ItemId : null);
+            var carry = WorkerCarryBuilder.CarryFor(itemId, visual.Look.Role);
+            var pose = animator.Update(deltaTime, WorkerMotion.For(visual.Look, settings.Height, visual.Speed, visual.Seed, carry));
             WorkerSkeleton.Evaluate(pose, settings.Height, partMatrices);
 
             // Сетка в блоках, ноги в начале координат: стоит на верхе столбца.
@@ -216,15 +219,12 @@ namespace Emberhold.Gameplay.Workers
             for (var k = 0; k < visual.Parts.Length; k++)
                 visual.Parts[k].SetLocalPositionAndRotation(partMatrices[k].GetColumn(3), partMatrices[k].rotation);
 
-            // Ноша на плече — по тому, что несут; двигается вместе с корпусом.
-            var carry = worker.Carrying is { } item ? WorkerCarryBuilder.CarryFor(item.ItemId, visual.Look.Role) : WorkerCarry.None;
             if (carry != visual.CarryKind)
             {
                 visual.CarryKind = carry;
                 visual.Carry.sharedMesh = carry == WorkerCarry.None ? null : CarryMesh(carry);
             }
-            var torso = partMatrices[(int)WorkerPart.Torso];
-            visual.Carry.transform.SetLocalPositionAndRotation(torso.GetColumn(3), torso.rotation);
+            visual.Carry.transform.SetLocalPositionAndRotation(pose.LoadPosition, pose.LoadRotation);
         }
 
         private Mesh CarryMesh(WorkerCarry carry)

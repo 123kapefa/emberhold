@@ -70,7 +70,7 @@ namespace Emberhold.Editor.Workers
         /// <summary>Какая анимация играет.</summary>
         public WorkerClip Clip { get; set; } = WorkerClip.Idle;
 
-        /// <summary>Что на плече в анимациях с ношей (нести; поднять — со второй половины; положить — до середины).</summary>
+        /// <summary>Что несёт в анимациях с ношей (нести, поднять, положить).</summary>
         public WorkerCarry Carry { get; set; } = WorkerCarry.Log;
 
         /// <summary>Скорость ходьбы и бега, блоков в секунду; 0 — по умолчанию у анимации.</summary>
@@ -185,7 +185,7 @@ namespace Emberhold.Editor.Workers
             var oneShot = WorkerAnimation.IsOneShot(Clip);
             var duration = WorkerAnimation.DefaultDuration(Clip);
             var sampleTime = oneShot ? Mathf.Clamp01(time / duration) : time;
-            var carry = CarryShown(sampleTime);
+            var carry = CarryShown();
             if (carry != builtCarry)
             {
                 if (carryMesh != null)
@@ -195,7 +195,7 @@ namespace Emberhold.Editor.Workers
             }
             foreach (var figure in figures)
             {
-                var motion = WorkerMotion.For(figure.Look, Height, MoveSpeed, figure.Seed);
+                var motion = WorkerMotion.For(figure.Look, Height, MoveSpeed, figure.Seed, carry);
                 var pose = WorkerAnimation.Sample(Clip, oneShot ? sampleTime : time, motion);
                 WorkerSkeleton.Evaluate(pose, Height, matrices);
                 var place = Matrix4x4.Translate(figure.Offset);
@@ -206,20 +206,14 @@ namespace Emberhold.Editor.Workers
                         preview.DrawMesh(figure.Edges[k], place * matrices[k] * Matrix4x4.Scale(Vector3.one * 1.004f), wireMaterial, 0);
                 }
                 if (carryMesh != null)
-                    preview.DrawMesh(carryMesh, place * matrices[(int)WorkerPart.Torso], workerMaterial, 0);
+                    preview.DrawMesh(carryMesh, place * Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one), workerMaterial, 0);
             }
             if (ShowGrid)
                 preview.DrawMesh(grid, Matrix4x4.identity, gridMaterial, 0);
             preview.Render(true);
         }
 
-        private WorkerCarry CarryShown(float sampleTime) => Clip switch
-        {
-            WorkerClip.Carry => Carry,
-            WorkerClip.PickUp when sampleTime >= 0.5f => Carry,
-            WorkerClip.Put when sampleTime < 0.5f => Carry,
-            _ => WorkerCarry.None,
-        };
+        private WorkerCarry CarryShown() => Clip is WorkerClip.Carry or WorkerClip.PickUp or WorkerClip.Put ? Carry : WorkerCarry.None;
 
         private void DestroyMeshes()
         {

@@ -12,11 +12,11 @@ namespace Emberhold.Gameplay.Workers
         Run,
         /// <summary>Присесть и поднять ресурс.</summary>
         PickUp,
-        /// <summary>Идти с ношей на плече.</summary>
+        /// <summary>Идти с ношей на плече; левая рука её придерживает.</summary>
         Carry,
         /// <summary>Поставить блок перед собой.</summary>
         Place,
-        /// <summary>Положить: присесть и опустить ношу (в огонь, на землю).</summary>
+        /// <summary>Положить: снять ношу с плеча, присесть и опустить её на землю (в огонь).</summary>
         Put,
         /// <summary>Переступать на месте, пока разворачивается.</summary>
         Turn,
@@ -81,17 +81,17 @@ namespace Emberhold.Gameplay.Workers
                         Steps(ref pose, time, motion, Speed(motion, DefaultWalkSpeed) / Cycle(motion, WalkCycleBlocks), 21f, 32f, 16f, 2f);
                     else
                         Breathe(ref pose, time, motion);
-                    HoldLoad(ref pose);
+                    pose.Add(WorkerPart.Torso, new Vector3(0f, 0f, -3f));
+                    pose.Add(WorkerPart.Head, new Vector3(0f, 0f, -4f));
                     break;
                 case WorkerClip.Turn:
                     Steps(ref pose, time, motion, 1.8f, 9f, 24f, 6f, 1f);
                     break;
                 case WorkerClip.PickUp:
-                    Crouch(ref pose, Bump(time, 0.45f, 0.55f), 50f);
-                    break;
+                    // Поднять — то же, что положить, в обратную сторону: присел, взял с земли, закинул на плечо.
+                    return PutDown(1f - time, motion);
                 case WorkerClip.Put:
-                    Crouch(ref pose, Bump(time, 0.4f, 0.4f), 68f);
-                    break;
+                    return PutDown(time, motion);
                 case WorkerClip.Place:
                     Place(ref pose, time);
                     break;
@@ -105,8 +105,66 @@ namespace Emberhold.Gameplay.Workers
                     Sit(ref pose, time, motion);
                     break;
             }
+            SetLoad(ref pose, motion, holdWeight: clip == WorkerClip.Carry ? 1f : 0f);
             return pose;
         }
+
+        /// <summary>
+        /// Ноша на плече (по матрице корпуса в этой позе); holdWeight — насколько левая рука её придерживает.
+        /// Ношу считаем во всех позах, чтобы при смене анимации она плавно переходила.
+        /// </summary>
+        private static void SetLoad(ref WorkerPose pose, in WorkerMotion motion, float holdWeight)
+        {
+            var carry = motion.Carry == WorkerCarry.None ? WorkerCarry.Log : motion.Carry;
+            var load = WorkerSkeleton.Torso(pose, motion.Height) * WorkerCarryBuilder.ShoulderAnchor(carry, motion.Height);
+            pose.LoadPosition = load.GetColumn(3);
+            pose.LoadRotation = load.rotation;
+            if (holdWeight > 0f && motion.Carry != WorkerCarry.None)
+                HoldLoad(ref pose, carry, load, motion.Height, holdWeight);
+        }
+
+        /// <summary>Левая рука держит ношу за точку хвата; локоть вниз и наружу.</summary>
+        private static void HoldLoad(ref WorkerPose pose, WorkerCarry carry, Matrix4x4 load, float height, float weight)
+        {
+            var grip = load.MultiplyPoint3x4(WorkerCarryBuilder.Grip(carry, height));
+            WorkerSkeleton.ReachArm(ref pose, -1f, grip, grip + WorkerCarryBuilder.ElbowHint(height), height, weight);
+        }
+
+        /// <summary>
+        /// Положить ношу (t от 0 до 1): снять с плеча и перехватить перед собой, присесть с ровными стопами и опустить
+        /// на землю, отпустить, выпрямиться. Ноша остаётся лежать на земле до конца.
+        /// </summary>
+        private static WorkerPose PutDown(float t, in WorkerMotion motion)
+        {
+            var pose = WorkerPose.Rest();
+            Relaxed(ref pose);
+            var carry = motion.Carry == WorkerCarry.None ? WorkerCarry.Log : motion.Carry;
+            var height = motion.Height;
+            // Присед: глубже всего с 0,4 до 0,75.
+            var crouch = Bump(Mathf.InverseLerp(0.2f, 1f, t), 0.3f, 0.3f);
+            Crouch(ref pose, crouch);
+            pose.Add(WorkerPart.Torso, new Vector3(0f, 0f, -3f * (1f - crouch)));
+
+            Matrix4x4 load;
+            var shoulder = WorkerSkeleton.Torso(pose, height) * WorkerCarryBuilder.ShoulderAnchor(carry, height);
+            var front = WorkerCarryBuilder.Front(carry, height);
+            var ground = WorkerCarryBuilder.Ground(carry, height);
+            if (t < 0.25f)
+                load = Blend(shoulder, front, Mathf.SmoothStep(0f, 1f, t / 0.25f));
+            else if (t < 0.6f)
+                load = Blend(front, ground, Mathf.SmoothStep(0f, 1f, (t - 0.25f) / 0.35f));
+            else
+                load = ground;
+            pose.LoadPosition = load.GetColumn(3);
+            pose.LoadRotation = load.rotation;
+            // Рука держит ношу до 0,7, потом отпускает и уходит в покой.
+            var hold = t < 0.65f ? 1f : 1f - Mathf.SmoothStep(0f, 1f, (t - 0.65f) / 0.15f);
+            HoldLoad(ref pose, carry, load, height, hold);
+            return pose;
+        }
+
+        private static Matrix4x4 Blend(Matrix4x4 a, Matrix4x4 b, float t) =>
+            Matrix4x4.TRS(Vector3.Lerp(a.GetColumn(3), b.GetColumn(3), t), Quaternion.Slerp(a.rotation, b.rotation, t), Vector3.one);
 
         private static float Speed(in WorkerMotion motion, float fallback) => motion.Speed > 0.05f ? motion.Speed : fallback;
 
@@ -177,45 +235,18 @@ namespace Emberhold.Gameplay.Workers
             pose.Add(WorkerPart.Head, new Vector3(-lean * 0.6f, -3f * swing, 0f));
         }
 
-        /// <summary>
-        /// Повороты левого плеча и предплечья, при которых кисть придерживает ношу спереди снизу: локоть вниз-вперёд-наружу,
-        /// предплечье вверх к переднему концу ноши. Считаются один раз из направлений костей в покое.
-        /// </summary>
-        private static readonly (Vector3 upper, Vector3 fore) HoldAngles = SolveHold();
-
-        private static (Vector3, Vector3) SolveHold()
-        {
-            var restUpper = new Vector3(-0.04f, -0.145f, -0.006f);
-            var restFore = new Vector3(-0.004f, -0.167f, 0.058f);
-            var upper = Quaternion.FromToRotation(restUpper, new Vector3(-0.05f, -0.06f, 0.13f));
-            var foreWorld = new Vector3(0.04f, 0.15f, 0.03f);
-            var fore = Quaternion.FromToRotation(restFore, Quaternion.Inverse(upper) * foreWorld);
-            return (upper.eulerAngles, fore.eulerAngles);
-        }
-
-        /// <summary>Левая рука держит ношу на левом плече, корпус чуть отклонён от груза.</summary>
-        private static void HoldLoad(ref WorkerPose pose)
-        {
-            pose[WorkerPart.UpperArmLeft] = Wrap(HoldAngles.upper);
-            pose[WorkerPart.ForearmLeft] = Wrap(HoldAngles.fore);
-            pose.Add(WorkerPart.Torso, new Vector3(0f, 0f, -3f));
-            pose.Add(WorkerPart.Head, new Vector3(0f, 0f, -4f));
-        }
-
-        /// <summary>Присесть и наклониться: глубина amount от 0 до 1, руки вниз-вперёд на reach градусов.</summary>
-        private static void Crouch(ref WorkerPose pose, float amount, float reach)
+        /// <summary>Присесть на корточки, стопы ровно на земле, корпус наклонён: глубина amount от 0 до 1.</summary>
+        private static void Crouch(ref WorkerPose pose, float amount)
         {
             foreach (var thigh in new[] { WorkerPart.ThighLeft, WorkerPart.ThighRight })
-                pose.Add(thigh, new Vector3(-62f * amount, 0f, 0f));
+                pose.Add(thigh, new Vector3(-78f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ThighLeft, new Vector3(0f, 0f, -8f * amount));
+            pose.Add(WorkerPart.ThighRight, new Vector3(0f, 0f, 8f * amount));
             foreach (var shin in new[] { WorkerPart.ShinLeft, WorkerPart.ShinRight })
-                pose.Add(shin, new Vector3(100f * amount, 0f, 0f));
-            pose.Add(WorkerPart.Torso, new Vector3(38f * amount, 0f, 0f));
-            pose.Add(WorkerPart.Head, new Vector3(-22f * amount, 0f, 0f));
-            pose.Shift += new Vector2(0f, -0.03f * amount);
-            foreach (var arm in new[] { WorkerPart.UpperArmLeft, WorkerPart.UpperArmRight })
-                pose.Add(arm, new Vector3(-reach * amount, 0f, 0f));
-            foreach (var forearm in new[] { WorkerPart.ForearmLeft, WorkerPart.ForearmRight })
-                pose.Add(forearm, new Vector3(-12f * amount, 0f, 0f));
+                pose.Add(shin, new Vector3(118f * amount, 0f, 0f));
+            pose.Add(WorkerPart.Torso, new Vector3(34f * amount, 0f, 0f));
+            pose.Add(WorkerPart.Head, new Vector3(-16f * amount, 0f, 0f));
+            pose.Shift += new Vector2(0f, -0.05f * amount);
         }
 
         private static void Place(ref WorkerPose pose, float t)
@@ -229,10 +260,11 @@ namespace Emberhold.Gameplay.Workers
                 pose.Add(shin, new Vector3(30f * amount, 0f, 0f));
             pose.Add(WorkerPart.Torso, new Vector3(24f * amount + 4f * push, 0f, 0f));
             pose.Add(WorkerPart.Head, new Vector3(-10f * amount, 0f, 0f));
+            // Плечи вперёд не выше 45°, дальше тянется предплечье: так плечо не прорывает пелерину.
             foreach (var arm in new[] { WorkerPart.UpperArmLeft, WorkerPart.UpperArmRight })
-                pose.Add(arm, new Vector3(-72f * amount - 8f * push, 0f, 0f));
+                pose.Add(arm, new Vector3(-42f * amount - 6f * push, 0f, 0f));
             foreach (var forearm in new[] { WorkerPart.ForearmLeft, WorkerPart.ForearmRight })
-                pose.Add(forearm, new Vector3(-22f * amount, 0f, 0f));
+                pose.Add(forearm, new Vector3(-38f * amount, 0f, 0f));
         }
 
         private static void Startle(ref WorkerPose pose, float t)
@@ -257,10 +289,10 @@ namespace Emberhold.Gameplay.Workers
             var rub = Mathf.Max(0f, Mathf.Sin(2f * Mathf.PI * (time / 5f + motion.Seed))) * Mathf.Sin(2f * Mathf.PI * time * 2.2f);
             pose.Add(WorkerPart.Torso, new Vector3(6f, 0f, 0f));
             pose.Add(WorkerPart.Head, new Vector3(4f, 0f, 0f));
-            pose[WorkerPart.UpperArmLeft] = new Vector3(-58f, 0f, 6f);
-            pose[WorkerPart.UpperArmRight] = new Vector3(-58f, 0f, -6f);
-            pose[WorkerPart.ForearmLeft] = new Vector3(-26f + 6f * rub, 6f * rub, 0f);
-            pose[WorkerPart.ForearmRight] = new Vector3(-26f - 6f * rub, -6f * rub, 0f);
+            pose[WorkerPart.UpperArmLeft] = new Vector3(-44f, 0f, 6f);
+            pose[WorkerPart.UpperArmRight] = new Vector3(-44f, 0f, -6f);
+            pose[WorkerPart.ForearmLeft] = new Vector3(-42f + 6f * rub, 6f * rub, 0f);
+            pose[WorkerPart.ForearmRight] = new Vector3(-42f - 6f * rub, -6f * rub, 0f);
         }
 
         private static void Sit(ref WorkerPose pose, float time, in WorkerMotion motion)
@@ -298,8 +330,9 @@ namespace Emberhold.Gameplay.Workers
     /// <summary>Что о движении рабочего нужно анимации.</summary>
     public readonly struct WorkerMotion
     {
-        public WorkerMotion(float seed, float speed, float height, bool rightBusy, bool leftBusy)
+        public WorkerMotion(float seed, float speed, float height, bool rightBusy, bool leftBusy, WorkerCarry carry = WorkerCarry.None)
         {
+            Carry = carry;
             Seed = seed;
             Speed = speed;
             Height = height;
@@ -317,8 +350,11 @@ namespace Emberhold.Gameplay.Workers
         public bool RightBusy { get; }
         public bool LeftBusy { get; }
 
-        public static WorkerMotion For(WorkerLook look, float height, float speed, float seed) =>
-            new(seed, speed, height, WorkerGearBuilder.GripAxis(look.Role, 1f) != null, WorkerGearBuilder.GripAxis(look.Role, -1f) != null);
+        /// <summary>Что несёт: от этого зависит, где ноша и как её держит рука.</summary>
+        public WorkerCarry Carry { get; }
+
+        public static WorkerMotion For(WorkerLook look, float height, float speed, float seed, WorkerCarry carry = WorkerCarry.None) =>
+            new(seed, speed, height, WorkerGearBuilder.GripAxis(look.Role, 1f) != null, WorkerGearBuilder.GripAxis(look.Role, -1f) != null, carry);
     }
 
     /// <summary>

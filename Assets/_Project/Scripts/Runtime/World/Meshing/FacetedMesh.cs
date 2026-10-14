@@ -52,6 +52,9 @@ namespace Emberhold.World.Meshing
         /// <summary>Номер части, к которой относятся следующие тела: по нему <see cref="ToMeshes"/> режет сетку на части.</summary>
         public int Part { get; set; }
 
+        /// <summary>Если задано — номер части выбирается по середине каждой грани (после Transform), а не берётся из Part.</summary>
+        public System.Func<Vector3, int> PartBy { get; set; }
+
         /// <summary>Усечённый конус (ствол, полоска) от base вверх на height; jitter двигает точки только по X и Z.</summary>
         public void AddPrism(int sides, Vector3 basePoint, float bottomRadius, float topRadius, float height, float jitter,
             System.Random random, System.Func<Vector3, Color> color)
@@ -299,7 +302,7 @@ namespace Emberhold.World.Meshing
                     (b, c) = (c, b);
                     normal = -normal;
                 }
-                triangleParts.Add(Part);
+                triangleParts.Add(PartBy?.Invoke((a + b + c) / 3f) ?? Part);
                 foreach (var p in new[] { a, b, c })
                 {
                     triangles.Add(vertices.Count);
