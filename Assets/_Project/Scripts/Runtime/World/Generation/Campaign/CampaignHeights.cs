@@ -216,7 +216,10 @@ namespace Emberhold.World.Generation
                 if (peak > h)
                 {
                     // Стенка над дном то круче, то положе (предгорья), и её верх скруглён, чтобы не было бортика.
-                    var wall = CampaignNoise.Lerp(PeakWallLow, PeakWall, noise.Fbm(x * 0.03f + 61f, z * 0.03f - 17f, 3));
+                    // Пологие предгорья только внизу массива: чем выше гора над хребтом, тем стенка ближе к PeakWall,
+                    // иначе пологий участок срезал бы вершину.
+                    var foothill = CampaignNoise.Lerp(PeakWallLow, PeakWall, noise.Fbm(x * 0.03f + 61f, z * 0.03f - 17f, 3));
+                    var wall = CampaignNoise.Lerp(foothill, PeakWall, CampaignNoise.SmoothStep(5f, 20f, peak - ridgeHeight));
                     var limit = baseDistance < float.MaxValue ? terraceBase + Math.Max(baseDistance, 0f) * wall : peak;
                     // Скругляем только там, где стенка срезает гору; где стенка выше, гора как есть.
                     h = Math.Max(h, limit < peak + PeakWallRound ? CampaignNoise.SmoothMin(peak, limit, PeakWallRound) : peak);
