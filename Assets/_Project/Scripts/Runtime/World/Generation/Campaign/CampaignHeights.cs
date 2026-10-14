@@ -40,6 +40,8 @@ namespace Emberhold.World.Generation
         // к обрезу мира, а заканчивались седловинами.
         private const float ChainLift = 0.35f;
         private const float ChainLiftWidth = 40f;
+        // Доля высоты гребней, выше которой поднятые у края долины не встают (седловины под снеговой линией).
+        private const float ChainSaddle = 0.42f;
         // Вершины цепи вдоль краёв: шаг вдоль края, отступ от края (от RingInsetMin до +RingInsetSpread) и номер,
         // с которого считаются их зёрна шума (после пиков карты).
         private const float RingSpacing = 36f;
@@ -382,7 +384,8 @@ namespace Emberhold.World.Generation
             var liftReach = edge + (noise.Fbm(x * 0.02f + 19f, z * 0.02f + 5f, 2) - 0.5f) * 24f;
             var lift = ChainLift * (1f - CampaignNoise.SmoothStep(0f, ChainLiftWidth, liftReach))
                        * (0.5f + noise.Fbm(x * 0.015f + 3f, z * 0.015f + 77f, 2));
-            shape = lift + (1f - lift) * shape;
+            // Поднятое дно не выше седловины ChainSaddle: она ниже снеговой линии, снег остаётся на гребнях и вершинах.
+            shape = Math.Max(shape, Math.Min(lift + (1f - lift) * shape, ChainSaddle));
             // Ширина горной полосы у края гуляет, чтобы её граница не шла по линейке.
             var reach = edge + (noise.Fbm(x * 0.012f + 51f, z * 0.012f - 17f, 3) - 0.5f) * 40f;
             var band = CampaignNoise.SmoothStep(ChainBandNear, ChainBandNear + 25f, reach)
