@@ -39,6 +39,7 @@ namespace Emberhold.World.Meshing
         private readonly List<Vector3> normals = new();
         private readonly List<Color> colors = new();
         private readonly List<int> triangles = new();
+        private readonly List<int> triangleParts = new();
         private readonly List<Vector3> points = new();
         private readonly List<int> faces = new();
 
@@ -47,6 +48,9 @@ namespace Emberhold.World.Meshing
         /// Функция цвета получает уже перенесённую точку.
         /// </summary>
         public Matrix4x4 Transform { get; set; } = Matrix4x4.identity;
+
+        /// <summary>Номер части, к которой относятся следующие тела: по нему <see cref="ToMeshes"/> режет сетку на части.</summary>
+        public int Part { get; set; }
 
         /// <summary>Усечённый конус (ствол, полоска) от base вверх на height; jitter двигает точки только по X и Z.</summary>
         public void AddPrism(int sides, Vector3 basePoint, float bottomRadius, float topRadius, float height, float jitter,
@@ -233,6 +237,45 @@ namespace Emberhold.World.Meshing
             return mesh;
         }
 
+        /// <summary>
+        /// Сетка по частям: части i достаются грани, добавленные при Part == i, их вершины сдвинуты на −pivots[i]
+        /// (точка вращения части становится началом координат). Пустая часть — пустая сетка.
+        /// </summary>
+        public Mesh[] ToMeshes(string name, IReadOnlyList<Vector3> pivots)
+        {
+            var result = new Mesh[pivots.Count];
+            for (var part = 0; part < pivots.Count; part++)
+            {
+                var partVertices = new List<Vector3>();
+                var partNormals = new List<Vector3>();
+                var partColors = new List<Color>();
+                var partTriangles = new List<int>();
+                for (var t = 0; t < triangleParts.Count; t++)
+                {
+                    if (triangleParts[t] != part)
+                        continue;
+                    for (var k = 0; k < 3; k++)
+                    {
+                        var index = triangles[t * 3 + k];
+                        partTriangles.Add(partVertices.Count);
+                        partVertices.Add(vertices[index] - pivots[part]);
+                        partNormals.Add(normals[index]);
+                        partColors.Add(colors[index]);
+                    }
+                }
+                var mesh = new Mesh { name = $"{name} {part}" };
+                if (partVertices.Count > 65535)
+                    mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                mesh.SetVertices(partVertices);
+                mesh.SetNormals(partNormals);
+                mesh.SetColors(partColors);
+                mesh.SetTriangles(partTriangles, 0);
+                mesh.RecalculateBounds();
+                result[part] = mesh;
+            }
+            return result;
+        }
+
         /// <summary>Грани тела из points и faces; нормаль каждой грани смотрит от inside наружу.</summary>
         private void Emit(Vector3 inside, System.Func<Vector3, Color> color)
         {
@@ -256,6 +299,7 @@ namespace Emberhold.World.Meshing
                     (b, c) = (c, b);
                     normal = -normal;
                 }
+                triangleParts.Add(Part);
                 foreach (var p in new[] { a, b, c })
                 {
                     triangles.Add(vertices.Count);

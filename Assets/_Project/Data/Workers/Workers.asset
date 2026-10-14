@@ -18,7 +18,7 @@ MonoBehaviour:
   searchLimit: 4096
   reachUp: 3
   reachDown: 2
-  pickUpSeconds: 0.4
+  pickUpSeconds: 0.7
   buildSeconds: 1.5
   digHitSeconds: 1
   digHitDamage: 25

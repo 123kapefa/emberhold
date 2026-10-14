@@ -55,45 +55,65 @@ namespace Emberhold.Gameplay.Workers
         public static void Add(FacetedMesh mesh, Matrix4x4 scale, WorkerLook look)
         {
             var gear = new Gear(mesh, scale);
+            // Каждая вещь — в своей части: в руке — в предплечье, шапка — в голове, остальное — в корпусе.
+            void On(WorkerPart part) => mesh.Part = (int)part;
             switch (look.Role)
             {
                 case WorkerRole.Woodcutter:
+                    On(WorkerPart.ForearmRight);
                     Axe(gear);
+                    On(WorkerPart.Torso);
                     RopeCoil(gear);
                     break;
                 case WorkerRole.Digger:
+                    On(WorkerPart.Torso);
                     LeatherApron(gear);
                     MinerPouch(gear);
+                    On(WorkerPart.ForearmRight);
                     Pickaxe(gear);
                     break;
                 case WorkerRole.Builder:
+                    On(WorkerPart.Torso);
                     Planks(gear);
                     ToolBag(gear);
+                    On(WorkerPart.ForearmRight);
                     Hammer(gear);
                     break;
                 case WorkerRole.Stoker:
+                    On(WorkerPart.Torso);
                     Logs(gear);
+                    On(WorkerPart.Head);
                     StockingCap(gear, look.Hood);
+                    On(WorkerPart.ForearmRight);
                     Poker(gear);
                     break;
                 case WorkerRole.Swordsman:
+                    On(WorkerPart.Torso);
                     MailShirt(gear);
-                    Helmet(gear);
                     Shield(gear, look.Hood);
                     SheathedSword(gear);
+                    On(WorkerPart.Head);
+                    Helmet(gear);
                     break;
                 case WorkerRole.Archer:
+                    On(WorkerPart.Torso);
                     Quiver(gear);
+                    On(WorkerPart.ForearmLeft);
                     Bracer(gear, -1f);
-                    ArcherCap(gear);
                     Bow(gear);
+                    On(WorkerPart.Head);
+                    ArcherCap(gear);
                     break;
                 case WorkerRole.Spearman:
+                    On(WorkerPart.Torso);
                     Gambeson(gear);
+                    On(WorkerPart.Head);
                     KettleHat(gear);
+                    On(WorkerPart.ForearmRight);
                     Spear(gear);
                     break;
             }
+            mesh.Part = (int)WorkerPart.Torso;
             mesh.Transform = scale;
         }
 
@@ -420,6 +440,7 @@ namespace Emberhold.Gameplay.Workers
         {
             foreach (var side in new[] { -1f, 1f })
             {
+                g.OnPart(WorkerMeshBuilder.Side(side, WorkerPart.UpperArmLeft, WorkerPart.UpperArmRight));
                 g.Tube(new[]
                 {
                     new Vector3(side * 0.11f, 0.695f, 0f), new Vector3(side * 0.152f, 0.672f, -0.004f), new Vector3(side * 0.17f, 0.62f, -0.01f),
@@ -430,6 +451,7 @@ namespace Emberhold.Gameplay.Workers
                     new Vector2(0.036f + extra, 0.036f + extra), new Vector2(0.032f + extra, 0.033f + extra),
                 }, WorkerMeshBuilder.LimbSides, color);
             }
+            g.OnPart(WorkerPart.Torso);
         }
 
         private static void Belt(Gear g, float rx, float rz)
@@ -521,6 +543,8 @@ namespace Emberhold.Gameplay.Workers
                 this.mesh = mesh;
                 this.scale = scale;
             }
+
+            public void OnPart(WorkerPart part) => mesh.Part = (int)part;
 
             public void Rod(Vector3 from, Vector3 to, float radius, Color color, int sides = 6)
             {

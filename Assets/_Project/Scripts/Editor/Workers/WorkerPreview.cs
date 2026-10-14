@@ -7,28 +7,31 @@ using UnityEngine;
 namespace Emberhold.Editor.Workers
 {
     /// <summary>
-    /// Отрисовка рабочего вне сцены (PreviewRenderUtility): сетка из WorkerMeshBuilder по облику из WorkerSettings и роли,
-    /// орбитальная камера вокруг точки Pivot, по желанию — рёбра граней и пол-сетка в блоках. В режиме витрины рядом
-    /// стоят все роли одного и того же человека. Окно WorkerViewerWindow
-    /// показывает её и крутит мышью, тест рисует в текстуру.
+    /// Отрисовка рабочего вне сцены (PreviewRenderUtility): части из WorkerMeshBuilder.BuildParts по облику из
+    /// WorkerSettings и роли, поза — из анимации Clip, ноша на плече — Carry. Орбитальная камера вокруг точки Pivot,
+    /// по желанию — рёбра граней и пол-сетка в блоках. В режиме витрины рядом стоят все роли одного и того же человека.
+    /// Окно WorkerViewerWindow показывает её и крутит мышью, тест рисует в текстуру.
     /// </summary>
     public sealed class WorkerPreview : IDisposable
     {
         public enum BeardMode { ByLook, On, Off }
 
         private const string WorkerMaterialPath = "Assets/_Project/Art/Materials/Workers/Worker.mat";
+        private const float LineupSpacing = 0.9f;
+        /// <summary>Пауза между повторами разовой анимации, секунды.</summary>
+        private const float OneShotPause = 0.5f;
         private static readonly Color Background = new(0.32f, 0.34f, 0.36f);
 
         private readonly PreviewRenderUtility preview = new();
         private readonly Material workerMaterial;
         private readonly Material wireMaterial;
         private readonly Material gridMaterial;
-        private const float LineupSpacing = 0.9f;
-
-        private readonly List<Mesh> lineup = new();
-        private Mesh body;
-        private Mesh wire;
+        private readonly List<Figure> figures = new();
+        private readonly Matrix4x4[] matrices = new Matrix4x4[WorkerPose.PartCount];
         private Mesh grid;
+        private Mesh carryMesh;
+        private WorkerCarry builtCarry = (WorkerCarry)(-1);
+        private float time;
 
         public WorkerPreview()
         {
@@ -59,10 +62,29 @@ namespace Emberhold.Editor.Workers
         public bool Lineup { get; set; }
 
         /// <summary>Сколько фигур в кадре.</summary>
-        public int FigureCount => Lineup ? lineup.Count : 1;
+        public int FigureCount => figures.Count;
         public BeardMode Beard { get; set; }
         public bool Wireframe { get; set; }
         public bool ShowGrid { get; set; } = true;
+
+        /// <summary>Какая анимация играет.</summary>
+        public WorkerClip Clip { get; set; } = WorkerClip.Idle;
+
+        /// <summary>Что на плече в анимациях с ношей (нести; поднять — со второй половины; положить — до середины).</summary>
+        public WorkerCarry Carry { get; set; } = WorkerCarry.Log;
+
+        /// <summary>Скорость ходьбы и бега, блоков в секунду; 0 — по умолчанию у анимации.</summary>
+        public float MoveSpeed { get; set; }
+
+        /// <summary>Время текущей анимации, секунды.</summary>
+        public float Time
+        {
+            get => time;
+            set => time = Mathf.Max(0f, value);
+        }
+
+        /// <summary>Длина разовой анимации с паузой; у цикла — 0.</summary>
+        public float OneShotLength => WorkerAnimation.IsOneShot(Clip) ? WorkerAnimation.DefaultDuration(Clip) + OneShotPause : 0f;
 
         public float Yaw { get; set; }
         public float Pitch { get; set; }
@@ -72,8 +94,8 @@ namespace Emberhold.Editor.Workers
         /// <summary>Рост, по которому построена текущая сетка.</summary>
         public float Height { get; private set; } = 1.9f;
 
-        public int VertexCount => body != null ? body.vertexCount : 0;
-        public int TriangleCount => body != null ? body.triangles.Length / 3 : 0;
+        public int VertexCount => figures.Count > 0 ? Sum(figures[0].Parts, m => m.vertexCount) : 0;
+        public int TriangleCount => figures.Count > 0 ? Sum(figures[0].Parts, m => m.triangles.Length / 3) : 0;
 
         /// <summary>Середина ряда витрины по X, в блоках; для одной фигуры — 0.</summary>
         // Ряд слева направо в порядке ролей, если смотреть спереди (камера смотрит в −Z, поэтому +X — слева).
@@ -89,19 +111,34 @@ namespace Emberhold.Editor.Workers
             Pivot = new Vector3(0f, height * 0.55f, 0f);
         }
 
-        /// <summary>Перестроить сетку по настройкам, облику и бороде.</summary>
+        /// <summary>Продвинуть анимацию; разовая повторяется по кругу с короткой паузой.</summary>
+        public void Advance(float deltaTime)
+        {
+            time += deltaTime;
+            if (OneShotLength > 0f && time > OneShotLength)
+                time %= OneShotLength;
+        }
+
+        /// <summary>Перестроить сетки по настройкам, облику, роли и бороде.</summary>
         public void Rebuild()
         {
             DestroyMeshes();
             Height = Settings != null ? Settings.Height : 1.9f;
-            body = Hidden(WorkerMeshBuilder.Build(LookFor(Role), Height, "Worker Preview"));
-            wire = Hidden(Edges(body));
-            if (Lineup)
+            var roles = Lineup ? (WorkerRole[])Enum.GetValues(typeof(WorkerRole)) : new[] { Role };
+            for (var i = 0; i < roles.Length; i++)
             {
-                foreach (WorkerRole role in Enum.GetValues(typeof(WorkerRole)))
-                    lineup.Add(Hidden(WorkerMeshBuilder.Build(LookFor(role), Height, "Worker Preview " + role)));
+                var look = LookFor(roles[i]);
+                var parts = WorkerMeshBuilder.BuildParts(look, Height, "Worker Preview " + roles[i]);
+                var edges = new Mesh[parts.Length];
+                for (var k = 0; k < parts.Length; k++)
+                {
+                    Hidden(parts[k]);
+                    edges[k] = Hidden(Edges(parts[k]));
+                }
+                var x = Lineup ? LineupX(i, roles.Length) : 0f;
+                figures.Add(new Figure(look, parts, edges, new Vector3(x, 0f, 0f), Lineup ? i * 0.137f % 1f : 0f));
             }
-            grid = Hidden(Grid(Lineup ? Mathf.CeilToInt(lineup.Count * LineupSpacing * 0.5f) + 1 : 2));
+            grid = Hidden(Grid(Lineup ? Mathf.CeilToInt(roles.Length * LineupSpacing * 0.5f) + 1 : 2));
         }
 
         private WorkerLook LookFor(WorkerRole role)
@@ -141,39 +178,92 @@ namespace Emberhold.Editor.Workers
 
         private void RenderScene()
         {
-            if (body == null)
+            if (figures.Count == 0)
                 Rebuild();
             var rotation = Quaternion.Euler(Pitch, Yaw, 0f);
             preview.camera.transform.SetPositionAndRotation(Pivot - rotation * Vector3.forward * Distance, rotation);
-            if (Lineup)
+            var oneShot = WorkerAnimation.IsOneShot(Clip);
+            var duration = WorkerAnimation.DefaultDuration(Clip);
+            var sampleTime = oneShot ? Mathf.Clamp01(time / duration) : time;
+            var carry = CarryShown(sampleTime);
+            if (carry != builtCarry)
             {
-                for (var i = 0; i < lineup.Count; i++)
-                    preview.DrawMesh(lineup[i], Matrix4x4.Translate(new Vector3(LineupX(i, lineup.Count), 0f, 0f)), workerMaterial, 0);
+                if (carryMesh != null)
+                    UnityEngine.Object.DestroyImmediate(carryMesh);
+                carryMesh = carry == WorkerCarry.None ? null : Hidden(WorkerCarryBuilder.Build(carry, Height, "Carry Preview"));
+                builtCarry = carry;
             }
-            else
-                preview.DrawMesh(body, Matrix4x4.identity, workerMaterial, 0);
-            if (Wireframe && !Lineup)
+            foreach (var figure in figures)
             {
-                // Чуть больше тела, чтобы рёбра не тонули в гранях.
-                var center = body.bounds.center;
-                preview.DrawMesh(wire, Matrix4x4.TRS(center, Quaternion.identity, Vector3.one * 1.003f) * Matrix4x4.Translate(-center), wireMaterial, 0);
+                var motion = WorkerMotion.For(figure.Look, Height, MoveSpeed, figure.Seed);
+                var pose = WorkerAnimation.Sample(Clip, oneShot ? sampleTime : time, motion);
+                WorkerSkeleton.Evaluate(pose, Height, matrices);
+                var place = Matrix4x4.Translate(figure.Offset);
+                for (var k = 0; k < figure.Parts.Length; k++)
+                {
+                    preview.DrawMesh(figure.Parts[k], place * matrices[k], workerMaterial, 0);
+                    if (Wireframe)
+                        preview.DrawMesh(figure.Edges[k], place * matrices[k] * Matrix4x4.Scale(Vector3.one * 1.004f), wireMaterial, 0);
+                }
+                if (carryMesh != null)
+                    preview.DrawMesh(carryMesh, place * matrices[(int)WorkerPart.Torso], workerMaterial, 0);
             }
             if (ShowGrid)
                 preview.DrawMesh(grid, Matrix4x4.identity, gridMaterial, 0);
             preview.Render(true);
         }
 
+        private WorkerCarry CarryShown(float sampleTime) => Clip switch
+        {
+            WorkerClip.Carry => Carry,
+            WorkerClip.PickUp when sampleTime >= 0.5f => Carry,
+            WorkerClip.Put when sampleTime < 0.5f => Carry,
+            _ => WorkerCarry.None,
+        };
+
         private void DestroyMeshes()
         {
-            foreach (var mesh in new[] { body, wire, grid })
+            foreach (var figure in figures)
             {
-                if (mesh != null)
+                foreach (var mesh in figure.Parts)
+                    UnityEngine.Object.DestroyImmediate(mesh);
+                foreach (var mesh in figure.Edges)
                     UnityEngine.Object.DestroyImmediate(mesh);
             }
-            foreach (var mesh in lineup)
-                UnityEngine.Object.DestroyImmediate(mesh);
-            lineup.Clear();
-            body = wire = grid = null;
+            figures.Clear();
+            if (grid != null)
+                UnityEngine.Object.DestroyImmediate(grid);
+            if (carryMesh != null)
+                UnityEngine.Object.DestroyImmediate(carryMesh);
+            grid = null;
+            carryMesh = null;
+            builtCarry = (WorkerCarry)(-1);
+        }
+
+        private static int Sum(Mesh[] meshes, Func<Mesh, int> value)
+        {
+            var total = 0;
+            foreach (var mesh in meshes)
+                total += value(mesh);
+            return total;
+        }
+
+        private sealed class Figure
+        {
+            public Figure(WorkerLook look, Mesh[] parts, Mesh[] edges, Vector3 offset, float seed)
+            {
+                Look = look;
+                Parts = parts;
+                Edges = edges;
+                Offset = offset;
+                Seed = seed;
+            }
+
+            public WorkerLook Look { get; }
+            public Mesh[] Parts { get; }
+            public Mesh[] Edges { get; }
+            public Vector3 Offset { get; }
+            public float Seed { get; }
         }
 
         /// <summary>Рёбра треугольников сетки линиями, каждое ребро один раз.</summary>

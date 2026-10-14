@@ -33,7 +33,7 @@ namespace Emberhold.Gameplay.Workers
         [Header("Работа")]
         [Tooltip("Сколько секунд рабочий поднимает ресурс с земли.")]
         [Range(0f, 5f)]
-        [SerializeField] private float pickUpSeconds = 0.4f;
+        [SerializeField] private float pickUpSeconds = 0.7f;
         [Tooltip("Сколько секунд рабочий ставит блок, когда всё принесено.")]
         [Range(0f, 10f)]
         [SerializeField] private float buildSeconds = 1.5f;

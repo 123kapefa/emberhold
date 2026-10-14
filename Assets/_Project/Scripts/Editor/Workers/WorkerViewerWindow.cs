@@ -7,8 +7,8 @@ namespace Emberhold.Editor.Workers
     /// <summary>
     /// Окно Emberhold → Worker Viewer: рабочий на нейтральном фоне без сцены и Play. Левая кнопка мыши — вращение
     /// вокруг, колесо — приближение, средняя или правая — сдвиг. Роль — из списка или стрелками ◀ ▶ (и клавишами ← →),
-    /// «Все роли» ставит их в ряд. Облик — по номеру рабочего из WorkerSettings; после перекомпиляции кода и правки
-    /// настроек модель перестраивается сама.
+    /// «Все роли» ставит их в ряд. Третья строка — анимация: выбор, ▶/❚❚ (пробел), скорость, ноша, ползунок времени.
+    /// Облик — по номеру рабочего из WorkerSettings; после перекомпиляции кода и правки настроек модель перестраивается сама.
     /// </summary>
     public sealed class WorkerViewerWindow : EditorWindow
     {
@@ -22,9 +22,14 @@ namespace Emberhold.Editor.Workers
         [SerializeField] private bool wireframe;
         [SerializeField] private bool showGrid = true;
         [SerializeField] private bool autoTurn;
+        [SerializeField] private WorkerClip clip = WorkerClip.Idle;
+        [SerializeField] private WorkerCarry carry = WorkerCarry.Log;
+        [SerializeField] private bool playing = true;
+        [SerializeField] private float playbackSpeed = 1f;
 
         private WorkerPreview preview;
         private int settingsDirtyCount = -1;
+        private (WorkerSettings, int, WorkerRole, bool, WorkerPreview.BeardMode, int) builtKey;
         private double lastTime;
 
         [MenuItem("Emberhold/Worker Viewer")]
@@ -62,6 +67,11 @@ namespace Emberhold.Editor.Workers
             if (autoTurn)
             {
                 preview.Yaw += AutoTurnDegreesPerSecond * dt;
+                Repaint();
+            }
+            if (playing)
+            {
+                preview.Advance(dt * playbackSpeed);
                 Repaint();
             }
         }
@@ -116,6 +126,30 @@ namespace Emberhold.Editor.Workers
                 showGrid = GUILayout.Toggle(showGrid, "Пол", EditorStyles.toolbarButton);
                 GUILayout.FlexibleSpace();
             }
+            // Третья строка — анимация.
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+            {
+                GUILayout.Label("Анимация", GUILayout.Width(62f));
+                var newClip = (WorkerClip)EditorGUILayout.EnumPopup(clip, EditorStyles.toolbarPopup, GUILayout.Width(90f));
+                if (newClip != clip)
+                {
+                    clip = newClip;
+                    preview.Time = 0f;
+                }
+                if (GUILayout.Button(playing ? "❚❚" : "▶", EditorStyles.toolbarButton, GUILayout.Width(26f)))
+                    playing = !playing;
+                GUILayout.Label("×", GUILayout.Width(12f));
+                playbackSpeed = EditorGUILayout.Slider(playbackSpeed, 0.1f, 2f, GUILayout.Width(130f));
+                GUILayout.Label("Ноша", GUILayout.Width(36f));
+                carry = (WorkerCarry)EditorGUILayout.EnumPopup(carry, EditorStyles.toolbarPopup, GUILayout.Width(80f));
+                var length = preview.OneShotLength > 0f ? preview.OneShotLength : 4f;
+                var scrub = EditorGUILayout.Slider(preview.Time % length, 0f, length, GUILayout.MinWidth(120f));
+                if (!Mathf.Approximately(scrub, preview.Time % length))
+                {
+                    preview.Time = scrub;
+                    playing = false;
+                }
+            }
             if (EditorGUI.EndChangeCheck())
             {
                 Apply();
@@ -128,7 +162,7 @@ namespace Emberhold.Editor.Workers
             if (Event.current.type == EventType.Repaint)
                 preview.Draw(rect);
             GUI.Label(new Rect(rect.x + 6f, rect.yMax - 20f, rect.width, 18f),
-                "ЛКМ — вращать, колесо — ближе/дальше, СКМ/ПКМ — сдвиг, ← → — роль", EditorStyles.whiteMiniLabel);
+                "ЛКМ — вращать, колесо — ближе/дальше, СКМ/ПКМ — сдвиг, ← → — роль, пробел — пауза", EditorStyles.whiteMiniLabel);
             if (!lineup)
                 GUI.Label(new Rect(rect.x + 6f, rect.y + 4f, rect.width, 18f), RoleName(role), EditorStyles.whiteLargeLabel);
         }
@@ -142,8 +176,17 @@ namespace Emberhold.Editor.Workers
             preview.Beard = beard;
             preview.Wireframe = wireframe;
             preview.ShowGrid = showGrid;
-            preview.Rebuild();
-            settingsDirtyCount = settings != null ? EditorUtility.GetDirtyCount(settings) : -1;
+            preview.Clip = clip;
+            preview.Carry = carry;
+            // Сетки перестраиваются, только если поменялось то, из чего они строятся; анимация и ноша — без перестройки.
+            var dirty = settings != null ? EditorUtility.GetDirtyCount(settings) : -1;
+            var key = (settings, lookIndex, role, lineup, beard, dirty);
+            if (!key.Equals(builtKey) || preview.FigureCount == 0)
+            {
+                preview.Rebuild();
+                builtKey = key;
+            }
+            settingsDirtyCount = dirty;
         }
 
         private void HandleMouse(Rect rect)
@@ -188,6 +231,12 @@ namespace Emberhold.Editor.Workers
         private void HandleKeys()
         {
             var e = Event.current;
+            if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Space)
+            {
+                playing = !playing;
+                e.Use();
+                return;
+            }
             if (lineup || e.type != EventType.KeyDown || (e.keyCode != KeyCode.LeftArrow && e.keyCode != KeyCode.RightArrow))
                 return;
             role = Step(role, e.keyCode == KeyCode.LeftArrow ? -1 : 1);

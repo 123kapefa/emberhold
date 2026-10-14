@@ -24,7 +24,21 @@ namespace Emberhold.Gameplay.Workers
         internal static readonly Color Buckle = new(0.784f, 0.635f, 0.29f);
         internal static readonly Color Eyes = new(0.133f, 0.102f, 0.078f);
 
-        public static Mesh Build(WorkerLook look, float height, string name = "Worker")
+        /// <summary>Рабочий одной сеткой, в позе стоя.</summary>
+        public static Mesh Build(WorkerLook look, float height, string name = "Worker") => BuildFaceted(look, height).ToMesh(name);
+
+        /// <summary>
+        /// Рабочий по частям <see cref="WorkerPart"/> для анимации: у каждой части начало координат — её точка вращения
+        /// (<see cref="WorkerSkeleton.Pivot"/>). Собранные позой покоя, части дают ту же сетку, что <see cref="Build"/>.
+        /// </summary>
+        public static Mesh[] BuildParts(WorkerLook look, float height, string name = "Worker") =>
+            BuildFaceted(look, height).ToMeshes(name, WorkerSkeleton.PivotsFor(height));
+
+        internal static int Part(WorkerPart part) => (int)part;
+
+        internal static WorkerPart Side(float side, WorkerPart left, WorkerPart right) => side < 0f ? left : right;
+
+        private static FacetedMesh BuildFaceted(WorkerLook look, float height)
         {
             var mesh = new FacetedMesh();
             var scale = Matrix4x4.Scale(Vector3.one * height);
@@ -40,6 +54,7 @@ namespace Emberhold.Gameplay.Workers
             foreach (var side in new[] { -1f, 1f })
             {
                 var x = side * 0.058f;
+                mesh.Part = Part(Side(side, WorkerPart.ShinLeft, WorkerPart.ShinRight));
                 mesh.AddLoft(new[]
                 {
                     new LoftRing(0f, 0.036f, 0.062f, 0.022f, x), new LoftRing(0.03f, 0.038f, 0.066f, 0.024f, x),
@@ -47,13 +62,16 @@ namespace Emberhold.Gameplay.Workers
                 }, LimbSides, Paint(Boots));
                 // Отворот голенища.
                 mesh.AddLoft(new[] { new LoftRing(0.112f, 0.039f, 0.041f, 0f, x), new LoftRing(0.14f, 0.04f, 0.043f, 0f, x) }, LimbSides, Paint(Leather));
-                mesh.AddLoft(new[]
-                {
-                    new LoftRing(0.12f, 0.031f, 0.032f, 0f, x), new LoftRing(0.2f, 0.035f, 0.04f, -0.006f, x),
-                    new LoftRing(0.265f, 0.031f, 0.033f, 0.002f, x), new LoftRing(0.36f, 0.046f, 0.05f, 0.004f, x * 0.95f),
-                    new LoftRing(0.44f, 0.054f, 0.055f, 0f, x * 0.85f),
-                }, LimbSides, Paint(Pants));
+                // Голень до колена, колено — шар, чтобы сгиб не разрывал штанину; выше — бедро.
+                var knee = new LoftRing(0.265f, 0.031f, 0.033f, 0.002f, x);
+                mesh.AddLoft(new[] { new LoftRing(0.12f, 0.031f, 0.032f, 0f, x), new LoftRing(0.2f, 0.035f, 0.04f, -0.006f, x), knee },
+                    LimbSides, Paint(Pants));
+                mesh.AddBlob(new Vector3(x, 0.265f, 0.002f), new Vector3(0.032f, 0.026f, 0.034f), 1, 0f, null, Paint(Pants));
+                mesh.Part = Part(Side(side, WorkerPart.ThighLeft, WorkerPart.ThighRight));
+                mesh.AddLoft(new[] { knee, new LoftRing(0.36f, 0.046f, 0.05f, 0.004f, x * 0.95f), new LoftRing(0.44f, 0.054f, 0.055f, 0f, x * 0.85f) },
+                    LimbSides, Paint(Pants));
             }
+            mesh.Part = Part(WorkerPart.Torso);
 
             // Рубаха: подол расходится, бёдра, талия уже, грудь, покатые плечи, ворот у шеи.
             mesh.AddLoft(new[]
@@ -75,20 +93,26 @@ namespace Emberhold.Gameplay.Workers
             // Руки начинаются внутри плеч, под пелериной: локоть чуть назад, предплечье вперёд; плоская кисть с большим пальцем.
             foreach (var side in new[] { -1f, 1f })
             {
+                // Плечо до локтя и шар локтя — часть плеча, ниже — предплечье.
+                mesh.Part = Part(Side(side, WorkerPart.UpperArmLeft, WorkerPart.UpperArmRight));
+                var elbow = new Vector3(side * 0.175f, 0.55f, -0.008f);
                 mesh.AddTube(new[]
                 {
-                    new Vector3(side * 0.11f, 0.695f, 0f), new Vector3(side * 0.152f, 0.672f, -0.004f), new Vector3(side * 0.17f, 0.62f, -0.01f),
-                    new Vector3(side * 0.175f, 0.55f, -0.008f), new Vector3(side * 0.178f, 0.48f, 0.018f), new Vector3(side * 0.178f, 0.42f, 0.04f),
-                }, new[]
-                {
-                    new Vector2(0.034f, 0.034f), new Vector2(0.043f, 0.041f), new Vector2(0.036f, 0.036f),
-                    new Vector2(0.031f, 0.032f), new Vector2(0.033f, 0.031f), new Vector2(0.028f, 0.027f),
-                }, LimbSides, tunic);
+                    new Vector3(side * 0.11f, 0.695f, 0f), new Vector3(side * 0.152f, 0.672f, -0.004f), new Vector3(side * 0.17f, 0.62f, -0.01f), elbow,
+                }, new[] { new Vector2(0.034f, 0.034f), new Vector2(0.043f, 0.041f), new Vector2(0.036f, 0.036f), new Vector2(0.031f, 0.032f) },
+                    LimbSides, tunic);
+                mesh.AddBlob(elbow, new Vector3(0.031f, 0.03f, 0.032f), 1, 0f, null, rolledSleeves ? skin : tunic);
                 if (rolledSleeves)
                 {
                     // Рукав закатан валиком над локтем, ниже — голое предплечье.
                     mesh.AddTube(new[] { new Vector3(side * 0.171f, 0.6f, -0.01f), new Vector3(side * 0.174f, 0.565f, -0.009f) },
                         new[] { new Vector2(0.04f, 0.04f), new Vector2(0.039f, 0.039f) }, LimbSides, Paint(look.Tunic * 0.8f));
+                }
+                mesh.Part = Part(Side(side, WorkerPart.ForearmLeft, WorkerPart.ForearmRight));
+                mesh.AddTube(new[] { elbow, new Vector3(side * 0.178f, 0.48f, 0.018f), new Vector3(side * 0.178f, 0.42f, 0.04f) },
+                    new[] { new Vector2(0.031f, 0.032f), new Vector2(0.033f, 0.031f), new Vector2(0.028f, 0.027f) }, LimbSides, tunic);
+                if (rolledSleeves)
+                {
                     mesh.AddTube(new[]
                     {
                         new Vector3(side * 0.174f, 0.566f, -0.009f), new Vector3(side * 0.175f, 0.55f, -0.008f),
@@ -110,6 +134,7 @@ namespace Emberhold.Gameplay.Workers
             }
 
             // Голова: шея, плавно переходящая в челюсть, скулы, лоб, затылок, макушка.
+            mesh.Part = Part(WorkerPart.Head);
             mesh.AddLoft(new[]
             {
                 new LoftRing(0.77f, 0.042f, 0.042f), new LoftRing(0.8f, 0.043f, 0.045f, 0.006f),
@@ -171,6 +196,7 @@ namespace Emberhold.Gameplay.Workers
             }
             mesh.Transform = scale;
 
+            mesh.Part = Part(WorkerPart.Torso);
             // Капюшон откинут: валик вокруг шеи сзади и пустой мешок капюшона по спине, изнанка темнее;
             // пелерина на плечах закрывает начало рук.
             var lining = Paint(look.Hood * 0.45f);
@@ -193,7 +219,8 @@ namespace Emberhold.Gameplay.Workers
 
             WorkerGearBuilder.Add(mesh, scale, look);
             mesh.Transform = Matrix4x4.identity;
-            return mesh.ToMesh(name);
+            mesh.Part = Part(WorkerPart.Torso);
+            return mesh;
         }
 
         private static void AddOpenHand(FacetedMesh mesh, float side, Func<Vector3, Color> skin)

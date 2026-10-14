@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Emberhold.Gameplay.Building;
+using Emberhold.Gameplay.DayNight;
 using Emberhold.Gameplay.Items;
 using Emberhold.Gameplay.Lighting;
 using Emberhold.Gameplay.Trees;
@@ -15,7 +16,8 @@ namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
     /// Отряд рабочих в сцене: при старте ставит их у первого источника света, каждый кадр обновляет задачи
-    /// и рабочих, рисует рабочих (гранёный человек из WorkerMeshBuilder, над головой — кубик ноши), рамки чертежей и приказов копать и рубить.
+    /// и рабочих, рисует рабочих (гранёный человек из частей WorkerMeshBuilder, анимация по состоянию из WorkerAnimation,
+    /// ноша на плече из WorkerCarryBuilder), рамки чертежей и приказов копать и рубить.
     /// Чертежи и приказы ставит игрок инструментами BlockEditController (4 и 5). Топливо для огней отряд заводит сам:
     /// у каждого огня, в котором есть место хотя бы под одно полено, висит задача принести поленья.
     /// Урон блоков и устойчивость общие с BlockEditController, ресурсы на земле — из DroppedItemsView.
@@ -23,6 +25,15 @@ namespace Emberhold.Gameplay.Workers
     public sealed class WorkerCrew : MonoBehaviour
     {
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+
+        /// <summary>Как быстро рабочий разворачивается, градусов в секунду.</summary>
+        private const float TurnDegreesPerSecond = 420f;
+
+        /// <summary>Ближе скольких блоков от огня ночью свободный рабочий греется.</summary>
+        private const float WarmDistance = 4.5f;
+
+        /// <summary>Через сколько секунд у огня рабочий садится.</summary>
+        private const float SitAfterSeconds = 8f;
 
         [SerializeField] private WorkerSettings settings;
         [Tooltip("Сколько стоят блоки по чертежу.")]
@@ -34,11 +45,11 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private BuildZone buildZone;
         [Tooltip("Деревья для приказа рубить. Если пусто — рубить нечего.")]
         [SerializeField] private ForestView forest;
+        [Tooltip("Смена суток: ночью свободные рабочие греются и сидят у огня. Если пусто — ищется в сцене.")]
+        [SerializeField] private DayNightCycle dayNight;
 
         [Header("Вид")]
         [SerializeField] private Material workerMaterial;
-        [Tooltip("Материал кубика ноши над головой.")]
-        [SerializeField] private Material carryMaterial;
         [Tooltip("Материал рамок чертежей и приказов (Unlit, цвет задаётся ниже).")]
         [SerializeField] private Material outlineMaterial;
         [SerializeField] private Color blueprintColor = new(0.35f, 0.75f, 1f);
@@ -51,6 +62,8 @@ namespace Emberhold.Gameplay.Workers
         private readonly Dictionary<LightSource, FuelTarget> fuelTargets = new();
         private readonly List<LightSource> goneFires = new();
         private readonly LightZone litZone = new();
+        private readonly Dictionary<WorkerCarry, Mesh> carryMeshes = new();
+        private readonly Matrix4x4[] partMatrices = new Matrix4x4[WorkerPose.PartCount];
         private WorkerContext context;
 
         private readonly List<Vector3> lineVertices = new();
@@ -78,6 +91,8 @@ namespace Emberhold.Gameplay.Workers
             context = new WorkerContext(worldView.World, Orders, droppedItems.Items, editor.Damage, editor.Stability, settings, IsLit,
                 () => buildZone == null || litZone.Count > 0, editor.OnWorldChanged, forest != null ? forest.Forest : null);
             Orders.Cancelled += OnOrderCancelled;
+            if (dayNight == null)
+                dayNight = FindAnyObjectByType<DayNightCycle>();
             blueprintLines = CreateLines("Blueprints", blueprintColor);
             digLines = CreateLines("Dig Orders", digOrderColor);
             UpdateLight();
@@ -91,8 +106,11 @@ namespace Emberhold.Gameplay.Workers
             {
                 if (visual.Body != null)
                     Destroy(visual.Body.gameObject);
-                Destroy(visual.Mesh);
+                foreach (var mesh in visual.Meshes)
+                    Destroy(mesh);
             }
+            foreach (var mesh in carryMeshes.Values)
+                Destroy(mesh);
             DestroyLines(blueprintLines);
             DestroyLines(digLines);
         }
@@ -115,29 +133,127 @@ namespace Emberhold.Gameplay.Workers
             if (context == null)
                 return;
             var space = worldView.transform;
+            var deltaTime = Time.deltaTime;
+            var night = dayNight != null && dayNight.IsNight;
             for (var i = 0; i < workers.Count; i++)
-            {
-                var worker = workers[i];
-                var visual = visuals[i];
-                var body = visual.Body;
-                var carry = visual.Carry;
-                // Лицом туда, куда идёт, а за работой — к задаче.
-                var look = worker.State == WorkerState.Working && worker.Order != null
-                    ? worker.Order.Cell + new Vector3(0.5f, 0f, 0.5f) - worker.Position
-                    : worker.Position - visual.LastPosition;
-                look.y = 0f;
-                if (look.sqrMagnitude > 1e-6f)
-                    visual.Yaw = Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg;
-                visual.LastPosition = worker.Position;
-                // Сетка в блоках, ноги в начале координат: стоит на верхе столбца.
-                body.SetPositionAndRotation(space.TransformPoint(worker.Position), space.rotation * Quaternion.Euler(0f, visual.Yaw, 0f));
-                body.localScale = space.lossyScale;
-                carry.gameObject.SetActive(worker.Carrying != null);
-                // Ноша того же цвета, что кучка ресурса: поленья не спутать с камнем.
-                if (worker.Carrying is { } item && droppedItems.MaterialFor(item.ItemId) is { } material && carry.sharedMaterial != material)
-                    carry.sharedMaterial = material;
-            }
+                Animate(workers[i], visuals[i], space, deltaTime, night);
             UpdateOrderLines();
+        }
+
+        /// <summary>Выбрать анимацию по состоянию рабочего, повернуть его и расставить части по позе.</summary>
+        private void Animate(Worker worker, WorkerVisual visual, Transform space, float deltaTime, bool night)
+        {
+            var move = worker.Position - visual.LastPosition;
+            move.y = 0f;
+            visual.LastPosition = worker.Position;
+            var speed = deltaTime > 0f ? move.magnitude / deltaTime : 0f;
+            visual.Speed = Mathf.Lerp(visual.Speed, speed, 1f - Mathf.Exp(-10f * deltaTime));
+            if (worker.State != visual.LastState)
+            {
+                visual.LastState = worker.State;
+                visual.StateTime = 0f;
+            }
+            visual.StateTime += deltaTime;
+
+            // Куда смотреть: за работой — на задачу, в пути — по ходу, ночью без дела — на огонь.
+            var fire = NearestFire(worker.Position);
+            var warming = worker.State == WorkerState.Idle && night && fire.HasValue && visual.Speed < 0.3f;
+            Vector3? look = null;
+            if (worker.State == WorkerState.Working && worker.Order != null)
+                look = worker.Order.Cell + new Vector3(0.5f, 0f, 0.5f) - worker.Position;
+            else if (move.sqrMagnitude > 1e-6f)
+                look = move;
+            else if (warming)
+                look = fire.Value - worker.Position;
+            var turning = false;
+            if (look is { } direction && new Vector2(direction.x, direction.z).sqrMagnitude > 1e-6f)
+            {
+                var target = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
+                visual.Yaw = Mathf.MoveTowardsAngle(visual.Yaw, target, TurnDegreesPerSecond * deltaTime);
+                turning = Mathf.Abs(Mathf.DeltaAngle(visual.Yaw, target)) > 10f;
+            }
+
+            visual.NightIdleTime = warming ? visual.NightIdleTime + deltaTime : 0f;
+            var animator = visual.Animator;
+            switch (worker.State)
+            {
+                case WorkerState.Fleeing:
+                    animator.Play(visual.StateTime < WorkerAnimation.DefaultDuration(WorkerClip.Startle) ? WorkerClip.Startle : WorkerClip.Run);
+                    break;
+                case WorkerState.PickingUp:
+                    animator.Play(WorkerClip.PickUp, settings.PickUpSeconds);
+                    break;
+                case WorkerState.Working when worker.Order != null && worker.Order.Kind == WorkKind.Fuel:
+                    animator.Play(WorkerClip.Put);
+                    break;
+                case WorkerState.Working when worker.Order != null && worker.Order.Kind == WorkKind.Build:
+                    animator.Play(WorkerClip.Place, settings.BuildSeconds);
+                    break;
+                case WorkerState.Working:
+                    // Удары ролей (рубить, копать) — отдельной задачей; пока каждый удар — наклон «поставить».
+                    animator.Play(WorkerClip.Place, settings.DigHitSeconds);
+                    if (animator.Progress >= 1f)
+                        animator.Restart();
+                    break;
+                default:
+                    if (visual.Speed > 0.3f)
+                        animator.Play(worker.Carrying != null ? WorkerClip.Carry : WorkerClip.Walk);
+                    else if (turning)
+                        animator.Play(WorkerClip.Turn);
+                    else if (warming)
+                        animator.Play(visual.NightIdleTime > SitAfterSeconds ? WorkerClip.Sit : WorkerClip.Warm);
+                    else
+                        animator.Play(worker.Carrying != null ? WorkerClip.Carry : WorkerClip.Idle);
+                    break;
+            }
+            var pose = animator.Update(deltaTime, WorkerMotion.For(visual.Look, settings.Height, visual.Speed, visual.Seed));
+            WorkerSkeleton.Evaluate(pose, settings.Height, partMatrices);
+
+            // Сетка в блоках, ноги в начале координат: стоит на верхе столбца.
+            var body = visual.Body;
+            body.SetPositionAndRotation(space.TransformPoint(worker.Position), space.rotation * Quaternion.Euler(0f, visual.Yaw, 0f));
+            body.localScale = space.lossyScale;
+            for (var k = 0; k < visual.Parts.Length; k++)
+                visual.Parts[k].SetLocalPositionAndRotation(partMatrices[k].GetColumn(3), partMatrices[k].rotation);
+
+            // Ноша на плече — по тому, что несут; двигается вместе с корпусом.
+            var carry = worker.Carrying is { } item ? WorkerCarryBuilder.CarryFor(item.ItemId, visual.Look.Role) : WorkerCarry.None;
+            if (carry != visual.CarryKind)
+            {
+                visual.CarryKind = carry;
+                visual.Carry.sharedMesh = carry == WorkerCarry.None ? null : CarryMesh(carry);
+            }
+            var torso = partMatrices[(int)WorkerPart.Torso];
+            visual.Carry.transform.SetLocalPositionAndRotation(torso.GetColumn(3), torso.rotation);
+        }
+
+        private Mesh CarryMesh(WorkerCarry carry)
+        {
+            if (!carryMeshes.TryGetValue(carry, out var mesh))
+                carryMeshes[carry] = mesh = WorkerCarryBuilder.Build(carry, settings.Height, "Carry " + carry);
+            return mesh;
+        }
+
+        /// <summary>Ближайший горящий огонь в WarmDistance блоках от точки (координаты мира блоков) или null.</summary>
+        private Vector3? NearestFire(Vector3 position)
+        {
+            if (buildZone == null)
+                return null;
+            Vector3? best = null;
+            var bestDistance = WarmDistance * WarmDistance;
+            foreach (var source in buildZone.Sources)
+            {
+                if (source == null || !source.IsLit)
+                    continue;
+                var local = worldView.transform.InverseTransformPoint(source.transform.position);
+                var offset = local - position;
+                offset.y = 0f;
+                if (offset.sqrMagnitude > bestDistance)
+                    continue;
+                bestDistance = offset.sqrMagnitude;
+                best = local;
+            }
+            return best;
         }
 
         /// <summary>Поставить чертёж по плану постановки или убрать уже стоящий там. true — что-то изменилось.</summary>
@@ -258,24 +374,28 @@ namespace Emberhold.Gameplay.Workers
         {
             var body = new GameObject($"Worker {index + 1}");
             body.transform.SetParent(transform, false);
-            // Облик по номеру рабочего: у каждого свои кожа, волосы и рубаха. Коллайдера нет: рабочий не мешает лучу выбора блока.
-            var mesh = WorkerMeshBuilder.Build(settings.LookFor(index), settings.Height, body.name);
-            body.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var renderer = body.AddComponent<MeshRenderer>();
+            // Облик по номеру рабочего: у каждого свои кожа, волосы и рубаха. Части двигает анимация.
+            // Коллайдеров нет: рабочий не мешает лучу выбора блока.
+            var look = settings.LookFor(index);
+            var meshes = WorkerMeshBuilder.BuildParts(look, settings.Height, body.name);
+            var parts = new Transform[meshes.Length];
+            for (var k = 0; k < meshes.Length; k++)
+                parts[k] = CreatePart(body.transform, ((WorkerPart)k).ToString(), meshes[k]);
+            var carry = CreatePart(body.transform, "Carried Item", null);
+            // Фаза анимаций своя у каждого, чтобы отряд не дышал и не шагал в такт.
+            var seed = Mathf.Repeat(index * 0.618034f, 1f);
+            return new WorkerVisual(body.transform, parts, meshes, carry.GetComponent<MeshFilter>(), look, seed, position) { Yaw = yaw };
+        }
+
+        private Transform CreatePart(Transform parent, string name, Mesh mesh)
+        {
+            var part = new GameObject(name);
+            part.transform.SetParent(parent, false);
+            part.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = part.AddComponent<MeshRenderer>();
             if (workerMaterial != null)
                 renderer.sharedMaterial = workerMaterial;
-
-            var carry = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            carry.name = "Carried Item";
-            Destroy(carry.GetComponent<Collider>());
-            carry.transform.SetParent(body.transform, false);
-            // Над головой.
-            carry.transform.localPosition = new Vector3(0f, settings.Height + 0.25f, 0f);
-            carry.transform.localScale = new Vector3(0.32f, 0.3f, 0.32f);
-            if (carryMaterial != null)
-                carry.GetComponent<MeshRenderer>().sharedMaterial = carryMaterial;
-            carry.SetActive(false);
-            return new WorkerVisual(body.transform, carry.GetComponent<MeshRenderer>(), mesh, position) { Yaw = yaw };
+            return part.transform;
         }
 
         private GameObject CreateLines(string name, Color color)
@@ -368,22 +488,44 @@ namespace Emberhold.Gameplay.Workers
 
         private sealed class WorkerVisual
         {
-            public WorkerVisual(Transform body, MeshRenderer carry, Mesh mesh, Vector3 position)
+            public WorkerVisual(Transform body, Transform[] parts, Mesh[] meshes, MeshFilter carry, WorkerLook look, float seed, Vector3 position)
             {
                 Body = body;
+                Parts = parts;
+                Meshes = meshes;
                 Carry = carry;
-                Mesh = mesh;
+                Look = look;
+                Seed = seed;
                 LastPosition = position;
             }
 
             public Transform Body { get; }
-            public MeshRenderer Carry { get; }
-            public Mesh Mesh { get; }
+
+            /// <summary>Части тела по индексу <see cref="WorkerPart"/>.</summary>
+            public Transform[] Parts { get; }
+
+            public Mesh[] Meshes { get; }
+            public MeshFilter Carry { get; }
+            public WorkerCarry CarryKind { get; set; }
+            public WorkerLook Look { get; }
+            public float Seed { get; }
+            public WorkerAnimator Animator { get; } = new();
 
             /// <summary>Куда рабочий смотрит, градусов вокруг оси Y мира блоков; держится, пока он стоит.</summary>
             public float Yaw { get; set; }
 
             public Vector3 LastPosition { get; set; }
+
+            /// <summary>Скорость по земле, блоков в секунду, сглаженная.</summary>
+            public float Speed { get; set; }
+
+            public WorkerState LastState { get; set; }
+
+            /// <summary>Сколько секунд рабочий в нынешнем состоянии.</summary>
+            public float StateTime { get; set; }
+
+            /// <summary>Сколько секунд стоит без дела у огня ночью.</summary>
+            public float NightIdleTime { get; set; }
         }
     }
 }

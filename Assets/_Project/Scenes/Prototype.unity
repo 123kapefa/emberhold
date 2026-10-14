@@ -956,7 +956,6 @@ MonoBehaviour:
   buildZone: {fileID: 1770339611}
   forest: {fileID: 1310000002}
   workerMaterial: {fileID: 2100000, guid: e92f40ea9c964ab69da7990fb50db554, type: 2}
-  carryMaterial: {fileID: 2100000, guid: 273a4ded7a59b41aea0d0162bf49b3df, type: 2}
   outlineMaterial: {fileID: 2100000, guid: 23c00fcf84bdd4e26b0b5cba1c16e61c, type: 2}
   blueprintColor: {r: 0.35, g: 0.75, b: 1, a: 1}
   digOrderColor: {r: 1, g: 0.45, b: 0.15, a: 1}
