@@ -372,8 +372,23 @@ MonoBehaviour:
   - name: Центральный пик
     points:
     - {x: 256, y: 256}
-    height: 72
+    height: 70
     radius: 45
+    teeth: 0
+  - name: Большой пик
+    points:
+    - {x: 325, y: 280}
+    height: 78
+    radius: 48
+    teeth: 0
+  - name: Зубчатый гребень
+    points:
+    - {x: 262, y: 258}
+    - {x: 292, y: 274}
+    - {x: 320, y: 279}
+    height: 64
+    radius: 16
+    teeth: 0.45
   - name: Хребет у маяка
     points:
     - {x: 300, y: 494}
@@ -381,5 +396,6 @@ MonoBehaviour:
     - {x: 496, y: 400}
     height: 64
     radius: 28
+    teeth: 0
   snowLine: 54
   treeLine: 46

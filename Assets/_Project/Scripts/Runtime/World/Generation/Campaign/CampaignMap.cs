@@ -103,6 +103,9 @@ namespace Emberhold.World.Generation
             [Tooltip("Радиус подножия в блоках: на таком расстоянии от вершины гора сходит в хребет.")]
             [Min(1f)]
             public float radius = 35f;
+            [Tooltip("Зубцы гребня: 0 — ровный, больше — острые пики с седловинами между ними.")]
+            [Range(0f, 1f)]
+            public float teeth;
 
             public CampaignPeakShape ToShape() => new()
             {
@@ -110,6 +113,7 @@ namespace Emberhold.World.Generation
                 Points = points,
                 Height = height,
                 Radius = Mathf.Max(radius, 1f),
+                Teeth = teeth,
             };
         }
 

@@ -30,6 +30,8 @@ namespace Emberhold.World.Generation
         private const float RibFrequency = 0.035f;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
+        // Частота зубцов гребня: соседние пики примерно в 1 / TeethFrequency блоков.
+        private const float TeethFrequency = 0.08f;
 
         /// <summary>Высота в блоках в углу (x, z); размер (ширина + 1) × (длина + 1).</summary>
         public readonly float[,] Heights;
@@ -353,6 +355,10 @@ namespace Emberhold.World.Generation
                 var t = 1f - d / radius;
                 // Вдоль гребня вершины то выше, то ниже, до десятой части высоты.
                 var top = Math.Max(shape.Height * (0.92f + 0.08f * noise.Fbm(x * 0.04f - seed, z * 0.04f + seed, 2)), ridge);
+                // Зубчатый гребень: острые пики «хребтового» шума с седловинами между ними.
+                var teeth = CampaignNoise.Clamp01(shape.Teeth);
+                if (teeth > 0f)
+                    top = ridge + (top - ridge) * (1f - teeth + teeth * noise.Ridged(x * TeethFrequency + seed, z * TeethFrequency - seed));
                 var body = (float)Math.Pow(t, 1.4f);
                 // Рёбра и кулуары: гребни шума с искажением, чтобы рёбра петляли, а не шли сеткой.
                 var qx = x + (noise.Fbm(x * 0.02f + seed, z * 0.02f + 7f, 3) - 0.5f) * 24f;

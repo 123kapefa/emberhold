@@ -327,6 +327,31 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void Peak_WithTeeth_IsAJaggedRidge()
+        {
+            var layout = new CampaignLayout();
+            var line = new[] { new Vector2(20f, 80f), new Vector2(140f, 80f) };
+            layout.Peaks.Add(new CampaignPeakShape { Name = "Ровный", Points = line, Height = 64f, Radius = 16f });
+            var even = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
+            layout.Peaks[0] = new CampaignPeakShape { Name = "Зубчатый", Points = line, Height = 64f, Radius = 16f, Teeth = 0.45f };
+            var jagged = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
+
+            // Вдоль гребня у зубчатого высота скачет сильнее: пики и седловины.
+            Assert.That(Spread(jagged), Is.GreaterThan(Spread(even) + 3f));
+
+            static float Spread(CampaignHeights h)
+            {
+                float min = float.MaxValue, max = float.MinValue;
+                for (var x = 30; x <= 130; x++)
+                {
+                    min = Mathf.Min(min, h.Heights[x, 80]);
+                    max = Mathf.Max(max, h.Heights[x, 80]);
+                }
+                return max - min;
+            }
+        }
+
+        [Test]
         public void CliffSnowBias_GullyAbove_RibBelow_FlatInTheMiddle()
         {
             Assert.That(TerrainGenerator.CliffSnowBias(0f), Is.EqualTo(1.5f));
@@ -378,7 +403,7 @@ namespace Emberhold.Tests.EditMode.World
             var map = AssetDatabase.LoadAssetAtPath<CampaignMap>(MapPath);
             var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>(TerrainPath);
             var layout = map.ToLayout();
-            Assert.That(layout.Peaks, Has.Count.EqualTo(2));
+            Assert.That(layout.Peaks, Has.Count.EqualTo(4));
             var ceiling = settings.SizeInChunks.y * ChunkData.Size - 2;
             foreach (var peak in layout.Peaks)
             {
@@ -456,9 +481,12 @@ namespace Emberhold.Tests.EditMode.World
                 Assert.That(heights.Heights[x, z], Is.InRange(location.FloorHeight - 3f, top + 4f), location.Name);
             }
             // Высокие горы: вершины выше снеговой линии, но в мире.
-            Assert.That(MaxAround(heights, 256, 256, 15), Is.GreaterThan(66f), "Центральный пик");
+            Assert.That(MaxAround(heights, 256, 256, 15), Is.GreaterThan(64f), "Центральный пик");
             Assert.That(MaxAround(heights, 400, 494, 15), Is.GreaterThan(58f), "Хребет у маяка");
             Assert.That(MaxAround(heights, 256, 256, 15), Is.LessThanOrEqualTo(78f));
+            // Справа от центрального — большой пик выше него, между ними зубчатый гребень выше хребта.
+            Assert.That(MaxAround(heights, 325, 280, 15), Is.GreaterThan(MaxAround(heights, 256, 256, 15)), "Большой пик");
+            Assert.That(MaxAround(heights, 292, 274, 6), Is.GreaterThan(50f), "Зубчатый гребень");
             // Восточная ветка хребта у маяка тоже под снегом, а не срезана стенкой Скалы маяка.
             Assert.That(MaxAround(heights, 496, 440, 8), Is.GreaterThan(56f), "Восточная ветка у маяка");
         }
