@@ -28,6 +28,8 @@ namespace Emberhold.World.Generation
         private const float PeakWallLow = 1.1f;
         // Частота рёбер массива: соседние рёбра примерно в 1 / RibFrequency блоков.
         private const float RibFrequency = 0.035f;
+        // На сколько блоков скруглён верх стенки массива над котловиной.
+        private const float PeakWallRound = 8f;
 
         /// <summary>Высота в блоках в углу (x, z); размер (ширина + 1) × (длина + 1).</summary>
         public readonly float[,] Heights;
@@ -216,7 +218,8 @@ namespace Emberhold.World.Generation
                     // Стенка над дном то круче, то положе (предгорья), и её верх скруглён, чтобы не было бортика.
                     var wall = CampaignNoise.Lerp(PeakWallLow, PeakWall, noise.Fbm(x * 0.03f + 61f, z * 0.03f - 17f, 3));
                     var limit = baseDistance < float.MaxValue ? terraceBase + Math.Max(baseDistance, 0f) * wall : peak;
-                    h = Math.Max(h, CampaignNoise.SmoothMin(peak, limit, 8f));
+                    // Скругляем только там, где стенка срезает гору; где стенка выше, гора как есть.
+                    h = Math.Max(h, limit < peak + PeakWallRound ? CampaignNoise.SmoothMin(peak, limit, PeakWallRound) : peak);
                 }
             }
 
@@ -336,9 +339,11 @@ namespace Emberhold.World.Generation
                     return ridge;
                 var radius = Math.Max(shape.Radius, 1f);
                 var seed = index * 41.3f;
-                // Неровное подножие: расстояние искажается шумом.
-                var wx = x + (noise.Fbm(x * 0.03f + seed, z * 0.03f, 3) - 0.5f) * radius * 0.6f;
-                var wz = z + (noise.Fbm(x * 0.03f, z * 0.03f - seed, 3) - 0.5f) * radius * 0.6f;
+                // Неровное подножие: расстояние искажается шумом. К вершине искажение сходит на нет,
+                // чтобы вершина стояла в своей точке на полной высоте.
+                var near = 1f - CampaignNoise.SmoothStep(0.65f, 0.95f, 1f - Distance(x, z) / radius);
+                var wx = x + (noise.Fbm(x * 0.03f + seed, z * 0.03f, 3) - 0.5f) * radius * 0.6f * near;
+                var wz = z + (noise.Fbm(x * 0.03f, z * 0.03f - seed, 3) - 0.5f) * radius * 0.6f * near;
                 var d = Distance(wx, wz);
                 if (d >= radius)
                     return ridge;
