@@ -500,6 +500,7 @@ namespace Emberhold.World
             {
                 Shader.SetGlobalColor(GroundRockColorId, RockColor());
                 Shader.SetGlobalTexture(GroundCliffMapId, CliffTexture());
+                Shader.SetGlobalFloat(GroundSnowLineId, SnowLine());
                 SetGroundBlend(mesh, data, groundColors);
             }
 
@@ -532,9 +533,15 @@ namespace Emberhold.World
                 : Texture2D.grayTexture;
         }
 
+        /// <summary>Снеговая линия для шейдера земли: у карты кампании своя, без карты снега нет.</summary>
+        private float SnowLine() => terrain != null && terrain.Map != null ? terrain.Map.SnowLine : NoSnow;
+
+        private const float NoSnow = 100000f;
+
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
         private static readonly int GroundCliffMapId = Shader.PropertyToID("_GroundCliffMap");
+        private static readonly int GroundSnowLineId = Shader.PropertyToID("_GroundSnowLine");
         private static readonly int GroundRockColorId = Shader.PropertyToID("_GroundRockColor");
 
         /// <summary>Материалы для подмешей: подмеш i — материал блока i + 1 (воздух не рисуется).</summary>

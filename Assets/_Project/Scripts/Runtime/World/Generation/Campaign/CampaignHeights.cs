@@ -75,19 +75,23 @@ namespace Emberhold.World.Generation
             var gorges = new PreparedGorge[layout.Gorges.Count];
             for (var i = 0; i < gorges.Length; i++)
                 gorges[i] = new PreparedGorge(layout, layout.Gorges[i], i, noise);
+            var peaks = new PreparedPeak[layout.Peaks.Count];
+            for (var i = 0; i < peaks.Length; i++)
+                peaks[i] = new PreparedPeak(layout.Peaks[i], i);
 
             Parallel.For(0, sizeZ + 1, z =>
             {
                 var floors = new float[locations.Length];
                 var distances = new float[locations.Length];
                 for (var x = 0; x <= sizeX; x++)
-                    result.Compute(layout.Ridge, layout.SmoothSurface, locations, gorges, noise, x, z, sizeX, sizeZ, maxHeight,
+                    result.Compute(layout.Ridge, layout.SmoothSurface, locations, gorges, peaks, noise, x, z, sizeX, sizeZ, maxHeight,
                         floors, distances);
             });
             return result;
         }
 
-        private void Compute(CampaignRidge ridge, bool smooth, PreparedLocation[] locations, PreparedGorge[] gorges, CampaignNoise noise,
+        private void Compute(CampaignRidge ridge, bool smooth, PreparedLocation[] locations, PreparedGorge[] gorges, PreparedPeak[] peaks,
+            CampaignNoise noise,
             int xi, int zi, int sizeX, int sizeZ, float maxHeight, float[] floors, float[] distances)
         {
             float x = xi, z = zi;
@@ -98,6 +102,8 @@ namespace Emberhold.World.Generation
                     + (noise.Fbm(x * 0.06f, z * 0.06f) - 0.5f) * 3f
                     + (1f - CampaignNoise.SmoothStep(0f, 24f, edge)) * 4f;
             h = Math.Max(ridge.MinHeight, Math.Min(ridge.MaxHeight, h));
+            foreach (var peak in peaks)
+                h = Math.Max(h, peak.Height(x, z, h, noise));
 
             // Оттенок: сумма оттенков с весами и сумма весов; остаток до 1 — хребет.
             var tint = new Color(0f, 0f, 0f, 0f);
@@ -270,6 +276,77 @@ namespace Emberhold.World.Generation
                 var bumps = (noise.Fbm(x / scale + index * 57.1f, z / scale - index * 23.7f, 3) - 0.5f) * 2f * p.NoiseAmplitude;
                 var along = CampaignNoise.Clamp01((dx * riseAxis.x + dz * riseAxis.y) * 0.5f + 0.5f);
                 return Shape.FloorHeight + shape + bumps + Shape.Rise * along;
+            }
+        }
+
+        private struct PreparedPeak
+        {
+            private readonly CampaignPeakShape shape;
+            private readonly int index;
+            private readonly Vector4 bounds;
+
+            public PreparedPeak(CampaignPeakShape shape, int index)
+            {
+                this.shape = shape;
+                this.index = index;
+                var points = shape.Points ?? Array.Empty<Vector2>();
+                var reach = Math.Max(shape.Radius, 1f) + 8f;
+                var min = points.Length > 0 ? points[0] : Vector2.zero;
+                var max = min;
+                foreach (var p in points)
+                {
+                    min = Vector2.Min(min, p);
+                    max = Vector2.Max(max, p);
+                }
+                bounds = points.Length > 0
+                    ? new Vector4(min.x - reach, min.y - reach, max.x + reach, max.y + reach)
+                    : new Vector4(1f, 1f, -1f, -1f);
+            }
+
+            /// <summary>
+            /// Высота горы в точке поверх хребта высотой ridge; за подножием — ridge. Профиль вогнутый: от подножия
+            /// поднимается полого, к вершине круто и сходится остро. Подножие гуляет по шуму, по граням — выступы.
+            /// </summary>
+            public float Height(float x, float z, float ridge, CampaignNoise noise)
+            {
+                if (x < bounds.x || z < bounds.y || x > bounds.z || z > bounds.w)
+                    return ridge;
+                var radius = Math.Max(shape.Radius, 1f);
+                var seed = index * 41.3f;
+                // Неровное подножие: расстояние искажается шумом на четверть радиуса.
+                var wx = x + (noise.Fbm(x * 0.03f + seed, z * 0.03f, 3) - 0.5f) * radius * 0.5f;
+                var wz = z + (noise.Fbm(x * 0.03f, z * 0.03f - seed, 3) - 0.5f) * radius * 0.5f;
+                var d = Distance(wx, wz);
+                if (d >= radius)
+                    return ridge;
+                var t = 1f - d / radius;
+                // Вдоль гребня вершины то выше, то ниже, до десятой части высоты.
+                var top = shape.Height * (0.92f + 0.08f * noise.Fbm(x * 0.04f - seed, z * 0.04f + seed, 2));
+                var rise = (float)Math.Pow(t, 1.7f);
+                // Скальные гребни на склонах: сильнее всего на середине высоты, у подножия и на вершине нет.
+                var crags = (noise.Ridged(x * 0.07f + seed, z * 0.07f) - 0.45f) * 10f * t * (1f - t);
+                return CampaignNoise.Lerp(ridge, Math.Max(top, ridge), rise) + crags;
+            }
+
+            /// <summary>Расстояние до вершины или до ломаной гребня.</summary>
+            private float Distance(float x, float z)
+            {
+                var points = shape.Points;
+                if (points.Length == 1)
+                    return (float)Math.Sqrt((x - points[0].x) * (x - points[0].x) + (z - points[0].y) * (z - points[0].y));
+                var best = float.MaxValue;
+                for (var i = 1; i < points.Length; i++)
+                {
+                    var a = points[i - 1];
+                    var dx = points[i].x - a.x;
+                    var dz = points[i].y - a.y;
+                    var l2 = dx * dx + dz * dz;
+                    var s = l2 > 0f ? CampaignNoise.Clamp01(((x - a.x) * dx + (z - a.y) * dz) / l2) : 0f;
+                    var ex = x - a.x - s * dx;
+                    var ez = z - a.y - s * dz;
+                    best = Math.Min(best, ex * ex + ez * ez);
+                }
+                return (float)Math.Sqrt(best);
             }
         }
 

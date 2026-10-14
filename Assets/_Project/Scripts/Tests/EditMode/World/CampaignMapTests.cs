@@ -280,6 +280,71 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(TopBlock(world, 2, 2).Material, Is.EqualTo(BlockMaterials.Grass), "проплешина травы на горе");
         }
 
+        private static CampaignPeakShape Peak(float height, float radius, params Vector2[] points) => new()
+        {
+            Name = "Пик",
+            Points = points,
+            Height = height,
+            Radius = radius,
+        };
+
+        [Test]
+        public void Peak_RisesAboveTheRidge_ToItsHeight_AndIsSharp()
+        {
+            var layout = TwoLocations();
+            layout.Peaks.Add(Peak(72f, 40f, new Vector2(80f, 130f)));
+            var heights = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
+            var plain = CampaignHeights.Build(TwoLocations(), Seed, Size, Size, 78f);
+
+            var top = heights.Heights[80, 130];
+            Assert.That(top, Is.GreaterThan(62f).And.LessThanOrEqualTo(72.5f), "вершина почти на своей высоте, выше хребта");
+            // Острая: на полпути к подножию гора заметно ниже вершины.
+            var half = Mathf.Max(heights.Heights[100, 130], heights.Heights[60, 130]);
+            Assert.That(half, Is.LessThan(top - 6f), "склоны вогнутые, вершина острая");
+            // За подножием хребет как был.
+            Assert.That(heights.Heights[150, 20], Is.EqualTo(plain.Heights[150, 20]));
+        }
+
+        [Test]
+        public void Peak_KeepsLocationFloors()
+        {
+            var layout = TwoLocations();
+            // Пик вплотную к западной котловине: стены выше, дно на месте.
+            layout.Peaks.Add(Peak(72f, 45f, new Vector2(36f, 120f)));
+            var heights = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
+
+            Assert.That(heights.Heights[36, 80], Is.EqualTo(10f).Within(1.5f));
+            Assert.That(heights.Owners[36, 80], Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Peak_AlongALine_IsARidge_AndFitsTheWorld()
+        {
+            var layout = new CampaignLayout();
+            layout.Peaks.Add(Peak(64f, 24f, new Vector2(20f, 140f), new Vector2(140f, 140f), new Vector2(140f, 40f)));
+            var heights = CampaignHeights.Build(layout, Seed, Size, Size, 60f);
+
+            // Вдоль всей ломаной высоко, у потолка мира срезано.
+            foreach (var (x, z) in new[] { (40, 140), (90, 140), (140, 140), (140, 90), (140, 50) })
+                Assert.That(heights.Heights[x, z], Is.GreaterThan(50f).And.LessThanOrEqualTo(60f), $"Гребень в {x},{z}");
+            Assert.That(heights.Heights[60, 60], Is.LessThanOrEqualTo(46f), "вдали от гребня — обычный хребет");
+        }
+
+        [Test]
+        public void MapAsset_PeaksAboveTheSnowLine_FitTheWorld()
+        {
+            var map = AssetDatabase.LoadAssetAtPath<CampaignMap>(MapPath);
+            var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>(TerrainPath);
+            var layout = map.ToLayout();
+            Assert.That(layout.Peaks, Has.Count.EqualTo(2));
+            var ceiling = settings.SizeInChunks.y * ChunkData.Size - 2;
+            foreach (var peak in layout.Peaks)
+            {
+                Assert.That(peak.Height, Is.GreaterThan(map.SnowLine + 4f), $"{peak.Name}: вершина под снегом");
+                Assert.That(peak.Height, Is.LessThanOrEqualTo(ceiling), $"{peak.Name}: помещается в мир");
+            }
+        }
+
         [Test]
         public void MapAsset_RidgeIsCliff()
         {
@@ -328,7 +393,7 @@ namespace Emberhold.Tests.EditMode.World
         {
             var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>(TerrainPath);
             Assert.That(settings, Is.Not.Null);
-            Assert.That(settings.SizeInChunks * ChunkData.Size, Is.EqualTo(new Vector3Int(512, 48, 512)));
+            Assert.That(settings.SizeInChunks * ChunkData.Size, Is.EqualTo(new Vector3Int(512, 80, 512)));
             var layout = settings.Map.ToLayout();
 
             var timer = Stopwatch.StartNew();
@@ -336,7 +401,7 @@ namespace Emberhold.Tests.EditMode.World
             timer.Stop();
             Debug.Log($"[CampaignMap] Мир 512×512 сгенерирован за {timer.ElapsedMilliseconds} мс.");
 
-            Assert.That(world.SizeInBlocks, Is.EqualTo(new Vector3Int(512, 48, 512)));
+            Assert.That(world.SizeInBlocks, Is.EqualTo(new Vector3Int(512, 80, 512)));
             Assert.That(timer.ElapsedMilliseconds, Is.LessThan(15000), "генерация не должна подвешивать редактор");
             for (var i = 0; i < layout.Locations.Count; i++)
             {
@@ -348,6 +413,19 @@ namespace Emberhold.Tests.EditMode.World
                 var top = location.FloorHeight + location.Rise + location.Profile.ShapeHeight;
                 Assert.That(heights.Heights[x, z], Is.InRange(location.FloorHeight - 3f, top + 4f), location.Name);
             }
+            // Высокие горы: вершины выше снеговой линии, но в мире.
+            Assert.That(MaxAround(heights, 256, 256, 15), Is.GreaterThan(64f), "Центральный пик");
+            Assert.That(MaxAround(heights, 400, 494, 15), Is.GreaterThan(56f), "Хребет у маяка");
+            Assert.That(MaxAround(heights, 256, 256, 15), Is.LessThanOrEqualTo(78f));
+        }
+
+        private static float MaxAround(CampaignHeights heights, int cx, int cz, int r)
+        {
+            var max = float.MinValue;
+            for (var z = cz - r; z <= cz + r; z++)
+            for (var x = cx - r; x <= cx + r; x++)
+                max = Mathf.Max(max, heights.Heights[Mathf.Clamp(x, 0, 512), Mathf.Clamp(z, 0, 512)]);
+            return max;
         }
     }
 }

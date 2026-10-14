@@ -368,3 +368,17 @@ MonoBehaviour:
     heightEnd: 25
     bump: 9
     wiggle: 18
+  peaks:
+  - name: Центральный пик
+    points:
+    - {x: 256, y: 256}
+    height: 72
+    radius: 45
+  - name: Хребет у маяка
+    points:
+    - {x: 300, y: 494}
+    - {x: 496, y: 494}
+    - {x: 496, y: 400}
+    height: 64
+    radius: 28
+  snowLine: 54

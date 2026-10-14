@@ -23,6 +23,9 @@ namespace Emberhold.World.Generation
 
         public readonly List<CampaignLocationShape> Locations = new();
         public readonly List<CampaignGorgeShape> Gorges = new();
+
+        /// <summary>Высокие горы над хребтом: отдельные пики и гребни выше <see cref="CampaignRidge.MaxHeight"/>.</summary>
+        public readonly List<CampaignPeakShape> Peaks = new();
     }
 
     /// <summary>Горный хребет вокруг локаций: высота гребней, граница травы и профиль (террасы, скалы, материалы, лес).</summary>
@@ -126,5 +129,24 @@ namespace Emberhold.World.Generation
 
         /// <summary>Насколько линия уходит в сторону между точками, в блоках.</summary>
         public float Wiggle;
+    }
+
+    /// <summary>
+    /// Высокая гора над хребтом: одна точка — острый пик, несколько — гребень по ломаной через них.
+    /// Склоны вогнутые, к вершине сходятся остро, по граням — скальные выступы. Гора поднимает только хребет:
+    /// котловины локаций и ущелья вырезаются из неё так же, как из хребта, и дно у них остаётся своим.
+    /// </summary>
+    public struct CampaignPeakShape
+    {
+        public string Name;
+
+        /// <summary>Вершина или линия гребня в блоках сетки мира.</summary>
+        public Vector2[] Points;
+
+        /// <summary>Высота вершины в блоках. Вдоль гребня высота гуляет на десятую часть вниз.</summary>
+        public float Height;
+
+        /// <summary>Радиус подножия в блоках: на таком расстоянии от вершины гора сходит в хребет.</summary>
+        public float Radius;
     }
 }

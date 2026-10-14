@@ -32,8 +32,18 @@ namespace Emberhold.World.Generation
         [SerializeField] private List<Location> locations = new();
         [SerializeField] private List<Gorge> gorges = new();
 
+        [Header("Высокие горы")]
+        [Tooltip("Пики и гребни выше хребта. Не помещаются в мир — срезаются по его высоте.")]
+        [SerializeField] private List<Peak> peaks = new();
+        [Tooltip("Выше этой высоты (в блоках) скала гор под снегом; граница гуляет по шуму, на крутых гранях снега нет.")]
+        [SerializeField] private float snowLine = 54f;
+
         public IReadOnlyList<Location> Locations => locations;
         public IReadOnlyList<Gorge> Gorges => gorges;
+        public IReadOnlyList<Peak> Peaks => peaks;
+
+        /// <summary>Снеговая линия в блоках: выше неё скала гор рисуется под снегом.</summary>
+        public float SnowLine => snowLine;
 
         /// <summary>
         /// Схема для генератора. Ущелье с неизвестной локацией на конце пропускается с предупреждением.
@@ -70,7 +80,32 @@ namespace Emberhold.World.Generation
                 }
                 layout.Gorges.Add(gorge.ToShape(from, to));
             }
+            foreach (var peak in peaks)
+                if (peak.points != null && peak.points.Length > 0)
+                    layout.Peaks.Add(peak.ToShape());
             return layout;
+        }
+
+        [Serializable]
+        public sealed class Peak
+        {
+            [Tooltip("Название, как в дизайн-документе.")]
+            public string name;
+            [Tooltip("Вершина (одна точка) или линия гребня (несколько) в блоках сетки мира (X — восток, Y здесь — Z, север).")]
+            public Vector2[] points = Array.Empty<Vector2>();
+            [Tooltip("Высота вершины в блоках.")]
+            public float height = 64f;
+            [Tooltip("Радиус подножия в блоках: на таком расстоянии от вершины гора сходит в хребет.")]
+            [Min(1f)]
+            public float radius = 35f;
+
+            public CampaignPeakShape ToShape() => new()
+            {
+                Name = name,
+                Points = points,
+                Height = height,
+                Radius = Mathf.Max(radius, 1f),
+            };
         }
 
         [Serializable]

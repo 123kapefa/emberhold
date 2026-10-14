@@ -31,6 +31,8 @@ half4 _GroundRockColor;
 // Скала гор (#97): на хребте карты кампании гладкая земля переходит не в камень, а в скалу; доля скалы — в UV4.w.
 // Общая текстура, её ставит VoxelWorldView (текстура материала скалы). Сэмплер общий с _RockMap.
 TEXTURE2D(_GroundCliffMap);
+// Снеговая линия гор (#101) в блоках: выше неё скала хребта под снегом. Общее свойство, его ставит VoxelWorldView.
+float _GroundSnowLine;
 
 // Оттенок травы своего места из цвета вершины: rgb — множитель, a — насыщенность (1 — как есть).
 half3 TintGrass(half3 albedo, half4 tint)
@@ -41,6 +43,8 @@ half3 TintGrass(half3 albedo, half4 tint)
 
 // Сколько блоков занимает текстура по каждой проекции.
 #define EMBERHOLD_GROUND_TILE 8.0
+// Цвет снега на вершинах гор: чуть холодный белый.
+#define EMBERHOLD_SNOW_COLOR half3(0.9h, 0.94h, 1.0h)
 // Мелкая деталь из альфа-канала текстуры ложится во столько раз мельче рисунка и видна только вблизи:
 // полностью ближе DETAIL_NEAR, гаснет к DETAIL_FAR (дистанция камеры 8–80).
 #define EMBERHOLD_DETAIL_SCALE 4.0
@@ -586,6 +590,19 @@ void LitPassFragment(
         if (cliff > 0.001h)
             rockAlbedo = lerp(rockAlbedo, SampleTriplanar(TEXTURE2D_ARGS(_GroundCliffMap, sampler_RockMap), input.positionWS,
                 normalForTex, dpdx, dpdy, detailFade, flatFade), cliff);
+        // Снег на вершинах: выше снеговой линии скала хребта под снегом. Граница гуляет по шуму мира и по рисунку
+        // скалы (на светлых плитах снег держится ниже), на крутых гранях снега нет — там видна скала.
+        UNITY_BRANCH
+        if (cliff > 0.001h && input.positionWS.y > _GroundSnowLine - 6.0)
+        {
+            float snowEdge = _GroundSnowLine + (GroundValueNoise(input.positionWS.xz * 0.11) - 0.5) * 6.0
+                + (GroundValueNoise(input.positionWS.xz * 0.6 + 7.3) - 0.5) * 1.5;
+            half rockLuma = dot(rockAlbedo, half3(0.3h, 0.59h, 0.11h));
+            half snow = smoothstep(-0.4h, 0.4h, (half)(input.positionWS.y - snowEdge) + (rockLuma - 0.3h) * 4.0h)
+                * smoothstep(0.5h, 0.7h, normalForTex.y) * cliff;
+            half3 snowAlbedo = EMBERHOLD_SNOW_COLOR * lerp(0.86h, 1.0h, saturate(rockLuma * 2.5h));
+            rockAlbedo = lerp(rockAlbedo, snowAlbedo, snow);
+        }
         rockAlbedo *= _GroundRockColor.rgb;
         rockAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_SHADOW_DARK, rockShadow);
         surfaceData.albedo = lerp(rockAlbedo, baseAlbedo, rockGrass);
