@@ -115,6 +115,37 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void PutAndPickUp_LoadGoesAroundBody()
+        {
+            // Точки ноши (середина и концы бревна, середина мешка) не заходят внутрь туловища ни в какой момент.
+            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.StoneSack })
+            {
+                var motion = new WorkerMotion(0f, 0f, Height, true, false, carry);
+                foreach (var clip in new[] { WorkerClip.Put, WorkerClip.PickUp })
+                {
+                    for (var k = 0; k <= 40; k++)
+                    {
+                        var pose = WorkerAnimation.Sample(clip, k / 40f, motion);
+                        var torso = WorkerSkeleton.Torso(pose, Height).inverse;
+                        var load = Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one);
+                        var points = carry == WorkerCarry.Log
+                            ? new[] { Vector3.zero, Vector3.forward * 0.2f * Height, Vector3.back * 0.2f * Height }
+                            : new[] { Vector3.zero };
+                        foreach (var p in points)
+                        {
+                            // В системе корпуса: середина корпуса — на оси Y, от пояса вверх до плеч.
+                            var local = torso.MultiplyPoint3x4(load.MultiplyPoint3x4(p)) / Height;
+                            if (local.y < -0.15f || local.y > 0.22f)
+                                continue;
+                            var inside = local.x * local.x / (0.14f * 0.14f) + local.z * local.z / (0.09f * 0.09f);
+                            Assert.That(inside, Is.GreaterThan(1f), $"{carry} {clip} в {k / 40f}: ноша внутри тела {local}");
+                        }
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void Animator_BlendsBetweenClips_AndOneShotsFinish()
         {
             var animator = new WorkerAnimator();

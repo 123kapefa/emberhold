@@ -206,8 +206,8 @@ namespace Emberhold.Gameplay.Workers
             // Подол — за бедром, которое вынесено вперёд сильнее; края пелерины — за плечами.
             var forward = Mathf.Min(0f, Mathf.Min(Effective[(int)WorkerPart.ThighLeft].x, Effective[(int)WorkerPart.ThighRight].x));
             Effective[(int)WorkerPart.Hips] += new Vector3(forward * SkirtFollow, 0f, 0f);
-            Effective[(int)WorkerPart.CapeLeft] += Effective[(int)WorkerPart.UpperArmLeft] * CapeFollow;
-            Effective[(int)WorkerPart.CapeRight] += Effective[(int)WorkerPart.UpperArmRight] * CapeFollow;
+            Effective[(int)WorkerPart.CapeLeft] += CapeLift(Effective[(int)WorkerPart.UpperArmLeft]);
+            Effective[(int)WorkerPart.CapeRight] += CapeLift(Effective[(int)WorkerPart.UpperArmRight]);
 
             for (var i = 0; i < WorkerPose.PartCount; i++)
             {
@@ -224,6 +224,19 @@ namespace Emberhold.Gameplay.Workers
                 result[i] = Matrix4x4.TRS(position, world, Vector3.one);
             }
         }
+
+        /// <summary>
+        /// Край пелерины повторяет часть поворота плеча, но не больше CapeLiftLimit градусов по каждой оси:
+        /// сильнее — ткань отрывается от пелерины щелью.
+        /// </summary>
+        private static Vector3 CapeLift(Vector3 arm)
+        {
+            var lift = Wrap(arm) * CapeFollow;
+            return new Vector3(Mathf.Clamp(lift.x, -CapeLiftLimit, CapeLiftLimit), Mathf.Clamp(lift.y, -CapeLiftLimit, CapeLiftLimit),
+                Mathf.Clamp(lift.z, -CapeLiftLimit, CapeLiftLimit));
+        }
+
+        private const float CapeLiftLimit = 22f;
 
         private static Vector3 Wrap(Vector3 euler) =>
             new(Mathf.DeltaAngle(0f, euler.x), Mathf.DeltaAngle(0f, euler.y), Mathf.DeltaAngle(0f, euler.z));

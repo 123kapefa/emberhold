@@ -81,8 +81,12 @@ namespace Emberhold.Gameplay.Workers
             }
             // Рубаха ниже пояса — подол, своя часть: при шаге и приседе она уходит вперёд за бёдрами.
             mesh.Part = Part(WorkerPart.Hips);
-            mesh.AddLoft(new[] { new LoftRing(0.37f, 0.148f, 0.098f, 0.002f), new LoftRing(0.44f, 0.128f, 0.086f), new LoftRing(0.515f, 0.112f, 0.076f) },
-                Sides, tunic, capEnd: false);
+            // Верх подола уходит под рубаху: когда подол поворачивается за бедром, у пояса не открывается щель.
+            mesh.AddLoft(new[]
+            {
+                new LoftRing(0.37f, 0.148f, 0.098f, 0.002f), new LoftRing(0.44f, 0.128f, 0.086f), new LoftRing(0.515f, 0.112f, 0.076f),
+                new LoftRing(0.585f, 0.118f, 0.08f, 0.006f),
+            }, Sides, tunic, capEnd: false);
             // Тёмная кайма по подолу.
             mesh.AddLoft(new[] { new LoftRing(0.369f, 0.15f, 0.1f, 0.002f), new LoftRing(0.39f, 0.145f, 0.097f, 0.0015f) }, Sides,
                 Paint(look.Tunic * 0.72f), capStart: false, capEnd: false);

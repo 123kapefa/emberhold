@@ -140,21 +140,18 @@ namespace Emberhold.Gameplay.Workers
             Relaxed(ref pose);
             var carry = motion.Carry == WorkerCarry.None ? WorkerCarry.Log : motion.Carry;
             var height = motion.Height;
-            // Присед: глубже всего с 0,4 до 0,75.
-            var crouch = Bump(Mathf.InverseLerp(0.2f, 1f, t), 0.3f, 0.3f);
+            // Присед: начинается, когда ноша сошла с плеча, глубже всего с 0,45 до 0,75.
+            var crouch = Bump(Mathf.InverseLerp(0.2f, 1f, t), 0.32f, 0.3f);
             Crouch(ref pose, crouch);
             pose.Add(WorkerPart.Torso, new Vector3(0f, 0f, -3f * (1f - crouch)));
 
-            Matrix4x4 load;
+            // Ноша идёт по пути, который обходит тело: плечо → … → земля, за первые 0,6 анимации, каждый отрезок плавно.
             var shoulder = WorkerSkeleton.Torso(pose, height) * WorkerCarryBuilder.ShoulderAnchor(carry, height);
-            var front = WorkerCarryBuilder.Front(carry, height);
-            var ground = WorkerCarryBuilder.Ground(carry, height);
-            if (t < 0.25f)
-                load = Blend(shoulder, front, Mathf.SmoothStep(0f, 1f, t / 0.25f));
-            else if (t < 0.6f)
-                load = Blend(front, ground, Mathf.SmoothStep(0f, 1f, (t - 0.25f) / 0.35f));
-            else
-                load = ground;
+            var path = WorkerCarryBuilder.PathDown(carry, height);
+            var travel = Mathf.Clamp01(t / 0.6f) * path.Length;
+            var segment = Mathf.Min(path.Length - 1, Mathf.FloorToInt(travel));
+            var from = segment == 0 ? shoulder : path[segment - 1];
+            var load = Blend(from, path[segment], Mathf.SmoothStep(0f, 1f, travel - segment));
             pose.LoadPosition = load.GetColumn(3);
             pose.LoadRotation = load.rotation;
             // Рука держит ношу до 0,7, потом отпускает и уходит в покой.
