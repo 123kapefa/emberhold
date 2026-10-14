@@ -25,3 +25,4 @@ MonoBehaviour:
   fuelItemId: wood
   fuelPerTrip: 2
   idleSearchSeconds: 0.5
+  hoodColor: {r: 0.26, g: 0.36, b: 0.3, a: 1}

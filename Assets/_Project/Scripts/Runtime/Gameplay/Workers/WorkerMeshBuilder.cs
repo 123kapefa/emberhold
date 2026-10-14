@@ -8,7 +8,7 @@ namespace Emberhold.Gameplay.Workers
     /// Гранёная low-poly сетка рабочего в стиле деревьев, слепленная лофтами — кольцами разного сечения: сапоги с носком,
     /// ноги с икрой и коленом, рубаха с талией, грудью и покатыми плечами, руки с локтем и кистью с большим пальцем,
     /// голова с челюстью, скулами, носом, ушами и волосами, у части борода. Капюшон цвета роли откинут на спину:
-    /// пелерина на плечах, валик вокруг шеи и мешок капюшона на лопатках.
+    /// пелерина на плечах, валик вокруг шеи и пустой мешок капюшона на лопатках с тёмной изнанкой.
     /// Ноги в (0, 0, 0), лицо смотрит в +Z, единица — блок, рост height. Все размеры — доли роста.
     /// Цвет вершин — цвет части, a = 0: шейдер Emberhold/World/Tree оставляет его как есть.
     /// </summary>
@@ -64,16 +64,16 @@ namespace Emberhold.Gameplay.Workers
             mesh.AddBox(Vector3.zero, new Vector3(0.045f, 0.055f, 0.03f), Paint(Leather));
             mesh.Transform = scale;
 
-            // Руки: плечо, локоть чуть назад, предплечье вперёд; плоская кисть с большим пальцем.
+            // Руки начинаются внутри плеч, под пелериной: локоть чуть назад, предплечье вперёд; плоская кисть с большим пальцем.
             foreach (var side in new[] { -1f, 1f })
             {
                 mesh.AddTube(new[]
                 {
-                    new Vector3(side * 0.135f, 0.74f, 0f), new Vector3(side * 0.158f, 0.7f, -0.004f), new Vector3(side * 0.17f, 0.62f, -0.01f),
+                    new Vector3(side * 0.11f, 0.695f, 0f), new Vector3(side * 0.152f, 0.672f, -0.004f), new Vector3(side * 0.17f, 0.62f, -0.01f),
                     new Vector3(side * 0.175f, 0.55f, -0.008f), new Vector3(side * 0.178f, 0.48f, 0.018f), new Vector3(side * 0.178f, 0.42f, 0.04f),
                 }, new[]
                 {
-                    new Vector2(0.04f, 0.04f), new Vector2(0.044f, 0.042f), new Vector2(0.036f, 0.036f),
+                    new Vector2(0.034f, 0.034f), new Vector2(0.043f, 0.041f), new Vector2(0.036f, 0.036f),
                     new Vector2(0.031f, 0.032f), new Vector2(0.033f, 0.031f), new Vector2(0.028f, 0.027f),
                 }, LimbSides, tunic);
                 mesh.AddTube(new[]
@@ -114,33 +114,39 @@ namespace Emberhold.Gameplay.Workers
                 {
                     new LoftRing(0.8f, 0.028f, 0.02f, 0.062f), new LoftRing(0.818f, 0.05f, 0.03f, 0.052f),
                     new LoftRing(0.845f, 0.062f, 0.03f, 0.05f), new LoftRing(0.86f, 0.06f, 0.024f, 0.05f),
-                }, Sides, hair, arc: 0.5f, twoSided: true);
+                }, Sides, hair, arc: 0.5f, arcMiddle: 0.5f, twoSided: true);
             }
             mesh.AddBox(new Vector3(0f, look.Beard ? 0.852f : 0.848f, 0.077f), new Vector3(0.026f, 0.005f, 0.01f),
                 Paint(look.Beard ? look.Hair * 0.55f : Eyes));
-            // Волосы: шапка поверх черепа, спереди открыт лоб.
+            // Волосы: сзади и с боков от затылка до висков, сверху шапка до линии лба.
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.87f, 0.074f, 0.082f, -0.004f), new LoftRing(0.915f, 0.077f, 0.084f, 0.002f),
-                new LoftRing(0.95f, 0.07f, 0.078f, -0.002f), new LoftRing(0.975f, 0.05f, 0.06f, -0.004f),
-                new LoftRing(0.99f, 0.02f, 0.026f, -0.004f),
-            }, Sides, hair, capStart: false, arc: 0.62f, twoSided: true);
+                new LoftRing(0.835f, 0.064f, 0.07f, -0.014f), new LoftRing(0.875f, 0.075f, 0.083f, -0.004f),
+                new LoftRing(0.915f, 0.077f, 0.085f, 0.002f),
+            }, Sides, hair, capStart: false, capEnd: false, arc: 0.68f, twoSided: true);
+            mesh.AddLoft(new[]
+            {
+                new LoftRing(0.915f, 0.077f, 0.085f, 0.002f), new LoftRing(0.95f, 0.071f, 0.08f, -0.002f),
+                new LoftRing(0.975f, 0.051f, 0.061f, -0.004f), new LoftRing(0.99f, 0.02f, 0.026f, -0.004f),
+            }, Sides, hair, capStart: false);
 
-            // Капюшон откинут: валик вокруг шеи сзади, мешок капюшона на лопатках, пелерина на плечах.
+            // Капюшон откинут: валик вокруг шеи сзади и пустой мешок капюшона на лопатках, изнанка темнее;
+            // пелерина на плечах закрывает начало рук.
+            var lining = Paint(look.Hood * 0.45f);
             mesh.AddLoft(new[]
             {
                 new LoftRing(0.745f, 0.1f, 0.075f, -0.008f), new LoftRing(0.775f, 0.075f, 0.062f, -0.01f), new LoftRing(0.8f, 0.058f, 0.056f, -0.012f),
-            }, Sides, hood, capStart: false, capEnd: false, arc: 0.8f, twoSided: true);
+            }, Sides, hood, capStart: false, capEnd: false, arc: 0.7f, twoSided: true, innerColor: lining);
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.79f, 0.075f, 0.03f, -0.07f), new LoftRing(0.745f, 0.085f, 0.04f, -0.095f), new LoftRing(0.68f, 0.07f, 0.034f, -0.1f),
-                new LoftRing(0.63f, 0.035f, 0.02f, -0.096f), new LoftRing(0.6f, 0.006f, 0.006f, -0.09f),
-            }, Sides, hood);
+                new LoftRing(0.6f, 0.006f, 0.006f, -0.11f), new LoftRing(0.63f, 0.04f, 0.022f, -0.115f), new LoftRing(0.69f, 0.08f, 0.04f, -0.12f),
+                new LoftRing(0.75f, 0.095f, 0.05f, -0.118f), new LoftRing(0.79f, 0.09f, 0.05f, -0.11f),
+            }, Sides, hood, capStart: true, capEnd: false, twoSided: true, innerColor: lining);
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.685f, 0.152f, 0.096f, -0.002f), new LoftRing(0.725f, 0.142f, 0.086f), new LoftRing(0.758f, 0.1f, 0.068f),
-                new LoftRing(0.776f, 0.058f, 0.052f),
-            }, Sides, hood, capStart: false, capEnd: false, twoSided: true);
+                new LoftRing(0.655f, 0.196f, 0.112f, -0.002f), new LoftRing(0.7f, 0.2f, 0.108f), new LoftRing(0.745f, 0.135f, 0.082f),
+                new LoftRing(0.776f, 0.06f, 0.052f),
+            }, Sides, hood, capStart: false, capEnd: false, twoSided: true, innerColor: lining);
 
             mesh.Transform = Matrix4x4.identity;
             return mesh.ToMesh(name);

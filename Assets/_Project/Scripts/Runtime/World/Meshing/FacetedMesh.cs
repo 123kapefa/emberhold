@@ -139,11 +139,12 @@ namespace Emberhold.World.Meshing
 
         /// <summary>
         /// Лофт: кольца разного сечения, соединённые гранями (туловище, нога, голова). arc — доля окружности
-        /// с серединой на спине (−Forward): меньше 1 — открытая спереди оболочка. Открытая оболочка без крышек;
-        /// twoSided — грани видны с обеих сторон (тонкая ткань).
+        /// с серединой в arcMiddle (0 — сзади, −Forward; 0.5 — спереди): меньше 1 — открытая оболочка без крышек.
+        /// twoSided — грани видны с обеих сторон (тонкая ткань); изнанка цвета innerColor, если он задан.
         /// </summary>
         public void AddLoft(IReadOnlyList<LoftRing> rings, int sides, System.Func<Vector3, Color> color,
-            bool capStart = true, bool capEnd = true, float arc = 1f, bool twoSided = false)
+            bool capStart = true, bool capEnd = true, float arc = 1f, float arcMiddle = 0f, bool twoSided = false,
+            System.Func<Vector3, Color> innerColor = null)
         {
             var full = arc >= 0.999f;
             var count = full ? sides : sides + 1;
@@ -152,7 +153,7 @@ namespace Emberhold.World.Meshing
             for (var i = 0; i < count; i++)
             {
                 // Угол 0 — середина спины.
-                var turn = full ? (float)i / sides : 0.5f - arc * 0.5f + arc * i / sides;
+                var turn = full ? (float)i / sides : arcMiddle - arc * 0.5f + arc * i / sides;
                 var angle = turn * Mathf.PI * 2f;
                 var k = rings[r];
                 ring[r * count + i] = k.Center + k.Right * (Mathf.Sin(angle) * k.RadiusX) - k.Forward * (Mathf.Cos(angle) * k.RadiusZ);
@@ -167,8 +168,8 @@ namespace Emberhold.World.Meshing
                     var b = ring[(r + 1) * count + i];
                     var c = ring[(r + 1) * count + j];
                     var d = ring[r * count + j];
-                    AddFace(a, b, c, inside, color, twoSided);
-                    AddFace(a, c, d, inside, color, twoSided);
+                    AddFace(a, b, c, inside, color, twoSided ? innerColor ?? color : null);
+                    AddFace(a, c, d, inside, color, twoSided ? innerColor ?? color : null);
                 }
             }
             if (!full)
@@ -196,11 +197,12 @@ namespace Emberhold.World.Meshing
         private void AddCap(Vector3[] ring, int start, int sides, Vector3 center, Vector3 inside, System.Func<Vector3, Color> color)
         {
             for (var i = 0; i < sides; i++)
-                AddFace(center, ring[start + i], ring[start + (i + 1) % sides], inside, color, false);
+                AddFace(center, ring[start + i], ring[start + (i + 1) % sides], inside, color, null);
         }
 
-        /// <summary>Одна грань в Transform; нормаль от inside наружу, у двусторонней — и обратная.</summary>
-        private void AddFace(Vector3 a, Vector3 b, Vector3 c, Vector3 inside, System.Func<Vector3, Color> color, bool twoSided)
+        /// <summary>Одна грань в Transform; нормаль от inside наружу. Если задан innerColor — и обратная грань (изнанка) этого цвета.</summary>
+        private void AddFace(Vector3 a, Vector3 b, Vector3 c, Vector3 inside, System.Func<Vector3, Color> color,
+            System.Func<Vector3, Color> innerColor)
         {
             points.Clear();
             faces.Clear();
@@ -209,13 +211,13 @@ namespace Emberhold.World.Meshing
             points.Add(c);
             faces.AddRange(new[] { 0, 1, 2 });
             Emit(inside, color);
-            if (!twoSided)
+            if (innerColor == null)
                 return;
             // Обратная сторона: та же грань, «внутри» по другую сторону от неё.
             var outward = Vector3.Cross(b - a, c - a);
             if (Vector3.Dot(outward, (a + b + c) / 3f - inside) < 0f)
                 outward = -outward;
-            Emit((a + b + c) / 3f + outward, color);
+            Emit((a + b + c) / 3f + outward, innerColor);
         }
 
         public Mesh ToMesh(string name)
