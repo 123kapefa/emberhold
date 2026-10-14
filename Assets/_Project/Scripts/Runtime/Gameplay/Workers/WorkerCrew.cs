@@ -62,7 +62,6 @@ namespace Emberhold.Gameplay.Workers
         private readonly Dictionary<LightSource, FuelTarget> fuelTargets = new();
         private readonly List<LightSource> goneFires = new();
         private readonly LightZone litZone = new();
-        private readonly Dictionary<WorkerCarry, Mesh> carryMeshes = new();
         private readonly Matrix4x4[] partMatrices = new Matrix4x4[WorkerPose.PartCount];
         private WorkerContext context;
 
@@ -109,8 +108,11 @@ namespace Emberhold.Gameplay.Workers
                 foreach (var mesh in visual.Meshes)
                     Destroy(mesh);
             }
-            foreach (var mesh in carryMeshes.Values)
-                Destroy(mesh);
+            foreach (var visual in visuals)
+            {
+                if (visual.CarryShape != null)
+                    Destroy(visual.CarryShape.Mesh);
+            }
             DestroyLines(blueprintLines);
             DestroyLines(digLines);
         }
@@ -217,21 +219,27 @@ namespace Emberhold.Gameplay.Workers
             body.SetPositionAndRotation(space.TransformPoint(worker.Position), space.rotation * Quaternion.Euler(0f, visual.Yaw, 0f));
             body.localScale = space.lossyScale;
             for (var k = 0; k < visual.Parts.Length; k++)
-                visual.Parts[k].SetLocalPositionAndRotation(partMatrices[k].GetColumn(3), partMatrices[k].rotation);
+            {
+                // Мягкие части (подол, пелерина) гнутся по костям, их вершины уже в системе рабочего.
+                if (visual.Skins[k] != null)
+                    visual.Skins[k].Apply(partMatrices);
+                else
+                    visual.Parts[k].SetLocalPositionAndRotation(partMatrices[k].GetColumn(3), partMatrices[k].rotation);
+            }
 
             if (carry != visual.CarryKind)
             {
                 visual.CarryKind = carry;
-                visual.Carry.sharedMesh = carry == WorkerCarry.None ? null : CarryMesh(carry);
+                if (visual.CarryShape != null)
+                    Destroy(visual.CarryShape.Mesh);
+                // Сетка ноши у каждого своя: мешок гнётся по позе.
+                visual.CarryShape = carry == WorkerCarry.None
+                    ? null
+                    : new WorkerCarryBuilder.Shape(WorkerCarryBuilder.Build(carry, settings.Height, "Carry " + carry), carry, settings.Height);
+                visual.Carry.sharedMesh = visual.CarryShape?.Mesh;
             }
+            visual.CarryShape?.Apply(pose.LoadBend);
             visual.Carry.transform.SetLocalPositionAndRotation(pose.LoadPosition, pose.LoadRotation);
-        }
-
-        private Mesh CarryMesh(WorkerCarry carry)
-        {
-            if (!carryMeshes.TryGetValue(carry, out var mesh))
-                carryMeshes[carry] = mesh = WorkerCarryBuilder.Build(carry, settings.Height, "Carry " + carry);
-            return mesh;
         }
 
         /// <summary>Ближайший горящий огонь в WarmDistance блоках от точки (координаты мира блоков) или null.</summary>
@@ -379,12 +387,17 @@ namespace Emberhold.Gameplay.Workers
             var look = settings.LookFor(index);
             var meshes = WorkerMeshBuilder.BuildParts(look, settings.Height, body.name);
             var parts = new Transform[meshes.Length];
+            var skins = new WorkerSkin[meshes.Length];
             for (var k = 0; k < meshes.Length; k++)
+            {
                 parts[k] = CreatePart(body.transform, ((WorkerPart)k).ToString(), meshes[k]);
+                if (WorkerSkin.IsSoft((WorkerPart)k))
+                    skins[k] = new WorkerSkin(meshes[k], (WorkerPart)k, settings.Height);
+            }
             var carry = CreatePart(body.transform, "Carried Item", null);
             // Фаза анимаций своя у каждого, чтобы отряд не дышал и не шагал в такт.
             var seed = Mathf.Repeat(index * 0.618034f, 1f);
-            return new WorkerVisual(body.transform, parts, meshes, carry.GetComponent<MeshFilter>(), look, seed, position) { Yaw = yaw };
+            return new WorkerVisual(body.transform, parts, skins, meshes, carry.GetComponent<MeshFilter>(), look, seed, position) { Yaw = yaw };
         }
 
         private Transform CreatePart(Transform parent, string name, Mesh mesh)
@@ -488,10 +501,12 @@ namespace Emberhold.Gameplay.Workers
 
         private sealed class WorkerVisual
         {
-            public WorkerVisual(Transform body, Transform[] parts, Mesh[] meshes, MeshFilter carry, WorkerLook look, float seed, Vector3 position)
+            public WorkerVisual(Transform body, Transform[] parts, WorkerSkin[] skins, Mesh[] meshes, MeshFilter carry, WorkerLook look, float seed,
+                Vector3 position)
             {
                 Body = body;
                 Parts = parts;
+                Skins = skins;
                 Meshes = meshes;
                 Carry = carry;
                 Look = look;
@@ -504,9 +519,13 @@ namespace Emberhold.Gameplay.Workers
             /// <summary>Части тела по индексу <see cref="WorkerPart"/>.</summary>
             public Transform[] Parts { get; }
 
+            /// <summary>Мягкие части по индексу <see cref="WorkerPart"/>; у жёстких — null.</summary>
+            public WorkerSkin[] Skins { get; }
+
             public Mesh[] Meshes { get; }
             public MeshFilter Carry { get; }
             public WorkerCarry CarryKind { get; set; }
+            public WorkerCarryBuilder.Shape CarryShape { get; set; }
             public WorkerLook Look { get; }
             public float Seed { get; }
             public WorkerAnimator Animator { get; } = new();

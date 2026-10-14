@@ -41,7 +41,7 @@ namespace Emberhold.Gameplay.Workers
         private const float SackLength = 0.31f;
 
         /// <summary>Середина мешка на спине, в системе рабочего (доли роста).</summary>
-        private static readonly Vector3 SackOnBack = new(-0.08f, 0.6f, -0.25f);
+        private static readonly Vector3 SackOnBack = new(-0.08f, 0.6f, -0.21f);
 
         /// <summary>Конец горловины на вершине левого плеча — за него держит рука; система рабочего.</summary>
         private static readonly Vector3 SackGripOnShoulder = new(-0.125f, 0.81f, -0.02f);
@@ -185,5 +185,68 @@ namespace Emberhold.Gameplay.Workers
         }
 
         private static Func<Vector3, Color> Paint(Color color) => WorkerMeshBuilder.Paint(color);
+
+        /// <summary>Перегиб мешка на плече: у горловины, доли роста по оси мешка.</summary>
+        private const float SackHinge = 0.05f;
+
+        /// <summary>
+        /// На сколько градусов тело мешка загибается вниз вдоль спины, когда он на плече: горловина идёт через плечо
+        /// наискось, а тело висит отвесно и прижимается к спине.
+        /// </summary>
+        private const float SackBendDegrees = -48f;
+
+        /// <summary>
+        /// Изгиб ноши: мешок на плече загнут и сплющен по спине (bend = 1), на земле и в руке ровный (bend = 0).
+        /// Бревно не гнётся. Вершины меняются в сетке ноши, начало координат прежнее.
+        /// </summary>
+        public sealed class Shape
+        {
+            private readonly Mesh mesh;
+            private readonly Vector3[] restVertices;
+            private readonly Vector3[] restNormals;
+            private readonly Vector3[] vertices;
+            private readonly Vector3[] normals;
+            private readonly float height;
+            private readonly bool bends;
+            private float applied = -1f;
+
+            public Shape(Mesh mesh, WorkerCarry carry, float height)
+            {
+                this.mesh = mesh;
+                this.height = height;
+                bends = carry is WorkerCarry.StoneSack or WorkerCarry.GrassSack;
+                if (!bends)
+                    return;
+                mesh.MarkDynamic();
+                restVertices = mesh.vertices;
+                restNormals = mesh.normals;
+                vertices = new Vector3[restVertices.Length];
+                normals = new Vector3[restNormals.Length];
+            }
+
+            public Mesh Mesh => mesh;
+
+            public void Apply(float bend)
+            {
+                bend = Mathf.Clamp01(bend);
+                if (!bends || Mathf.Abs(bend - applied) < 1e-3f)
+                    return;
+                applied = bend;
+                var hinge = new Vector3(0f, SackHinge * height, 0f);
+                for (var v = 0; v < restVertices.Length; v++)
+                {
+                    var p = restVertices[v];
+                    // Ниже перегиба тело мешка плавно поворачивается вниз и сплющивается к спине.
+                    var w = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(SackHinge + 0.02f, SackHinge - 0.12f, p.y / height)) * bend;
+                    var turn = Quaternion.Euler(SackBendDegrees * w, 0f, 0f);
+                    var flat = new Vector3(1f, 1f, 1f - 0.3f * w);
+                    vertices[v] = hinge + turn * Vector3.Scale(p - hinge, flat);
+                    normals[v] = (turn * Vector3.Scale(restNormals[v], new Vector3(flat.y * flat.z, flat.x * flat.z, flat.x * flat.y))).normalized;
+                }
+                mesh.vertices = vertices;
+                mesh.normals = normals;
+                mesh.RecalculateBounds();
+            }
+        }
     }
 }

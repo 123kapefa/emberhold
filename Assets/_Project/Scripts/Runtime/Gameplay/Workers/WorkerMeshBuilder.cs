@@ -36,8 +36,6 @@ namespace Emberhold.Gameplay.Workers
 
         internal static int Part(WorkerPart part) => (int)part;
 
-        /// <summary>Дальше скольки долей роста от середины пелерина — край над плечом, который ходит за рукой.</summary>
-        private const float CapeFlapX = 0.1f;
 
         internal static WorkerPart Side(float side, WorkerPart left, WorkerPart right) => side < 0f ? left : right;
 
@@ -79,13 +77,11 @@ namespace Emberhold.Gameplay.Workers
                 mesh.AddLoft(new[] { knee, new LoftRing(0.36f, 0.046f, 0.05f, 0.004f, x * 0.95f), new LoftRing(0.44f, 0.054f, 0.055f, 0f, x * 0.85f) },
                     LimbSides, Paint(Pants));
             }
-            // Рубаха ниже пояса — подол, своя часть: при шаге и приседе она уходит вперёд за бёдрами.
+            // Рубаха ниже пояса — подол, мягкая часть: спереди гнётся за бёдрами при шаге и приседе (WorkerSkin).
             mesh.Part = Part(WorkerPart.Hips);
-            // Верх подола уходит под рубаху: когда подол поворачивается за бедром, у пояса не открывается щель.
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.37f, 0.148f, 0.098f, 0.002f), new LoftRing(0.44f, 0.128f, 0.086f), new LoftRing(0.515f, 0.112f, 0.076f),
-                new LoftRing(0.585f, 0.118f, 0.08f, 0.006f),
+                new LoftRing(0.37f, 0.148f, 0.098f, 0.002f), new LoftRing(0.44f, 0.128f, 0.086f), new LoftRing(0.52f, 0.112f, 0.076f),
             }, Sides, tunic, capEnd: false);
             // Тёмная кайма по подолу.
             mesh.AddLoft(new[] { new LoftRing(0.369f, 0.15f, 0.1f, 0.002f), new LoftRing(0.39f, 0.145f, 0.097f, 0.0015f) }, Sides,
@@ -228,15 +224,14 @@ namespace Emberhold.Gameplay.Workers
                 new LoftRing(0.695f, 0.058f, 0.015f, -0.117f), new LoftRing(0.735f, 0.065f, 0.016f, -0.097f), new LoftRing(0.767f, 0.06f, 0.017f, -0.074f),
                 new LoftRing(0.792f, 0.05f, 0.02f, -0.058f),
             }, Sides, hood, capStart: true, capEnd: false, twoSided: true, innerColor: lining);
-            // Края пелерины над плечами — свои части: поднимается рука — поднимается и край, плечо не прорывает ткань.
-            var flapX = CapeFlapX * height;
-            mesh.PartBy = c => c.x < -flapX ? Part(WorkerPart.CapeLeft) : c.x > flapX ? Part(WorkerPart.CapeRight) : Part(WorkerPart.Torso);
+            // Пелерина — мягкая часть: над плечами гнётся за руками, плечо не прорывает ткань (WorkerSkin).
+            mesh.Part = Part(WorkerPart.Cape);
             mesh.AddLoft(new[]
             {
                 new LoftRing(0.655f, 0.196f, 0.112f, -0.002f), new LoftRing(0.7f, 0.2f, 0.108f), new LoftRing(0.745f, 0.135f, 0.082f),
                 new LoftRing(0.776f, 0.06f, 0.052f),
             }, Sides, hood, capStart: false, capEnd: false, twoSided: true, innerColor: lining);
-            mesh.PartBy = null;
+            mesh.Part = Part(WorkerPart.Torso);
 
             WorkerGearBuilder.Add(mesh, scale, look);
             mesh.Transform = Matrix4x4.identity;

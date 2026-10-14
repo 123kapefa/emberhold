@@ -15,24 +15,23 @@ namespace Emberhold.Gameplay.Workers
         UpperArmRight,
         ForearmLeft,
         ForearmRight,
-        /// <summary>Подол ниже пояса и всё, что висит на поясе.</summary>
+        /// <summary>Подол ниже пояса и всё, что висит на поясе — мягкая часть (<see cref="WorkerSkin"/>).</summary>
         Hips,
         FootLeft,
         FootRight,
-        /// <summary>Край пелерины над левым плечом.</summary>
-        CapeLeft,
-        CapeRight,
+        /// <summary>Пелерина — мягкая часть.</summary>
+        Cape,
     }
 
     /// <summary>
     /// Поза рабочего: повороты частей относительно родителя (градусы, Эйлер в порядке Unity), сдвиг корня и где ноша.
     /// Знаки: у корпуса и головы +X — наклон вперёд; у бедра и плеча −X — вынос вперёд; у голени +X — сгиб колена назад;
     /// у предплечья −X — сгиб локтя вперёд-вверх; Z у руки — отвести в сторону (умножать на сторону: −1 левая, +1 правая).
-    /// Подол, стопы и края пелерины ставит скелет сам (<see cref="WorkerSkeleton.Evaluate"/>), их углы в позе — добавка.
+    /// Стопы ставит скелет сам (<see cref="WorkerSkeleton.Evaluate"/>); подол и пелерину гнёт <see cref="WorkerSkin"/>.
     /// </summary>
     public struct WorkerPose
     {
-        public const int PartCount = 15;
+        public const int PartCount = 14;
 
         /// <summary>Повороты частей, по индексу <see cref="WorkerPart"/>.</summary>
         public Vector3[] Angles;
@@ -44,6 +43,9 @@ namespace Emberhold.Gameplay.Workers
         public Vector3 LoadPosition;
 
         public Quaternion LoadRotation;
+
+        /// <summary>Изгиб мешка: 1 — загнут по спине на плече, 0 — ровный (<see cref="WorkerCarryBuilder.Shape"/>).</summary>
+        public float LoadBend;
 
         public static WorkerPose Rest() => new() { Angles = new Vector3[PartCount], LoadRotation = Quaternion.identity };
 
@@ -67,24 +69,19 @@ namespace Emberhold.Gameplay.Workers
             result.Shift = Vector2.Lerp(a.Shift, b.Shift, t);
             result.LoadPosition = Vector3.Lerp(a.LoadPosition, b.LoadPosition, t);
             result.LoadRotation = Quaternion.Slerp(a.LoadRotation, b.LoadRotation, t);
+            result.LoadBend = Mathf.Lerp(a.LoadBend, b.LoadBend, t);
             return result;
         }
     }
 
     /// <summary>
     /// Скелет рабочего: точки вращения частей (в долях роста, ноги в нуле, лицо в +Z), иерархия и расчёт матриц частей
-    /// по позе. Сам добавляет: подол уходит вперёд за бедром, которое впереди; края пелерины поднимаются за плечами;
-    /// стопы всегда ровно (параллельно земле). Корень опускается так, чтобы самая низкая опора — подошвы или таз
+    /// по позе. Стопы всегда ровно (параллельно земле). Подол и пелерина — мягкие части: их матрица — матрица корпуса,
+    /// а гнёт их <see cref="WorkerSkin"/> по бёдрам и плечам. Корень опускается так, чтобы самая низкая опора — подошвы или таз
     /// сидящего — касалась земли. Руку к точке ставит <see cref="ReachArm"/>.
     /// </summary>
     public static class WorkerSkeleton
     {
-        /// <summary>Какую долю поворота плеча повторяет край пелерины над ним.</summary>
-        private const float CapeFollow = 0.65f;
-
-        /// <summary>Какую долю выноса бедра вперёд повторяет подол.</summary>
-        private const float SkirtFollow = 0.6f;
-
         private static readonly Vector3[] Pivots =
         {
             new(0f, 0.515f, 0f), // корпус — талия
@@ -95,7 +92,7 @@ namespace Emberhold.Gameplay.Workers
             new(-0.175f, 0.55f, -0.008f), new(0.175f, 0.55f, -0.008f), // локти
             new(0f, 0.515f, 0f), // подол — талия
             new(-0.058f, 0.05f, 0.007f), new(0.058f, 0.05f, 0.007f), // щиколотки
-            new(-0.135f, 0.695f, -0.002f), new(0.135f, 0.695f, -0.002f), // края пелерины — у плеч
+            new(0f, 0.515f, 0f), // пелерина — как корпус
         };
 
         /// <summary>Родитель части; −1 — корень.</summary>
@@ -103,13 +100,13 @@ namespace Emberhold.Gameplay.Workers
         {
             -1, (int)WorkerPart.Torso, -1, -1, (int)WorkerPart.ThighLeft, (int)WorkerPart.ThighRight,
             (int)WorkerPart.Torso, (int)WorkerPart.Torso, (int)WorkerPart.UpperArmLeft, (int)WorkerPart.UpperArmRight,
-            -1, (int)WorkerPart.ShinLeft, (int)WorkerPart.ShinRight, (int)WorkerPart.Torso, (int)WorkerPart.Torso,
+            (int)WorkerPart.Torso, (int)WorkerPart.ShinLeft, (int)WorkerPart.ShinRight, (int)WorkerPart.Torso,
         };
 
         /// <summary>Опоры стопы в системе стопы: пятка и носок на подошве.</summary>
         private static readonly Vector3[] SoleOffsets = { new(0f, -0.05f, -0.045f), new(0f, -0.05f, 0.075f) };
 
-        /// <summary>Таз сидящего в системе подола.</summary>
+        /// <summary>Таз сидящего в системе подола (он движется с корпусом).</summary>
         private static readonly Vector3 SeatOffset = new(0f, -0.14f, -0.035f);
 
         private static readonly Matrix4x4[] Scratch = new Matrix4x4[WorkerPose.PartCount];
@@ -203,11 +200,6 @@ namespace Emberhold.Gameplay.Workers
             var angles = pose.Angles;
             for (var i = 0; i < WorkerPose.PartCount; i++)
                 Effective[i] = angles != null ? angles[i] : Vector3.zero;
-            // Подол — за бедром, которое вынесено вперёд сильнее; края пелерины — за плечами.
-            var forward = Mathf.Min(0f, Mathf.Min(Effective[(int)WorkerPart.ThighLeft].x, Effective[(int)WorkerPart.ThighRight].x));
-            Effective[(int)WorkerPart.Hips] += new Vector3(forward * SkirtFollow, 0f, 0f);
-            Effective[(int)WorkerPart.CapeLeft] += CapeLift(Effective[(int)WorkerPart.UpperArmLeft]);
-            Effective[(int)WorkerPart.CapeRight] += CapeLift(Effective[(int)WorkerPart.UpperArmRight]);
 
             for (var i = 0; i < WorkerPose.PartCount; i++)
             {
@@ -224,19 +216,6 @@ namespace Emberhold.Gameplay.Workers
                 result[i] = Matrix4x4.TRS(position, world, Vector3.one);
             }
         }
-
-        /// <summary>
-        /// Край пелерины повторяет часть поворота плеча, но не больше CapeLiftLimit градусов по каждой оси:
-        /// сильнее — ткань отрывается от пелерины щелью.
-        /// </summary>
-        private static Vector3 CapeLift(Vector3 arm)
-        {
-            var lift = Wrap(arm) * CapeFollow;
-            return new Vector3(Mathf.Clamp(lift.x, -CapeLiftLimit, CapeLiftLimit), Mathf.Clamp(lift.y, -CapeLiftLimit, CapeLiftLimit),
-                Mathf.Clamp(lift.z, -CapeLiftLimit, CapeLiftLimit));
-        }
-
-        private const float CapeLiftLimit = 22f;
 
         private static Vector3 Wrap(Vector3 euler) =>
             new(Mathf.DeltaAngle(0f, euler.x), Mathf.DeltaAngle(0f, euler.y), Mathf.DeltaAngle(0f, euler.z));

@@ -119,6 +119,7 @@ namespace Emberhold.Gameplay.Workers
             var load = WorkerSkeleton.Torso(pose, motion.Height) * WorkerCarryBuilder.ShoulderAnchor(carry, motion.Height);
             pose.LoadPosition = load.GetColumn(3);
             pose.LoadRotation = load.rotation;
+            pose.LoadBend = 1f;
             if (holdWeight > 0f && motion.Carry != WorkerCarry.None)
                 HoldLoad(ref pose, carry, load, motion.Height, holdWeight);
         }
@@ -152,6 +153,8 @@ namespace Emberhold.Gameplay.Workers
             var segment = Mathf.Min(path.Length - 1, Mathf.FloorToInt(travel));
             var from = segment == 0 ? shoulder : path[segment - 1];
             var load = Blend(from, path[segment], Mathf.SmoothStep(0f, 1f, travel - segment));
+            // Мешок выпрямляется, пока его снимают с плеча.
+            pose.LoadBend = segment == 0 ? 1f - Mathf.SmoothStep(0f, 1f, travel) : 0f;
             pose.LoadPosition = load.GetColumn(3);
             pose.LoadRotation = load.rotation;
             // Рука держит ношу до 0,7, потом отпускает и уходит в покой.

@@ -29,7 +29,7 @@ namespace Emberhold.Editor.Workers
         private readonly List<Figure> figures = new();
         private readonly Matrix4x4[] matrices = new Matrix4x4[WorkerPose.PartCount];
         private Mesh grid;
-        private Mesh carryMesh;
+        private WorkerCarryBuilder.Shape carryShape;
         private WorkerCarry builtCarry = (WorkerCarry)(-1);
         private float time;
 
@@ -130,13 +130,16 @@ namespace Emberhold.Editor.Workers
                 var look = LookFor(roles[i]);
                 var parts = WorkerMeshBuilder.BuildParts(look, Height, "Worker Preview " + roles[i]);
                 var edges = new Mesh[parts.Length];
+                var skins = new WorkerSkin[parts.Length];
                 for (var k = 0; k < parts.Length; k++)
                 {
                     Hidden(parts[k]);
                     edges[k] = Hidden(Edges(parts[k]));
+                    if (WorkerSkin.IsSoft((WorkerPart)k))
+                        skins[k] = new WorkerSkin(parts[k], (WorkerPart)k, Height);
                 }
                 var x = Lineup ? LineupX(i, roles.Length) : 0f;
-                figures.Add(new Figure(look, parts, edges, new Vector3(x, 0f, 0f), Lineup ? i * 0.137f % 1f : 0f));
+                figures.Add(new Figure(look, parts, edges, skins, new Vector3(x, 0f, 0f), Lineup ? i * 0.137f % 1f : 0f));
             }
             grid = Hidden(Grid(Lineup ? Mathf.CeilToInt(roles.Length * LineupSpacing * 0.5f) + 1 : 2));
         }
@@ -188,9 +191,11 @@ namespace Emberhold.Editor.Workers
             var carry = CarryShown();
             if (carry != builtCarry)
             {
-                if (carryMesh != null)
-                    UnityEngine.Object.DestroyImmediate(carryMesh);
-                carryMesh = carry == WorkerCarry.None ? null : Hidden(WorkerCarryBuilder.Build(carry, Height, "Carry Preview"));
+                if (carryShape != null)
+                    UnityEngine.Object.DestroyImmediate(carryShape.Mesh);
+                carryShape = carry == WorkerCarry.None
+                    ? null
+                    : new WorkerCarryBuilder.Shape(Hidden(WorkerCarryBuilder.Build(carry, Height, "Carry Preview")), carry, Height);
                 builtCarry = carry;
             }
             foreach (var figure in figures)
@@ -201,12 +206,22 @@ namespace Emberhold.Editor.Workers
                 var place = Matrix4x4.Translate(figure.Offset);
                 for (var k = 0; k < figure.Parts.Length; k++)
                 {
-                    preview.DrawMesh(figure.Parts[k], place * matrices[k], workerMaterial, 0);
-                    if (Wireframe)
-                        preview.DrawMesh(figure.Edges[k], place * matrices[k] * Matrix4x4.Scale(Vector3.one * 1.004f), wireMaterial, 0);
+                    // Мягкие части (подол, пелерина) гнутся по костям, их вершины уже в системе рабочего.
+                    var matrix = matrices[k];
+                    if (figure.Skins[k] != null)
+                    {
+                        figure.Skins[k].Apply(matrices);
+                        matrix = Matrix4x4.identity;
+                    }
+                    preview.DrawMesh(figure.Parts[k], place * matrix, workerMaterial, 0);
+                    if (Wireframe && figure.Skins[k] == null)
+                        preview.DrawMesh(figure.Edges[k], place * matrix * Matrix4x4.Scale(Vector3.one * 1.004f), wireMaterial, 0);
                 }
-                if (carryMesh != null)
-                    preview.DrawMesh(carryMesh, place * Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one), workerMaterial, 0);
+                if (carryShape != null)
+                {
+                    carryShape.Apply(pose.LoadBend);
+                    preview.DrawMesh(carryShape.Mesh, place * Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one), workerMaterial, 0);
+                }
             }
             if (ShowGrid)
                 preview.DrawMesh(grid, Matrix4x4.identity, gridMaterial, 0);
@@ -227,10 +242,10 @@ namespace Emberhold.Editor.Workers
             figures.Clear();
             if (grid != null)
                 UnityEngine.Object.DestroyImmediate(grid);
-            if (carryMesh != null)
-                UnityEngine.Object.DestroyImmediate(carryMesh);
+            if (carryShape != null)
+                UnityEngine.Object.DestroyImmediate(carryShape.Mesh);
             grid = null;
-            carryMesh = null;
+            carryShape = null;
             builtCarry = (WorkerCarry)(-1);
         }
 
@@ -244,11 +259,12 @@ namespace Emberhold.Editor.Workers
 
         private sealed class Figure
         {
-            public Figure(WorkerLook look, Mesh[] parts, Mesh[] edges, Vector3 offset, float seed)
+            public Figure(WorkerLook look, Mesh[] parts, Mesh[] edges, WorkerSkin[] skins, Vector3 offset, float seed)
             {
                 Look = look;
                 Parts = parts;
                 Edges = edges;
+                Skins = skins;
                 Offset = offset;
                 Seed = seed;
             }
@@ -256,6 +272,7 @@ namespace Emberhold.Editor.Workers
             public WorkerLook Look { get; }
             public Mesh[] Parts { get; }
             public Mesh[] Edges { get; }
+            public WorkerSkin[] Skins { get; }
             public Vector3 Offset { get; }
             public float Seed { get; }
         }
