@@ -291,10 +291,11 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void Peak_RisesAboveTheRidge_ToItsHeight_AndIsSharp()
         {
-            var layout = TwoLocations();
+            // Без котловин и ущелья: их стенки срезают гору (это проверяет Peak_KeepsLocationFloors).
+            var layout = new CampaignLayout();
             layout.Peaks.Add(Peak(72f, 40f, new Vector2(80f, 130f)));
             var heights = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
-            var plain = CampaignHeights.Build(TwoLocations(), Seed, Size, Size, 78f);
+            var plain = CampaignHeights.Build(new CampaignLayout(), Seed, Size, Size, 78f);
 
             var top = heights.Heights[80, 130];
             Assert.That(top, Is.GreaterThan(62f).And.LessThanOrEqualTo(72.5f), "вершина почти на своей высоте, выше хребта");
