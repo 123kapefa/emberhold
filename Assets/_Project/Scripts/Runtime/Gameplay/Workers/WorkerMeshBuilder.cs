@@ -102,15 +102,11 @@ namespace Emberhold.Gameplay.Workers
                     mesh.AddTube(new[] { new Vector3(side * 0.178f, 0.445f, 0.031f), new Vector3(side * 0.178f, 0.418f, 0.042f) },
                         new[] { new Vector2(0.031f, 0.03f), new Vector2(0.031f, 0.03f) }, LimbSides, Paint(look.Tunic * 0.72f));
                 }
-                // Кисть — сжатая ладонь, большой палец впереди.
-                mesh.AddTube(new[]
-                {
-                    new Vector3(side * 0.178f, 0.425f, 0.04f), new Vector3(side * 0.179f, 0.4f, 0.046f), new Vector3(side * 0.18f, 0.368f, 0.05f),
-                    new Vector3(side * 0.178f, 0.342f, 0.052f),
-                }, new[] { new Vector2(0.023f, 0.021f), new Vector2(0.029f, 0.021f), new Vector2(0.029f, 0.021f), new Vector2(0.019f, 0.014f) },
-                    LimbSides, skin);
-                mesh.AddTube(new[] { new Vector3(side * 0.168f, 0.402f, 0.064f), new Vector3(side * 0.162f, 0.376f, 0.08f) },
-                    new[] { new Vector2(0.011f, 0.011f), new Vector2(0.008f, 0.008f) }, 6, skin);
+                // Кисть: пустая — ладонь с большим пальцем впереди, с инструментом — кулак вокруг рукояти.
+                if (WorkerGearBuilder.GripAxis(look.Role, side) is { } grip)
+                    AddFist(mesh, side, grip, skin);
+                else
+                    AddOpenHand(mesh, side, skin);
             }
 
             // Голова: шея, плавно переходящая в челюсть, скулы, лоб, затылок, макушка.
@@ -198,6 +194,36 @@ namespace Emberhold.Gameplay.Workers
             WorkerGearBuilder.Add(mesh, scale, look);
             mesh.Transform = Matrix4x4.identity;
             return mesh.ToMesh(name);
+        }
+
+        private static void AddOpenHand(FacetedMesh mesh, float side, Func<Vector3, Color> skin)
+        {
+            mesh.AddTube(new[]
+            {
+                new Vector3(side * 0.178f, 0.425f, 0.04f), new Vector3(side * 0.179f, 0.4f, 0.046f), new Vector3(side * 0.18f, 0.368f, 0.05f),
+                new Vector3(side * 0.178f, 0.342f, 0.052f),
+            }, new[] { new Vector2(0.023f, 0.021f), new Vector2(0.029f, 0.021f), new Vector2(0.029f, 0.021f), new Vector2(0.019f, 0.014f) },
+                LimbSides, skin);
+            mesh.AddTube(new[] { new Vector3(side * 0.168f, 0.402f, 0.064f), new Vector3(side * 0.162f, 0.376f, 0.08f) },
+                new[] { new Vector2(0.011f, 0.011f), new Vector2(0.008f, 0.008f) }, 6, skin);
+        }
+
+        /// <summary>
+        /// Кулак вокруг рукояти: ладонь от запястья, валик согнутых пальцев вдоль оси хвата axis через центр кулака
+        /// и большой палец, обхвативший рукоять сверху спереди.
+        /// </summary>
+        private static void AddFist(FacetedMesh mesh, float side, Vector3 axis, Func<Vector3, Color> skin)
+        {
+            var center = WorkerGearBuilder.FistCenter(side);
+            mesh.AddTube(new[] { new Vector3(side * 0.178f, 0.425f, 0.04f), new Vector3(side * 0.179f, 0.402f, 0.045f), center + new Vector3(0f, 0.004f, -0.004f) },
+                new[] { new Vector2(0.023f, 0.021f), new Vector2(0.027f, 0.022f), new Vector2(0.026f, 0.022f) }, LimbSides, skin);
+            mesh.AddTube(new[] { center - axis * 0.026f, center - axis * 0.012f, center + axis * 0.012f, center + axis * 0.024f },
+                new[] { new Vector2(0.019f, 0.019f), new Vector2(0.026f, 0.025f), new Vector2(0.026f, 0.025f), new Vector2(0.02f, 0.019f) },
+                LimbSides, skin);
+            // Большой палец: от ладони внутрь, поверх рукояти перед указательным.
+            var inward = new Vector3(-side, 0f, 0f);
+            mesh.AddTube(new[] { center + axis * 0.012f + inward * 0.012f + Vector3.up * 0.012f, center + axis * 0.03f + inward * 0.016f },
+                new[] { new Vector2(0.01f, 0.01f), new Vector2(0.008f, 0.008f) }, 6, skin);
         }
 
         internal static Func<Vector3, Color> Paint(Color color)
