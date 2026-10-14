@@ -41,6 +41,9 @@ namespace Emberhold.World.Generation
         private const float RingInsetMin = 16f;
         private const float RingInsetSpread = 34f;
         private const int RingIndex = 100;
+        // Ширина каменного борта у самого края карты: тут горы встают поверх котловин и ущелий, чтобы мир
+        // нигде не обрывался низиной (вершины цепи у котловин срезаются стенкой).
+        private const float RimWidth = 16f;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
         // Насколько быстрее рёбер опускаются грани пирамиды: посередине грани гора уже в (1 + PeakFaceDrop) раз.
@@ -276,6 +279,19 @@ namespace Emberhold.World.Generation
             GrassTints[xi, zi] = tintWeight < 1f ? tint + (1f - tintWeight) * ridgeTint : tint / tintWeight;
             var ridgeKind = Voxels.GrassKinds.Weight(ridge.GrassKind);
             GrassKinds[xi, zi] = tintWeight < 1f ? kind + (1f - tintWeight) * ridgeKind : kind / tintWeight;
+
+            // Борт у края карты: неровная полоса гор поверх всего, что вырезано, чтобы котловины не выходили к краю.
+            if (ridge.PeakHeight > ridge.MaxHeight)
+            {
+                var rimReach = edge + (noise.Fbm(x * 0.05f + 7f, z * 0.05f - 3f, 2) - 0.5f) * 8f;
+                var rim = 1f - CampaignNoise.SmoothStep(0f, RimWidth, rimReach);
+                if (rim > 0f)
+                {
+                    var rimTop = ridge.MaxHeight + 6f
+                        + (ridge.PeakHeight - ridge.MaxHeight - 6f) * noise.Ridged(x * 0.03f, z * 0.03f);
+                    h = Math.Max(h, CampaignNoise.Lerp(h, rimTop, rim));
+                }
+            }
 
             Heights[xi, zi] = Math.Max(1f, Math.Min(maxHeight, h));
             Owners[xi, zi] = owner;
