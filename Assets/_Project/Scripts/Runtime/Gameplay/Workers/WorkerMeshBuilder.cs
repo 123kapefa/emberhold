@@ -118,17 +118,18 @@ namespace Emberhold.Gameplay.Workers
             }
             mesh.AddBox(new Vector3(0f, look.Beard ? 0.852f : 0.848f, 0.077f), new Vector3(0.026f, 0.005f, 0.01f),
                 Paint(look.Beard ? look.Hair * 0.55f : Eyes));
-            // Волосы: сзади и с боков от затылка до висков, сверху шапка до линии лба.
+            // Волосы: сзади и с боков от затылка до висков, сверху шапка до линии лба. Верх боковой части заходит
+            // под шапку, чтобы между ними не было щели.
             mesh.AddLoft(new[]
             {
                 new LoftRing(0.835f, 0.064f, 0.07f, -0.014f), new LoftRing(0.875f, 0.075f, 0.083f, -0.004f),
-                new LoftRing(0.915f, 0.077f, 0.085f, 0.002f),
+                new LoftRing(0.915f, 0.076f, 0.084f, 0.001f), new LoftRing(0.94f, 0.07f, 0.078f, -0.002f),
             }, Sides, hair, capStart: false, capEnd: false, arc: 0.68f, twoSided: true);
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.915f, 0.077f, 0.085f, 0.002f), new LoftRing(0.95f, 0.071f, 0.08f, -0.002f),
-                new LoftRing(0.975f, 0.051f, 0.061f, -0.004f), new LoftRing(0.99f, 0.02f, 0.026f, -0.004f),
-            }, Sides, hair, capStart: false);
+                new LoftRing(0.905f, 0.078f, 0.086f, 0.002f), new LoftRing(0.95f, 0.072f, 0.081f, -0.002f),
+                new LoftRing(0.975f, 0.052f, 0.062f, -0.004f), new LoftRing(0.99f, 0.02f, 0.026f, -0.004f),
+            }, Sides, hair, capStart: false, twoSided: true);
 
             // Капюшон откинут: валик вокруг шеи сзади и пустой мешок капюшона на лопатках, изнанка темнее;
             // пелерина на плечах закрывает начало рук.
@@ -139,8 +140,8 @@ namespace Emberhold.Gameplay.Workers
             }, Sides, hood, capStart: false, capEnd: false, arc: 0.7f, twoSided: true, innerColor: lining);
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.6f, 0.006f, 0.006f, -0.11f), new LoftRing(0.63f, 0.04f, 0.022f, -0.115f), new LoftRing(0.69f, 0.08f, 0.04f, -0.12f),
-                new LoftRing(0.75f, 0.095f, 0.05f, -0.118f), new LoftRing(0.79f, 0.09f, 0.05f, -0.11f),
+                new LoftRing(0.62f, 0.005f, 0.005f, -0.105f), new LoftRing(0.65f, 0.03f, 0.018f, -0.108f), new LoftRing(0.7f, 0.055f, 0.03f, -0.112f),
+                new LoftRing(0.755f, 0.065f, 0.036f, -0.11f), new LoftRing(0.79f, 0.062f, 0.036f, -0.102f),
             }, Sides, hood, capStart: true, capEnd: false, twoSided: true, innerColor: lining);
             mesh.AddLoft(new[]
             {
