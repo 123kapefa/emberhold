@@ -146,6 +146,30 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Sack_HangsDownUnderGravity_WhateverItsTilt()
+        {
+            var mesh = WorkerCarryBuilder.Build(WorkerCarry.StoneSack, Height);
+            created.Add(mesh);
+            var shape = new WorkerCarryBuilder.Shape(mesh, WorkerCarry.StoneSack, Height);
+            foreach (var tilt in new[] { 0f, 50f, -40f })
+            {
+                // Горловина вверх и наклонена; тело мешка (низ сетки) всё равно висит под горловиной.
+                var world = Matrix4x4.Rotate(Quaternion.Euler(tilt, 0f, tilt * 0.5f));
+                shape.Apply(world, 0f, 0f);
+                var neck = world.MultiplyPoint3x4(new Vector3(0f, 0.05f * Height, 0f));
+                var lowest = Vector3.zero;
+                foreach (var v in mesh.vertices)
+                {
+                    var p = world.MultiplyPoint3x4(v);
+                    if (p.y < lowest.y)
+                        lowest = p;
+                }
+                var hang = (lowest - neck).normalized;
+                Assert.That(Vector3.Dot(hang, Vector3.down), Is.GreaterThan(0.9f), $"Наклон {tilt}: мешок висит вниз");
+            }
+        }
+
+        [Test]
         public void Animator_BlendsBetweenClips_AndOneShotsFinish()
         {
             var animator = new WorkerAnimator();

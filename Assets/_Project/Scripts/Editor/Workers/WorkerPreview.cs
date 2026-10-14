@@ -33,6 +33,9 @@ namespace Emberhold.Editor.Workers
         private WorkerCarry builtCarry = (WorkerCarry)(-1);
         private float time;
 
+        /// <summary>Шаг времени с прошлой отрисовки — для качания мешка; 0 после перемотки и в снимках.</summary>
+        private float stepSinceDraw;
+
         public WorkerPreview()
         {
             var shared = AssetDatabase.LoadAssetAtPath<Material>(WorkerMaterialPath);
@@ -80,7 +83,11 @@ namespace Emberhold.Editor.Workers
         public float Time
         {
             get => time;
-            set => time = Mathf.Max(0f, value);
+            set
+            {
+                time = Mathf.Max(0f, value);
+                stepSinceDraw = 0f;
+            }
         }
 
         /// <summary>Длина разовой анимации с паузой; у цикла — 0.</summary>
@@ -115,6 +122,7 @@ namespace Emberhold.Editor.Workers
         public void Advance(float deltaTime)
         {
             time += deltaTime;
+            stepSinceDraw += deltaTime;
             if (OneShotLength > 0f && time > OneShotLength)
                 time %= OneShotLength;
         }
@@ -219,10 +227,13 @@ namespace Emberhold.Editor.Workers
                 }
                 if (carryShape != null)
                 {
-                    carryShape.Apply(pose.LoadBend);
+                    // Сетка мешка одна на витрину: качание считаем по первой фигуре, остальные рисуют ту же форму.
+                    if (figure == figures[0])
+                        carryShape.Apply(place * Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one), pose.LoadBend, stepSinceDraw);
                     preview.DrawMesh(carryShape.Mesh, place * Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one), workerMaterial, 0);
                 }
             }
+            stepSinceDraw = 0f;
             if (ShowGrid)
                 preview.DrawMesh(grid, Matrix4x4.identity, gridMaterial, 0);
             preview.Render(true);

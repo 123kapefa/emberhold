@@ -238,8 +238,9 @@ namespace Emberhold.Gameplay.Workers
                     : new WorkerCarryBuilder.Shape(WorkerCarryBuilder.Build(carry, settings.Height, "Carry " + carry), carry, settings.Height);
                 visual.Carry.sharedMesh = visual.CarryShape?.Mesh;
             }
-            visual.CarryShape?.Apply(pose.LoadBend);
             visual.Carry.transform.SetLocalPositionAndRotation(pose.LoadPosition, pose.LoadRotation);
+            // Мешок висит под тяжестью и качается: его форма зависит от того, как ноша движется в мире.
+            visual.CarryShape?.Apply(visual.Carry.transform.localToWorldMatrix, pose.LoadBend, deltaTime);
         }
 
         /// <summary>Ближайший горящий огонь в WarmDistance блоках от точки (координаты мира блоков) или null.</summary>

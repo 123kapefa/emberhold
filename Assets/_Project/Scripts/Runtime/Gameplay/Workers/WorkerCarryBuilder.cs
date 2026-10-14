@@ -189,18 +189,20 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Перегиб мешка на плече: у горловины, доли роста по оси мешка.</summary>
         private const float SackHinge = 0.05f;
 
-        /// <summary>
-        /// На сколько градусов тело мешка загибается вниз вдоль спины, когда он на плече: горловина идёт через плечо
-        /// наискось, а тело висит отвесно и прижимается к спине.
-        /// </summary>
-        private const float SackBendDegrees = -48f;
+        /// <summary>Насколько тело мешка может уйти к спине (градусы): дальше спина не пускает.</summary>
+        private const float SackBackLimit = -52f;
 
         /// <summary>
-        /// Изгиб ноши: мешок на плече загнут и сплющен по спине (bend = 1), на земле и в руке ровный (bend = 0).
-        /// Бревно не гнётся. Вершины меняются в сетке ноши, начало координат прежнее.
+        /// Тело мешка висит под действием тяжести: ниже перегиба оно поворачивается так, чтобы смотреть вниз,
+        /// с пружиной — при шаге, повороте и рывке качается и успокаивается. На спине (flatten = 1) мешок
+        /// сплющивается и не уходит внутрь спины. Бревно не гнётся. Вершины меняются в сетке ноши.
         /// </summary>
         public sealed class Shape
         {
+            private const float Stiffness = 70f;
+            private const float Damping = 9f;
+            private const float InertiaScale = 0.08f;
+
             private readonly Mesh mesh;
             private readonly Vector3[] restVertices;
             private readonly Vector3[] restNormals;
@@ -208,7 +210,11 @@ namespace Emberhold.Gameplay.Workers
             private readonly Vector3[] normals;
             private readonly float height;
             private readonly bool bends;
-            private float applied = -1f;
+            private Vector3 hang = Vector3.down;
+            private Vector3 hangVelocity;
+            private Vector3 lastPosition;
+            private Vector3 lastVelocity;
+            private bool hasLast;
 
             public Shape(Mesh mesh, WorkerCarry carry, float height)
             {
@@ -226,26 +232,58 @@ namespace Emberhold.Gameplay.Workers
 
             public Mesh Mesh => mesh;
 
-            public void Apply(float bend)
+            /// <summary>
+            /// Обновить форму. loadToWorld — где ноша в мире; flatten — насколько мешок прижат к спине (0…1);
+            /// deltaTime — шаг для качания, 0 — сразу повиснуть отвесно (снимок, перемотка).
+            /// </summary>
+            public void Apply(Matrix4x4 loadToWorld, float flatten, float deltaTime)
             {
-                bend = Mathf.Clamp01(bend);
-                if (!bends || Mathf.Abs(bend - applied) < 1e-3f)
+                if (!bends)
                     return;
-                applied = bend;
+                Swing(loadToWorld.GetColumn(3), deltaTime);
+                var down = Quaternion.Inverse(loadToWorld.rotation) * hang;
+                // Повороты, при которых ось мешка (−Y) смотрит вдоль down: к +Z — вокруг X, вбок — вокруг Z.
+                var aroundX = -Mathf.Atan2(down.z, -down.y) * Mathf.Rad2Deg;
+                var aroundZ = Mathf.Atan2(down.x, -down.y) * Mathf.Rad2Deg;
+                flatten = Mathf.Clamp01(flatten);
+                aroundX = Mathf.Max(aroundX, Mathf.Lerp(-180f, SackBackLimit, flatten));
+                aroundZ = Mathf.Clamp(aroundZ, Mathf.Lerp(-180f, -30f, flatten), Mathf.Lerp(180f, 30f, flatten));
+
                 var hinge = new Vector3(0f, SackHinge * height, 0f);
                 for (var v = 0; v < restVertices.Length; v++)
                 {
                     var p = restVertices[v];
-                    // Ниже перегиба тело мешка плавно поворачивается вниз и сплющивается к спине.
-                    var w = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(SackHinge + 0.02f, SackHinge - 0.12f, p.y / height)) * bend;
-                    var turn = Quaternion.Euler(SackBendDegrees * w, 0f, 0f);
-                    var flat = new Vector3(1f, 1f, 1f - 0.3f * w);
+                    // Ниже перегиба тело мешка плавно поворачивается вниз; на спине — сплющено.
+                    var w = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(SackHinge + 0.02f, SackHinge - 0.12f, p.y / height));
+                    var turn = Quaternion.Euler(aroundX * w, 0f, aroundZ * w);
+                    var flat = new Vector3(1f, 1f, 1f - 0.3f * w * flatten);
                     vertices[v] = hinge + turn * Vector3.Scale(p - hinge, flat);
                     normals[v] = (turn * Vector3.Scale(restNormals[v], new Vector3(flat.y * flat.z, flat.x * flat.z, flat.x * flat.y))).normalized;
                 }
                 mesh.vertices = vertices;
                 mesh.normals = normals;
                 mesh.RecalculateBounds();
+            }
+
+            /// <summary>Направление «вниз» для тела мешка: тяжесть минус ускорение ноши, с пружиной и затуханием.</summary>
+            private void Swing(Vector3 position, float deltaTime)
+            {
+                if (deltaTime <= 0f || !hasLast)
+                {
+                    hang = Vector3.down;
+                    hangVelocity = Vector3.zero;
+                    lastVelocity = Vector3.zero;
+                    lastPosition = position;
+                    hasLast = deltaTime > 0f;
+                    return;
+                }
+                var velocity = (position - lastPosition) / deltaTime;
+                var acceleration = (velocity - lastVelocity) / deltaTime;
+                lastPosition = position;
+                lastVelocity = velocity;
+                var target = (Vector3.down * 9.8f - Vector3.ClampMagnitude(acceleration, 40f) * InertiaScale).normalized;
+                hangVelocity += ((target - hang) * Stiffness - hangVelocity * Damping) * deltaTime;
+                hang = (hang + hangVelocity * deltaTime).normalized;
             }
         }
     }
