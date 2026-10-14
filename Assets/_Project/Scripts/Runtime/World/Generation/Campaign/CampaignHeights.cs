@@ -37,9 +37,9 @@ namespace Emberhold.World.Generation
         private const float ChainBandFar = 70f;
         // Вершины цепи вдоль краёв: шаг вдоль края, отступ от края (от RingInsetMin до +RingInsetSpread) и номер,
         // с которого считаются их зёрна шума (после пиков карты).
-        private const float RingSpacing = 46f;
-        private const float RingInsetMin = 20f;
-        private const float RingInsetSpread = 50f;
+        private const float RingSpacing = 36f;
+        private const float RingInsetMin = 16f;
+        private const float RingInsetSpread = 34f;
         private const int RingIndex = 100;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
@@ -285,7 +285,7 @@ namespace Emberhold.World.Generation
 
         /// <summary>
         /// Вершины горной цепи вдоль краёв карты: пирамиды через RingSpacing блоков (шаг гуляет), каждая на своём
-        /// отступе от края (RingInsetMin…+RingInsetSpread), своей высоты (от MaxHeight + 6 до PeakHeight) и ширины.
+        /// отступе от края (RingInsetMin…+RingInsetSpread), своей высоты (от MaxHeight + 8 до PeakHeight) и ширины.
         /// Соседние пирамиды сливаются рёбрами в неровные массивы с ветвями, а не в ровный хребет вдоль края.
         /// </summary>
         private static List<CampaignPeakShape> RingPeaks(CampaignRidge ridge, int sizeX, int sizeZ, CampaignNoise noise)
@@ -296,10 +296,10 @@ namespace Emberhold.World.Generation
             for (var i = 0; along < perimeter; i++)
             {
                 var inset = RingInsetMin + RingInsetSpread * noise.Hash(i, 201);
-                var height = CampaignNoise.Lerp(ridge.MaxHeight + 6f, ridge.PeakHeight, noise.Hash(i, 202));
+                var height = CampaignNoise.Lerp(ridge.MaxHeight + 8f, ridge.PeakHeight, noise.Hash(i, 202));
                 var radius = 24f + 16f * noise.Hash(i, 203);
                 var step = noise.Hash(i, 204);
-                var t = along + (step - 0.5f) * RingSpacing * 0.5f;
+                var t = along + (step - 0.5f) * RingSpacing * 0.3f;
                 t = (t % perimeter + perimeter) % perimeter;
                 Vector2 point;
                 if (t < sizeX)
@@ -317,7 +317,7 @@ namespace Emberhold.World.Generation
                     Height = height,
                     Radius = radius,
                 });
-                along += RingSpacing * (0.7f + 0.6f * step);
+                along += RingSpacing * (0.8f + 0.4f * step);
             }
             return result;
         }

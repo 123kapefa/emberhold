@@ -529,6 +529,26 @@ namespace Emberhold.Tests.EditMode.World
                 if (heights.Owners[x, z] == CampaignHeights.Ridge && heights.Heights[x, z] > 56f)
                     high++;
             Assert.That(high, Is.GreaterThan(150), "вершины цепи выше снеговой линии");
+            // Вдоль всех краёв горы без провалов: в каждом куске края по 32 блока есть вершина выше плато.
+            for (var t = 0; t < 512; t += 32)
+            {
+                Assert.That(MaxAlongEdge(heights, t, 0, 1, 0), Is.GreaterThan(50f), $"юг, x {t}");
+                Assert.That(MaxAlongEdge(heights, t, 512, 1, 0), Is.GreaterThan(50f), $"север, x {t}");
+                Assert.That(MaxAlongEdge(heights, 0, t, 0, 1), Is.GreaterThan(50f), $"запад, z {t}");
+                Assert.That(MaxAlongEdge(heights, 512, t, 0, 1), Is.GreaterThan(50f), $"восток, z {t}");
+            }
+        }
+
+        // Максимум в куске 32 блока вдоль края (dx, dz — направление края) на глубину 80 блоков внутрь.
+        private static float MaxAlongEdge(CampaignHeights heights, int x0, int z0, int dx, int dz)
+        {
+            var max = float.MinValue;
+            var inX = x0 == 512 ? -1 : dz == 1 ? 1 : 0;
+            var inZ = z0 == 512 ? -1 : dx == 1 ? 1 : 0;
+            for (var s = 0; s < 32; s++)
+            for (var d = 0; d <= 80; d++)
+                max = Mathf.Max(max, heights.Heights[x0 + dx * s + inX * d, z0 + dz * s + inZ * d]);
+            return max;
         }
 
         private static float MaxAround(CampaignHeights heights, int cx, int cz, int r)
