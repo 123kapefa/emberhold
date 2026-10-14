@@ -591,7 +591,7 @@ void LitPassFragment(
     {
         baseAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_RIM_DARK, rockRim);
         half3 rockAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_RockMap, sampler_RockMap), input.positionWS, normalForTex,
-            dpdx, dpdy, detailFade, flatFade);
+            dpdx, dpdy, detailFade, flatFade) * _GroundRockColor.rgb;
         // На хребте вместо камня скала. Доля скалы плавно меняется между вершинами, производные заданы явно.
         half cliff = saturate(input.grassKinds.w);
         UNITY_BRANCH
@@ -601,7 +601,7 @@ void LitPassFragment(
         // Снег на вершинах: выше снеговой линии скала хребта под снегом. Граница гуляет по шуму мира и по рисунку
         // скалы (на светлых плитах снег держится ниже), на самых крутых стенах снега нет — там видна скала.
         UNITY_BRANCH
-        if (cliff > 0.001h && input.positionWS.y > _GroundSnowLine - 6.0 - EMBERHOLD_SNOW_GULLY)
+        if (cliff > 0.001h && input.positionWS.y > _GroundSnowLine - 8.0 - EMBERHOLD_SNOW_GULLY)
         {
             // Сверх доли скалы в UV4.w — вогнутость рельефа: в кулуарах снег языками ниже, на рёбрах выдут.
             half gully = saturate(input.grassKinds.w - 1.0h) * 2.0h - 1.0h;
@@ -617,7 +617,6 @@ void LitPassFragment(
             half3 snowAlbedo = EMBERHOLD_SNOW_COLOR * lerp(0.86h, 1.0h, saturate(rockLuma * 2.5h));
             rockAlbedo = lerp(rockAlbedo, snowAlbedo, snow);
         }
-        rockAlbedo *= _GroundRockColor.rgb;
         rockAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_SHADOW_DARK, rockShadow);
         surfaceData.albedo = lerp(rockAlbedo, baseAlbedo, rockGrass);
     }

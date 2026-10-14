@@ -22,7 +22,7 @@ namespace Emberhold.World.Generation
         // Дальше этого от края локация или ущелье на высоту не влияют.
         private const float LocationReach = 60f;
         private const float GorgeReach = 50f;
-        // Самая крутая стенка высокой горы над краем дна котловины или ущелья, блоков на блок.
+        // Самая крутая стенка предгорий высокой горы над краем дна котловины или ущелья, блоков на блок.
         private const float PeakWall = 2f;
         // Насколько пологие стенки массива бывают у котловин: от PeakWallLow до PeakWall блоков на блок по шуму.
         private const float PeakWallLow = 1.1f;
@@ -130,7 +130,7 @@ namespace Emberhold.World.Generation
             var gorges = new PreparedGorge[layout.Gorges.Count];
             for (var i = 0; i < gorges.Length; i++)
                 gorges[i] = new PreparedGorge(layout, layout.Gorges[i], i, noise);
-            var ring = layout.Ridge.PeakHeight > layout.Ridge.MaxHeight
+            var ring = IsChain(layout.Ridge)
                 ? RingPeaks(layout.Ridge, sizeX, sizeZ, noise)
                 : new List<CampaignPeakShape>();
             var peaks = new PreparedPeak[layout.Peaks.Count + ring.Count];
@@ -158,7 +158,7 @@ namespace Emberhold.World.Generation
             // Хребет: гребни по «хребтовому» шуму, у края мира чуть выше, чтобы карта была закрыта.
             var edge = Math.Min(Math.Min(x, z), Math.Min(sizeX - x, sizeZ - z));
             float h;
-            if (ridge.PeakHeight > ridge.MaxHeight)
+            if (IsChain(ridge))
             {
                 h = ChainHeight(ridge, noise, x, z, edge) + (1f - CampaignNoise.SmoothStep(0f, 24f, edge)) * 4f;
                 h = Math.Max(ridge.MinHeight, h);
@@ -172,7 +172,7 @@ namespace Emberhold.World.Generation
                 h = Math.Max(ridge.MinHeight, Math.Min(ridge.MaxHeight, h));
             }
             var ridgeHeight = h;
-            var rim = ridge.PeakHeight > ridge.MaxHeight
+            var rim = IsChain(ridge)
                 ? 1f - CampaignNoise.SmoothStep(RimFree, RimFade,
                     edge + (noise.Fbm(x * 0.02f + 19f, z * 0.02f + 5f, 2) - 0.5f) * 30f)
                 : 0f;
@@ -272,7 +272,8 @@ namespace Emberhold.World.Generation
             }
 
             // Высокие горы поверх уже вырезанных котловин и ущелий: пологие стенки котловины не срезают пик,
-            // но от края ближайшего дна гора поднимается не круче PeakWall (местами положе), поэтому дно остаётся своим.
+            // но от края ближайшего дна гора поднимается не круче PeakWall внизу (местами положе) и PeakWallHigh выше,
+            // поэтому дно остаётся своим.
             var cut = h;
             if (peaks.Length > 0)
             {
@@ -306,7 +307,7 @@ namespace Emberhold.World.Generation
                 // Над котловиной (где дно вырезано ниже хребта) борт встаёт горой неровной высоты, иначе обрез мира
                 // над ней был бы ниже хребта вокруг; вне котловин край остаётся таким, каким его сделали цепь и вершины.
                 var carved = CampaignNoise.SmoothStep(2f, 10f, ridgeHeight - h);
-                var rimTop = ridge.MaxHeight + 6f + (ridge.PeakHeight - ridge.MaxHeight - 6f) * noise.Ridged(x * 0.03f, z * 0.03f);
+                var rimTop = ridge.MaxHeight + 6f + Math.Max(ridge.PeakHeight - ridge.MaxHeight - 6f, 0f) * noise.Ridged(x * 0.03f, z * 0.03f);
                 var target = CampaignNoise.Lerp(ridgeHeight, Math.Max(ridgeHeight, rimTop), carved);
                 h = Math.Max(h, CampaignNoise.Lerp(h, target, fill));
             }
@@ -344,7 +345,7 @@ namespace Emberhold.World.Generation
             for (var i = 0; along < perimeter; i++)
             {
                 var inset = RingInsetMin + RingInsetSpread * noise.Hash(i, 201);
-                var height = CampaignNoise.Lerp(ridge.MaxHeight + 8f, ridge.PeakHeight, noise.Hash(i, 202));
+                var height = CampaignNoise.Lerp(Math.Min(ridge.MaxHeight + 8f, ridge.PeakHeight), ridge.PeakHeight, noise.Hash(i, 202));
                 var radius = 24f + 16f * noise.Hash(i, 203);
                 var step = noise.Hash(i, 204);
                 var t = along + (step - 0.5f) * RingSpacing * 0.3f;
@@ -369,6 +370,10 @@ namespace Emberhold.World.Generation
             }
             return result;
         }
+
+        /// <summary>Хребет — горная цепь с вершинами (PeakHeight выше гребней и долин), а не плато до MaxHeight.</summary>
+        private static bool IsChain(CampaignRidge ridge) =>
+            ridge.PeakHeight > Math.Max(ridge.MinHeight, ridge.MaxHeight);
 
         /// <summary>
         /// Горная цепь хребта: острые гребни «хребтового» шума с искажением (петляют, сходятся в вершины),
@@ -530,7 +535,8 @@ namespace Emberhold.World.Generation
                     spread = 1f + (PeakFaceDrop * (float)Math.Pow(face, 1.3f) + PeakFlutes * flutes) * grow;
                     // Жандармы на рёбрах: ступени «хребтового» шума вдоль ребра.
                     var rib = (float)Math.Floor(angle / (2f * sector));
-                    gendarmes = (noise.Ridged(d * 0.12f + seed, rib * 7.1f) - 0.5f) * 4f * (1f - face) * (1f - face);
+                    // У самой вершины жандармов нет: там направление рёбер не определено, а вершина стоит на своей высоте.
+                    gendarmes = (noise.Ridged(d * 0.12f + seed, rib * 7.1f) - 0.5f) * 4f * (1f - face) * (1f - face) * grow;
                 }
                 else
                 {
