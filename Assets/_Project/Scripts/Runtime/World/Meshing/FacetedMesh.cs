@@ -244,9 +244,12 @@ namespace Emberhold.World.Meshing
                 var b = transform.MultiplyPoint3x4(points[faces[i + 1]]);
                 var c = transform.MultiplyPoint3x4(points[faces[i + 2]]);
                 var normal = Vector3.Cross(b - a, c - a);
-                if (normal.sqrMagnitude < 1e-12f)
+                // Делим сами: Vector3.Normalize обнуляет вектор короче 1e-5, а у мелких граней (наконечник, кромка щита)
+                // произведение бывает таким коротким.
+                var length = normal.magnitude;
+                if (length < 1e-9f)
                     continue;
-                normal.Normalize();
+                normal /= length;
                 // В Unity лицевая сторона — обход по часовой стрелке, её нормаль Cross(b − a, c − a).
                 if (Vector3.Dot(normal, (a + b + c) / 3f - inside) < 0f)
                 {

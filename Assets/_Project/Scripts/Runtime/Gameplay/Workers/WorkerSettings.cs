@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace Emberhold.Gameplay.Workers
@@ -58,8 +59,20 @@ namespace Emberhold.Gameplay.Workers
         [Tooltip("Рост рабочего, блоков. Дверь — 2 блока в высоту.")]
         [Range(0.5f, 1.99f)]
         [SerializeField] private float height = 1.9f;
-        [Tooltip("Цвет откинутого капюшона и пелерины. Потом у каждой роли будет свой.")]
+        [Tooltip("Цвет откинутого капюшона и пелерины, если у роли он не задан ниже.")]
         [SerializeField] private Color hoodColor = new(0.26f, 0.36f, 0.3f);
+        [Tooltip("Цвет капюшона и пелерины по ролям: по нему роль видно издалека.")]
+        [SerializeField] private RoleHood[] roleHoods =
+        {
+            new(WorkerRole.Free, new Color(0.6f, 0.56f, 0.46f)),
+            new(WorkerRole.Woodcutter, new Color(0.26f, 0.36f, 0.3f)),
+            new(WorkerRole.Digger, new Color(0.62f, 0.47f, 0.2f)),
+            new(WorkerRole.Builder, new Color(0.24f, 0.34f, 0.5f)),
+            new(WorkerRole.Stoker, new Color(0.78f, 0.42f, 0.12f)),
+            new(WorkerRole.Swordsman, new Color(0.5f, 0.15f, 0.15f)),
+            new(WorkerRole.Archer, new Color(0.5f, 0.15f, 0.15f)),
+            new(WorkerRole.Spearman, new Color(0.5f, 0.15f, 0.15f)),
+        };
         [Tooltip("Цвета кожи: каждому рабочему достаётся один по его номеру.")]
         [SerializeField] private Color[] skinColors = { new(0.910f, 0.753f, 0.604f), new(0.851f, 0.655f, 0.486f), new(0.769f, 0.541f, 0.376f), new(0.941f, 0.812f, 0.682f) };
         [Tooltip("Цвета волос, бровей и бороды.")]
@@ -85,7 +98,41 @@ namespace Emberhold.Gameplay.Workers
         public int FuelPerTrip => fuelPerTrip;
         public float Height => height;
 
-        /// <summary>Облик рабочего с номером index: один номер всегда даёт один облик.</summary>
-        public WorkerLook LookFor(int index) => WorkerLook.Pick(index, skinColors, hairColors, tunicColors, hoodColor, beardChance);
+        /// <summary>Облик рабочего с номером index: один номер всегда даёт один облик. Роль — Свободный.</summary>
+        public WorkerLook LookFor(int index) => LookFor(index, WorkerRole.Free);
+
+        /// <summary>Облик рабочего с номером index в роли role: лицо от номера, капюшон и снаряжение от роли.</summary>
+        public WorkerLook LookFor(int index, WorkerRole role) =>
+            WorkerLook.Pick(index, skinColors, hairColors, tunicColors, hoodColor, beardChance).WithRole(role, HoodFor(role));
+
+        /// <summary>Цвет капюшона роли; если для роли нет записи — общий hoodColor.</summary>
+        public Color HoodFor(WorkerRole role)
+        {
+            if (roleHoods != null)
+            {
+                foreach (var entry in roleHoods)
+                {
+                    if (entry.Role == role)
+                        return entry.Hood;
+                }
+            }
+            return hoodColor;
+        }
+
+        [Serializable]
+        private struct RoleHood
+        {
+            [SerializeField] private WorkerRole role;
+            [SerializeField] private Color hood;
+
+            public RoleHood(WorkerRole role, Color hood)
+            {
+                this.role = role;
+                this.hood = hood;
+            }
+
+            public WorkerRole Role => role;
+            public Color Hood => hood;
+        }
     }
 }

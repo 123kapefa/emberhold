@@ -5,9 +5,10 @@ using UnityEngine;
 namespace Emberhold.Editor.Workers
 {
     /// <summary>
-    /// Окно Emberhold → Worker Viewer: один рабочий на нейтральном фоне без сцены и Play. Левая кнопка мыши — вращение
-    /// вокруг, колесо — приближение, средняя или правая — сдвиг. Облик — по номеру рабочего из WorkerSettings; после
-    /// перекомпиляции кода и правки настроек модель перестраивается сама.
+    /// Окно Emberhold → Worker Viewer: рабочий на нейтральном фоне без сцены и Play. Левая кнопка мыши — вращение
+    /// вокруг, колесо — приближение, средняя или правая — сдвиг. Роль — из списка или стрелками ◀ ▶ (и клавишами ← →),
+    /// «Все роли» ставит их в ряд. Облик — по номеру рабочего из WorkerSettings; после перекомпиляции кода и правки
+    /// настроек модель перестраивается сама.
     /// </summary>
     public sealed class WorkerViewerWindow : EditorWindow
     {
@@ -15,6 +16,8 @@ namespace Emberhold.Editor.Workers
 
         [SerializeField] private WorkerSettings settings;
         [SerializeField] private int lookIndex;
+        [SerializeField] private WorkerRole role;
+        [SerializeField] private bool lineup;
         [SerializeField] private WorkerPreview.BeardMode beard;
         [SerializeField] private bool wireframe;
         [SerializeField] private bool showGrid = true;
@@ -65,31 +68,59 @@ namespace Emberhold.Editor.Workers
 
         private void OnGUI()
         {
+            HandleKeys();
+            EditorGUI.BeginChangeCheck();
+            var wasLineup = lineup;
+            // Первая строка — что смотреть: роль или все роли, ракурсы.
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
-                EditorGUI.BeginChangeCheck();
-                settings = (WorkerSettings)EditorGUILayout.ObjectField(settings, typeof(WorkerSettings), false, GUILayout.Width(160f));
-                GUILayout.Label("Облик", GUILayout.Width(40f));
-                lookIndex = EditorGUILayout.IntSlider(lookIndex, 0, 15, GUILayout.Width(150f));
-                beard = (WorkerPreview.BeardMode)EditorGUILayout.EnumPopup(beard, EditorStyles.toolbarPopup, GUILayout.Width(70f));
-                wireframe = GUILayout.Toggle(wireframe, "Рёбра", EditorStyles.toolbarButton);
-                showGrid = GUILayout.Toggle(showGrid, "Пол", EditorStyles.toolbarButton);
-                if (EditorGUI.EndChangeCheck())
-                    Apply();
-                autoTurn = GUILayout.Toggle(autoTurn, "Поворот", EditorStyles.toolbarButton);
+                GUILayout.Label("Роль", GUILayout.Width(32f));
+                using (new EditorGUI.DisabledScope(lineup))
+                {
+                    if (GUILayout.Button("◀", EditorStyles.toolbarButton, GUILayout.Width(22f)))
+                        role = Step(role, -1);
+                    role = (WorkerRole)EditorGUILayout.EnumPopup(role, EditorStyles.toolbarPopup, GUILayout.Width(95f));
+                    if (GUILayout.Button("▶", EditorStyles.toolbarButton, GUILayout.Width(22f)))
+                        role = Step(role, 1);
+                }
+                lineup = GUILayout.Toggle(lineup, "Все роли", EditorStyles.toolbarButton);
+                GUILayout.Space(12f);
                 if (GUILayout.Button("Спереди", EditorStyles.toolbarButton))
                     preview.ResetView(preview.Height);
                 if (GUILayout.Button("Сбоку", EditorStyles.toolbarButton))
                     preview.Yaw = 90f;
                 if (GUILayout.Button("Сзади", EditorStyles.toolbarButton))
                     preview.Yaw = 0f;
-                if (GUILayout.Button("Голова", EditorStyles.toolbarButton))
+                using (new EditorGUI.DisabledScope(lineup))
                 {
-                    preview.Pivot = new Vector3(0f, preview.Height * 0.88f, 0f);
-                    preview.Distance = preview.Height * 0.55f;
+                    if (GUILayout.Button("Голова", EditorStyles.toolbarButton))
+                    {
+                        preview.Pivot = new Vector3(0f, preview.Height * 0.88f, 0f);
+                        preview.Distance = preview.Height * 0.55f;
+                    }
                 }
+                autoTurn = GUILayout.Toggle(autoTurn, "Поворот", EditorStyles.toolbarButton);
                 GUILayout.FlexibleSpace();
-                GUILayout.Label($"{preview.TriangleCount} треуг.", EditorStyles.miniLabel);
+                if (!lineup)
+                    GUILayout.Label($"{preview.TriangleCount} треуг.", EditorStyles.miniLabel);
+            }
+            // Вторая строка — чей облик: настройки, номер рабочего, борода, вспомогательное.
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+            {
+                settings = (WorkerSettings)EditorGUILayout.ObjectField(settings, typeof(WorkerSettings), false, GUILayout.Width(150f));
+                GUILayout.Label("Облик", GUILayout.Width(40f));
+                lookIndex = EditorGUILayout.IntSlider(lookIndex, 0, 15, GUILayout.Width(150f));
+                GUILayout.Label("Борода", GUILayout.Width(46f));
+                beard = (WorkerPreview.BeardMode)EditorGUILayout.EnumPopup(beard, EditorStyles.toolbarPopup, GUILayout.Width(70f));
+                wireframe = GUILayout.Toggle(wireframe, "Рёбра", EditorStyles.toolbarButton);
+                showGrid = GUILayout.Toggle(showGrid, "Пол", EditorStyles.toolbarButton);
+                GUILayout.FlexibleSpace();
+            }
+            if (EditorGUI.EndChangeCheck())
+            {
+                Apply();
+                if (wasLineup != lineup)
+                    preview.ResetView(preview.Height);
             }
 
             var rect = GUILayoutUtility.GetRect(10f, 10000f, 10f, 10000f);
@@ -97,13 +128,17 @@ namespace Emberhold.Editor.Workers
             if (Event.current.type == EventType.Repaint)
                 preview.Draw(rect);
             GUI.Label(new Rect(rect.x + 6f, rect.yMax - 20f, rect.width, 18f),
-                "ЛКМ — вращать, колесо — ближе/дальше, СКМ/ПКМ — сдвиг", EditorStyles.whiteMiniLabel);
+                "ЛКМ — вращать, колесо — ближе/дальше, СКМ/ПКМ — сдвиг, ← → — роль", EditorStyles.whiteMiniLabel);
+            if (!lineup)
+                GUI.Label(new Rect(rect.x + 6f, rect.y + 4f, rect.width, 18f), RoleName(role), EditorStyles.whiteLargeLabel);
         }
 
         private void Apply()
         {
             preview.Settings = settings;
             preview.LookIndex = lookIndex;
+            preview.Role = role;
+            preview.Lineup = lineup;
             preview.Beard = beard;
             preview.Wireframe = wireframe;
             preview.ShowGrid = showGrid;
@@ -148,6 +183,37 @@ namespace Emberhold.Editor.Workers
                     break;
             }
         }
+
+        /// <summary>← и → листают роли, когда окно в фокусе.</summary>
+        private void HandleKeys()
+        {
+            var e = Event.current;
+            if (lineup || e.type != EventType.KeyDown || (e.keyCode != KeyCode.LeftArrow && e.keyCode != KeyCode.RightArrow))
+                return;
+            role = Step(role, e.keyCode == KeyCode.LeftArrow ? -1 : 1);
+            Apply();
+            e.Use();
+            Repaint();
+        }
+
+        private static WorkerRole Step(WorkerRole current, int delta)
+        {
+            var count = System.Enum.GetValues(typeof(WorkerRole)).Length;
+            return (WorkerRole)(((int)current + delta + count) % count);
+        }
+
+        private static string RoleName(WorkerRole role) => role switch
+        {
+            WorkerRole.Free => "Свободный",
+            WorkerRole.Woodcutter => "Лесоруб",
+            WorkerRole.Digger => "Копатель",
+            WorkerRole.Builder => "Строитель",
+            WorkerRole.Stoker => "Истопник",
+            WorkerRole.Swordsman => "Мечник",
+            WorkerRole.Archer => "Лучник",
+            WorkerRole.Spearman => "Копейщик",
+            _ => role.ToString(),
+        };
 
         private static WorkerSettings FindSettings()
         {

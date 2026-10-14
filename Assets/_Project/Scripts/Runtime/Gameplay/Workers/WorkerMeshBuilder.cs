@@ -8,20 +8,21 @@ namespace Emberhold.Gameplay.Workers
     /// Гранёная low-poly сетка рабочего в стиле деревьев, слепленная лофтами — кольцами разного сечения: сапоги с носком,
     /// ноги с икрой и коленом, рубаха с талией, грудью и покатыми плечами, руки с локтем и кистью с большим пальцем,
     /// голова с челюстью, скулами, носом, ушами и волосами, у части борода. Капюшон цвета роли откинут на спину:
-    /// пелерина на плечах, валик вокруг шеи и пустой мешок капюшона на лопатках с тёмной изнанкой.
+    /// пелерина на плечах, валик вокруг шеи и мешок капюшона по спине. Снаряжение роли (инструмент, оружие, шапка,
+    /// фартук, броня) добавляет <see cref="WorkerGearBuilder"/>.
     /// Ноги в (0, 0, 0), лицо смотрит в +Z, единица — блок, рост height. Все размеры — доли роста.
     /// Цвет вершин — цвет части, a = 0: шейдер Emberhold/World/Tree оставляет его как есть.
     /// </summary>
     public static class WorkerMeshBuilder
     {
-        private const int Sides = 14;
-        private const int LimbSides = 10;
+        internal const int Sides = 14;
+        internal const int LimbSides = 10;
 
-        private static readonly Color Pants = new(0.29f, 0.243f, 0.196f);
-        private static readonly Color Boots = new(0.18f, 0.149f, 0.125f);
-        private static readonly Color Leather = new(0.369f, 0.251f, 0.157f);
-        private static readonly Color Buckle = new(0.784f, 0.635f, 0.29f);
-        private static readonly Color Eyes = new(0.133f, 0.102f, 0.078f);
+        internal static readonly Color Pants = new(0.29f, 0.243f, 0.196f);
+        internal static readonly Color Boots = new(0.18f, 0.149f, 0.125f);
+        internal static readonly Color Leather = new(0.369f, 0.251f, 0.157f);
+        internal static readonly Color Buckle = new(0.784f, 0.635f, 0.29f);
+        internal static readonly Color Eyes = new(0.133f, 0.102f, 0.078f);
 
         public static Mesh Build(WorkerLook look, float height, string name = "Worker")
         {
@@ -32,6 +33,8 @@ namespace Emberhold.Gameplay.Workers
             var skin = Paint(look.Skin);
             var hair = Paint(look.Hair);
             var hood = Paint(look.Hood);
+            // Лесоруб работает с закатанными рукавами: предплечья открыты, манжет нет.
+            var rolledSleeves = look.Role == WorkerRole.Woodcutter;
 
             // Ноги: сапог с носком, голень с икрой, колено, бедро толще к тазу.
             foreach (var side in new[] { -1f, 1f })
@@ -81,9 +84,24 @@ namespace Emberhold.Gameplay.Workers
                     new Vector2(0.034f, 0.034f), new Vector2(0.043f, 0.041f), new Vector2(0.036f, 0.036f),
                     new Vector2(0.031f, 0.032f), new Vector2(0.033f, 0.031f), new Vector2(0.028f, 0.027f),
                 }, LimbSides, tunic);
-                // Манжета рукава темнее рубахи.
-                mesh.AddTube(new[] { new Vector3(side * 0.178f, 0.445f, 0.031f), new Vector3(side * 0.178f, 0.418f, 0.042f) },
-                    new[] { new Vector2(0.031f, 0.03f), new Vector2(0.031f, 0.03f) }, LimbSides, Paint(look.Tunic * 0.72f));
+                if (rolledSleeves)
+                {
+                    // Рукав закатан валиком над локтем, ниже — голое предплечье.
+                    mesh.AddTube(new[] { new Vector3(side * 0.171f, 0.6f, -0.01f), new Vector3(side * 0.174f, 0.565f, -0.009f) },
+                        new[] { new Vector2(0.04f, 0.04f), new Vector2(0.039f, 0.039f) }, LimbSides, Paint(look.Tunic * 0.8f));
+                    mesh.AddTube(new[]
+                    {
+                        new Vector3(side * 0.174f, 0.566f, -0.009f), new Vector3(side * 0.175f, 0.55f, -0.008f),
+                        new Vector3(side * 0.178f, 0.48f, 0.018f), new Vector3(side * 0.178f, 0.425f, 0.04f),
+                    }, new[] { new Vector2(0.034f, 0.035f), new Vector2(0.033f, 0.034f), new Vector2(0.034f, 0.033f), new Vector2(0.029f, 0.028f) },
+                        LimbSides, skin);
+                }
+                else
+                {
+                    // Манжета рукава темнее рубахи.
+                    mesh.AddTube(new[] { new Vector3(side * 0.178f, 0.445f, 0.031f), new Vector3(side * 0.178f, 0.418f, 0.042f) },
+                        new[] { new Vector2(0.031f, 0.03f), new Vector2(0.031f, 0.03f) }, LimbSides, Paint(look.Tunic * 0.72f));
+                }
                 // Кисть — сжатая ладонь, большой палец впереди.
                 mesh.AddTube(new[]
                 {
@@ -177,11 +195,12 @@ namespace Emberhold.Gameplay.Workers
                 new LoftRing(0.776f, 0.06f, 0.052f),
             }, Sides, hood, capStart: false, capEnd: false, twoSided: true, innerColor: lining);
 
+            WorkerGearBuilder.Add(mesh, scale, look);
             mesh.Transform = Matrix4x4.identity;
             return mesh.ToMesh(name);
         }
 
-        private static Func<Vector3, Color> Paint(Color color)
+        internal static Func<Vector3, Color> Paint(Color color)
         {
             var linear = color.linear;
             linear.a = 0f;

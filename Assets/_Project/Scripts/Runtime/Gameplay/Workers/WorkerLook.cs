@@ -4,18 +4,20 @@ using UnityEngine;
 namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
-    /// Облик одного рабочего: цвета кожи, волос, рубахи и капюшона с накидкой, есть ли борода. Капюшон — цвет роли
-    /// (одинаковый у всех с этой ролью), остальное у каждого своё. Сетку по облику строит <see cref="WorkerMeshBuilder"/>.
+    /// Облик одного рабочего: цвета кожи, волос, рубахи и капюшона с накидкой, есть ли борода, роль. Роль задаёт
+    /// цвет капюшона (одинаковый у всех с этой ролью) и снаряжение, остальное у каждого своё.
+    /// Сетку по облику строит <see cref="WorkerMeshBuilder"/>.
     /// </summary>
     public readonly struct WorkerLook
     {
-        public WorkerLook(Color skin, Color hair, Color tunic, Color hood, bool beard)
+        public WorkerLook(Color skin, Color hair, Color tunic, Color hood, bool beard, WorkerRole role = WorkerRole.Free)
         {
             Skin = skin;
             Hair = hair;
             Tunic = tunic;
             Hood = hood;
             Beard = beard;
+            Role = role;
         }
 
         public Color Skin { get; }
@@ -23,6 +25,13 @@ namespace Emberhold.Gameplay.Workers
         public Color Tunic { get; }
         public Color Hood { get; }
         public bool Beard { get; }
+        public WorkerRole Role { get; }
+
+        /// <summary>Тот же человек в другой роли: лицо, волосы и рубаха прежние, капюшон цвета роли.</summary>
+        public WorkerLook WithRole(WorkerRole role, Color hood) => new(Skin, Hair, Tunic, hood, Beard, role);
+
+        /// <summary>Тот же облик с бородой или без.</summary>
+        public WorkerLook WithBeard(bool beard) => new(Skin, Hair, Tunic, Hood, beard, Role);
 
         /// <summary>
         /// Облик по номеру рабочего: кожа, волосы и рубаха из палитр, борода с вероятностью beardChance.

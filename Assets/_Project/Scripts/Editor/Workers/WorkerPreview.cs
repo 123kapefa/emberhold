@@ -7,8 +7,9 @@ using UnityEngine;
 namespace Emberhold.Editor.Workers
 {
     /// <summary>
-    /// Отрисовка одного рабочего вне сцены (PreviewRenderUtility): сетка из WorkerMeshBuilder по облику из WorkerSettings,
-    /// орбитальная камера вокруг точки Pivot, по желанию — рёбра граней и пол-сетка в блоках. Окно WorkerViewerWindow
+    /// Отрисовка рабочего вне сцены (PreviewRenderUtility): сетка из WorkerMeshBuilder по облику из WorkerSettings и роли,
+    /// орбитальная камера вокруг точки Pivot, по желанию — рёбра граней и пол-сетка в блоках. В режиме витрины рядом
+    /// стоят все роли одного и того же человека. Окно WorkerViewerWindow
     /// показывает её и крутит мышью, тест рисует в текстуру.
     /// </summary>
     public sealed class WorkerPreview : IDisposable
@@ -22,6 +23,9 @@ namespace Emberhold.Editor.Workers
         private readonly Material workerMaterial;
         private readonly Material wireMaterial;
         private readonly Material gridMaterial;
+        private const float LineupSpacing = 0.9f;
+
+        private readonly List<Mesh> lineup = new();
         private Mesh body;
         private Mesh wire;
         private Mesh grid;
@@ -49,6 +53,13 @@ namespace Emberhold.Editor.Workers
 
         public WorkerSettings Settings { get; set; }
         public int LookIndex { get; set; }
+        public WorkerRole Role { get; set; }
+
+        /// <summary>Витрина: все роли в ряд вместо одной.</summary>
+        public bool Lineup { get; set; }
+
+        /// <summary>Сколько фигур в кадре.</summary>
+        public int FigureCount => Lineup ? lineup.Count : 1;
         public BeardMode Beard { get; set; }
         public bool Wireframe { get; set; }
         public bool ShowGrid { get; set; } = true;
@@ -64,12 +75,17 @@ namespace Emberhold.Editor.Workers
         public int VertexCount => body != null ? body.vertexCount : 0;
         public int TriangleCount => body != null ? body.triangles.Length / 3 : 0;
 
-        /// <summary>Вид спереди на всего рабочего.</summary>
+        /// <summary>Середина ряда витрины по X, в блоках; для одной фигуры — 0.</summary>
+        // Ряд слева направо в порядке ролей, если смотреть спереди (камера смотрит в −Z, поэтому +X — слева).
+        public static float LineupX(int index, int count) => ((count - 1) * 0.5f - index) * LineupSpacing;
+
+        /// <summary>Вид спереди на всего рабочего или на весь ряд витрины.</summary>
         public void ResetView(float height)
         {
             Yaw = 180f;
             Pitch = 8f;
-            Distance = height * 2.6f;
+            var count = Lineup ? Enum.GetValues(typeof(WorkerRole)).Length : 1;
+            Distance = Mathf.Max(height * 2.6f, count * LineupSpacing * 1.45f);
             Pivot = new Vector3(0f, height * 0.55f, 0f);
         }
 
@@ -78,15 +94,23 @@ namespace Emberhold.Editor.Workers
         {
             DestroyMeshes();
             Height = Settings != null ? Settings.Height : 1.9f;
-            var look = Settings != null
-                ? Settings.LookFor(LookIndex)
-                : new WorkerLook(new Color(0.91f, 0.75f, 0.6f), new Color(0.23f, 0.17f, 0.11f), new Color(0.54f, 0.35f, 0.21f),
-                    new Color(0.26f, 0.36f, 0.3f), false);
-            if (Beard != BeardMode.ByLook)
-                look = new WorkerLook(look.Skin, look.Hair, look.Tunic, look.Hood, Beard == BeardMode.On);
-            body = Hidden(WorkerMeshBuilder.Build(look, Height, "Worker Preview"));
+            body = Hidden(WorkerMeshBuilder.Build(LookFor(Role), Height, "Worker Preview"));
             wire = Hidden(Edges(body));
-            grid = Hidden(Grid(2));
+            if (Lineup)
+            {
+                foreach (WorkerRole role in Enum.GetValues(typeof(WorkerRole)))
+                    lineup.Add(Hidden(WorkerMeshBuilder.Build(LookFor(role), Height, "Worker Preview " + role)));
+            }
+            grid = Hidden(Grid(Lineup ? Mathf.CeilToInt(lineup.Count * LineupSpacing * 0.5f) + 1 : 2));
+        }
+
+        private WorkerLook LookFor(WorkerRole role)
+        {
+            var look = Settings != null
+                ? Settings.LookFor(LookIndex, role)
+                : new WorkerLook(new Color(0.91f, 0.75f, 0.6f), new Color(0.23f, 0.17f, 0.11f), new Color(0.54f, 0.35f, 0.21f),
+                    new Color(0.26f, 0.36f, 0.3f), false, role);
+            return Beard == BeardMode.ByLook ? look : look.WithBeard(Beard == BeardMode.On);
         }
 
         /// <summary>Нарисовать в прямоугольник окна (вызывать в OnGUI при Repaint).</summary>
@@ -121,8 +145,14 @@ namespace Emberhold.Editor.Workers
                 Rebuild();
             var rotation = Quaternion.Euler(Pitch, Yaw, 0f);
             preview.camera.transform.SetPositionAndRotation(Pivot - rotation * Vector3.forward * Distance, rotation);
-            preview.DrawMesh(body, Matrix4x4.identity, workerMaterial, 0);
-            if (Wireframe)
+            if (Lineup)
+            {
+                for (var i = 0; i < lineup.Count; i++)
+                    preview.DrawMesh(lineup[i], Matrix4x4.Translate(new Vector3(LineupX(i, lineup.Count), 0f, 0f)), workerMaterial, 0);
+            }
+            else
+                preview.DrawMesh(body, Matrix4x4.identity, workerMaterial, 0);
+            if (Wireframe && !Lineup)
             {
                 // Чуть больше тела, чтобы рёбра не тонули в гранях.
                 var center = body.bounds.center;
@@ -140,6 +170,9 @@ namespace Emberhold.Editor.Workers
                 if (mesh != null)
                     UnityEngine.Object.DestroyImmediate(mesh);
             }
+            foreach (var mesh in lineup)
+                UnityEngine.Object.DestroyImmediate(mesh);
+            lineup.Clear();
             body = wire = grid = null;
         }
 
