@@ -24,8 +24,9 @@ namespace Emberhold.World.Meshing
         public const int ForwardLeft = 64;   // −X +Z
         public const int ForwardRight = 128; // +X +Z
 
-        /// <summary>Получает ли материал траву с соседей: земля и камень — да, трава и дерево — нет.</summary>
-        public static bool TakesGrass(byte material) => material == BlockMaterials.Dirt || material == BlockMaterials.Stone;
+        /// <summary>Получает ли материал траву с соседей: земля, камень и скала — да, трава и дерево — нет.</summary>
+        public static bool TakesGrass(byte material) =>
+            material == BlockMaterials.Dirt || material == BlockMaterials.Stone || material == BlockMaterials.Cliff;
 
         /// <summary>
         /// Маска соседей-травы для верха блока block формы s. Сосед по стороне — трава, если его верх трава

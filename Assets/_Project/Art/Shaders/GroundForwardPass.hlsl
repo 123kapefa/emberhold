@@ -11,7 +11,7 @@
 
 // Для трёх проекций текстуры нужна точка в мире.
 #ifndef REQUIRES_WORLD_SPACE_POS_INTERPOLATOR
-    #define REQUIRES_WORLD_SPACE_POS_INTERPOLATOR 1
+    #define REQUIRES_WORLD_SPACE_POS_INTERPOLATOR
 #endif
 #include "Packages/com.unity.render-pipelines.universal/Shaders/LitInput.hlsl"
 
@@ -28,6 +28,12 @@ TEXTURE2D(_GrassDeadMap);
 TEXTURE2D(_GrassMountainMap);
 // Цвет камня перехода гладкой земли — общее свойство, его ставит VoxelWorldView (цвет материала камня).
 half4 _GroundRockColor;
+// Скала гор (#97): на хребте карты кампании гладкая земля переходит не в камень, а в скалу; доля скалы — в UV4.w
+// до 1, сверх 1 — вогнутость рельефа для снега (#101).
+// Общая текстура, её ставит VoxelWorldView (текстура материала скалы). Сэмплер общий с _RockMap.
+TEXTURE2D(_GroundCliffMap);
+// Снеговая линия гор (#101) в блоках: выше неё скала хребта под снегом. Общее свойство, его ставит VoxelWorldView.
+float _GroundSnowLine;
 
 // Оттенок травы своего места из цвета вершины: rgb — множитель, a — насыщенность (1 — как есть).
 half3 TintGrass(half3 albedo, half4 tint)
@@ -38,6 +44,15 @@ half3 TintGrass(half3 albedo, half4 tint)
 
 // Сколько блоков занимает текстура по каждой проекции.
 #define EMBERHOLD_GROUND_TILE 8.0
+// Цвет снега на вершинах гор: чуть холодный белый.
+#define EMBERHOLD_SNOW_COLOR half3(0.9h, 0.94h, 1.0h)
+// На сколько блоков снег в кулуарах спускается ниже снеговой линии, а на рёбрах поднимается выше.
+#define EMBERHOLD_SNOW_GULLY 8.0
+// Снег держится на склонах, где нормаль вверх больше этого: у снеговой линии (LOW) и на EMBERHOLD_SNOW_SLOPE_RISE
+// блоков выше (HIGH, почти отвесно).
+#define EMBERHOLD_SNOW_SLOPE_LOW 0.45h
+#define EMBERHOLD_SNOW_SLOPE_HIGH 0.15h
+#define EMBERHOLD_SNOW_SLOPE_RISE 12.0h
 // Мелкая деталь из альфа-канала текстуры ложится во столько раз мельче рисунка и видна только вблизи:
 // полностью ближе DETAIL_NEAR, гаснет к DETAIL_FAR (дистанция камеры 8–80).
 #define EMBERHOLD_DETAIL_SCALE 4.0
@@ -361,7 +376,7 @@ struct Varyings
     // zw — место в ячейке.
     float4 groundBlend              : TEXCOORD12;
     // UV4: вид травы своего места — веса травы Топей, Мёртвого города и Гор.
-    half3 grassKinds                : TEXCOORD13;
+    half4 grassKinds                : TEXCOORD13;
 
     float4 positionCS               : SV_POSITION;
 
@@ -517,7 +532,7 @@ Varyings LitPassVertex(Attributes input)
     output.positionCS = vertexInput.positionCS;
     output.groundColor = input.color;
     output.groundBlend = input.groundBlend;
-    output.grassKinds = input.grassKinds.xyz;
+    output.grassKinds = input.grassKinds;
 
     return output;
 }
@@ -558,7 +573,7 @@ void LitPassFragment(
         dpdx, dpdy, detailFade, flatFade) * _BaseColor.rgb;
     // Трава (гладкая земля и блоки травы) — в оттенке своего места.
     if (input.groundBlend.y < -0.5)
-        baseAlbedo = TintGrass(MixGrassKinds(baseAlbedo, input.grassKinds, _BaseColor.rgb, input.positionWS, normalForTex,
+        baseAlbedo = TintGrass(MixGrassKinds(baseAlbedo, input.grassKinds.xyz, _BaseColor.rgb, input.positionWS, normalForTex,
             dpdx, dpdy, detailFade, flatFade), input.groundColor);
     surfaceData.albedo = baseAlbedo;
     // Граница травы с камнем резкая и рваная, с зубцами-травинками: вес травы (1 − камень) сдвигается шумом
@@ -577,6 +592,31 @@ void LitPassFragment(
         baseAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_RIM_DARK, rockRim);
         half3 rockAlbedo = SampleTriplanar(TEXTURE2D_ARGS(_RockMap, sampler_RockMap), input.positionWS, normalForTex,
             dpdx, dpdy, detailFade, flatFade) * _GroundRockColor.rgb;
+        // На хребте вместо камня скала. Доля скалы плавно меняется между вершинами, производные заданы явно.
+        half cliff = saturate(input.grassKinds.w);
+        UNITY_BRANCH
+        if (cliff > 0.001h)
+            rockAlbedo = lerp(rockAlbedo, SampleTriplanar(TEXTURE2D_ARGS(_GroundCliffMap, sampler_RockMap), input.positionWS,
+                normalForTex, dpdx, dpdy, detailFade, flatFade), cliff);
+        // Снег на вершинах: выше снеговой линии скала хребта под снегом. Граница гуляет по шуму мира и по рисунку
+        // скалы (на светлых плитах снег держится ниже), на самых крутых стенах снега нет — там видна скала.
+        UNITY_BRANCH
+        if (cliff > 0.001h && input.positionWS.y > _GroundSnowLine - 8.0 - EMBERHOLD_SNOW_GULLY)
+        {
+            // Сверх доли скалы в UV4.w — вогнутость рельефа: в кулуарах снег языками ниже, на рёбрах выдут.
+            half gully = saturate(input.grassKinds.w - 1.0h) * 2.0h - 1.0h;
+            float snowEdge = _GroundSnowLine - gully * EMBERHOLD_SNOW_GULLY
+                + (GroundValueNoise(input.positionWS.xz * 0.11) - 0.5) * 6.0
+                + (GroundValueNoise(input.positionWS.xz * 0.6 + 7.3) - 0.5) * 1.5;
+            half rockLuma = dot(rockAlbedo, half3(0.3h, 0.59h, 0.11h));
+            // Чем выше над линией, тем круче склоны, на которых держится снег: у вершин голая скала только на стенах.
+            half steep = lerp(EMBERHOLD_SNOW_SLOPE_LOW, EMBERHOLD_SNOW_SLOPE_HIGH,
+                saturate((half)(input.positionWS.y - _GroundSnowLine) / EMBERHOLD_SNOW_SLOPE_RISE));
+            half snow = smoothstep(-0.4h, 0.4h, (half)(input.positionWS.y - snowEdge) + (rockLuma - 0.3h) * 4.0h)
+                * smoothstep(steep, steep + 0.2h, normalForTex.y) * cliff;
+            half3 snowAlbedo = EMBERHOLD_SNOW_COLOR * lerp(0.86h, 1.0h, saturate(rockLuma * 2.5h));
+            rockAlbedo = lerp(rockAlbedo, snowAlbedo, snow);
+        }
         rockAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_SHADOW_DARK, rockShadow);
         surfaceData.albedo = lerp(rockAlbedo, baseAlbedo, rockGrass);
     }
@@ -592,7 +632,7 @@ void LitPassFragment(
             + GrassEdgeOffset(input.positionWS, EMBERHOLD_FRINGE_RAGGED, toGrass, dpdx, dpdy, cameraDistance), rim, shadow);
         half3 meadow = SampleTriplanar(TEXTURE2D_ARGS(_GrassMap, sampler_GrassMap), input.positionWS,
             normalForTex, dpdx, dpdy, detailFade, flatFade);
-        half3 grassAlbedo = TintGrass(MixGrassKinds(meadow, input.grassKinds, 1.0h, input.positionWS, normalForTex,
+        half3 grassAlbedo = TintGrass(MixGrassKinds(meadow, input.grassKinds.xyz, 1.0h, input.positionWS, normalForTex,
             dpdx, dpdy, detailFade, flatFade), input.groundColor);
         grassAlbedo *= lerp(1.0h, EMBERHOLD_EDGE_RIM_DARK, rim);
         half3 groundAlbedo = surfaceData.albedo * lerp(1.0h, EMBERHOLD_EDGE_SHADOW_DARK, shadow);

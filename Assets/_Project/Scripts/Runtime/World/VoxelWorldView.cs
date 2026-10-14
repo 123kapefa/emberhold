@@ -103,7 +103,9 @@ namespace Emberhold.World
             // С картой кампании зоны сцены не действуют: ни на рельеф, ни на лес.
             zones.Clear();
             campaignLayout = terrain.Map.ToLayout();
-            return TerrainGenerator.GenerateCampaign(campaignLayout, terrain.Seed, terrain.SizeInChunks, out campaign);
+            var world = TerrainGenerator.GenerateCampaign(campaignLayout, terrain.Seed, terrain.SizeInChunks, out campaign);
+            terrain.LayBedrock(world);
+            return world;
         }
 
         /// <summary>
@@ -118,6 +120,24 @@ namespace Emberhold.World
                 return ForestScatter.MixAt(terrain.Forest, zones, new Vector2(column.x + 0.5f, column.y + 0.5f), zoneWeights);
             var owner = campaign.ColumnOwner(column.x, column.y);
             return owner == CampaignHeights.Ridge ? campaignLayout.Ridge.Forest : campaignLayout.Locations[owner - 1].Forest;
+        }
+
+        /// <summary>
+        /// Выше ли земля столбца границы леса карты кампании (граница гуляет по шуму на ±3 блока): там деревья
+        /// не растут. Без карты кампании границы нет.
+        /// </summary>
+        public bool AboveTreeLine(Vector2Int column) =>
+            AboveLine(column, terrain != null && terrain.Map != null ? terrain.Map.TreeLine : NoSnow, 0f);
+
+        /// <summary>Выше ли земля столбца снеговой линии карты кампании (с тем же разбросом): там нет мелочи на земле.</summary>
+        public bool AboveSnowLine(Vector2Int column) => AboveLine(column, SnowLine(), 37f);
+
+        private bool AboveLine(Vector2Int column, float line, float noiseOffset)
+        {
+            if (campaign == null)
+                return false;
+            var height = campaign.Heights[column.x, column.y];
+            return height > line + (Mathf.PerlinNoise(column.x * 0.07f + noiseOffset, column.y * 0.07f) - 0.5f) * 6f;
         }
 
         /// <summary>
@@ -497,6 +517,8 @@ namespace Emberhold.World
             if (visual)
             {
                 Shader.SetGlobalColor(GroundRockColorId, RockColor());
+                Shader.SetGlobalTexture(GroundCliffMapId, CliffTexture());
+                Shader.SetGlobalFloat(GroundSnowLineId, SnowLine());
                 SetGroundBlend(mesh, data, groundColors);
             }
 
@@ -520,7 +542,24 @@ namespace Emberhold.World
             return rockColor.Value;
         }
 
+        /// <summary>Текстура скалы для перехода гладкой земли на хребте: основная текстура материала скалы.</summary>
+        private Texture CliffTexture()
+        {
+            var cliff = blockMaterials != null && BlockMaterials.Cliff < blockMaterials.Length ? blockMaterials[BlockMaterials.Cliff] : null;
+            return cliff != null && cliff.HasProperty(BaseMapId) && cliff.GetTexture(BaseMapId) != null
+                ? cliff.GetTexture(BaseMapId)
+                : Texture2D.grayTexture;
+        }
+
+        /// <summary>Снеговая линия для шейдера земли: у карты кампании своя, без карты снега нет.</summary>
+        private float SnowLine() => terrain != null && terrain.Map != null ? terrain.Map.SnowLine : NoSnow;
+
+        private const float NoSnow = 100000f;
+
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
+        private static readonly int GroundCliffMapId = Shader.PropertyToID("_GroundCliffMap");
+        private static readonly int GroundSnowLineId = Shader.PropertyToID("_GroundSnowLine");
         private static readonly int GroundRockColorId = Shader.PropertyToID("_GroundRockColor");
 
         /// <summary>Материалы для подмешей: подмеш i — материал блока i + 1 (воздух не рисуется).</summary>
