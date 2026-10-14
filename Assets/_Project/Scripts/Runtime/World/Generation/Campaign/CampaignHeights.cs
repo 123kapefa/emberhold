@@ -41,9 +41,14 @@ namespace Emberhold.World.Generation
         private const float RingInsetMin = 16f;
         private const float RingInsetSpread = 34f;
         private const int RingIndex = 100;
-        // Ширина каменного борта у самого края карты: тут горы встают поверх котловин и ущелий, чтобы мир
-        // нигде не обрывался низиной (вершины цепи у котловин срезаются стенкой).
-        private const float RimWidth = 16f;
+        // У края карты котловины и ущелья не срезают горы: до RimFree блоков от края (граница гуляет) вершины
+        // встают целиком, дальше до RimFade стенка срезает их всё сильнее; само дно (RimFloor блоков от его края)
+        // остаётся своим. Так котловина у края упирается в массив, а не выходит низиной к обрезу мира.
+        private const float RimFree = 30f;
+        private const float RimFade = 70f;
+        private const float RimFloor = 4f;
+        // Полоса у самого края, где дно котловины поднимается до хребта (граница гуляет).
+        private const float RimFill = 12f;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
         // Насколько быстрее рёбер опускаются грани пирамиды: посередине грани гора уже в (1 + PeakFaceDrop) раз.
@@ -160,6 +165,10 @@ namespace Emberhold.World.Generation
                 h = Math.Max(ridge.MinHeight, Math.Min(ridge.MaxHeight, h));
             }
             var ridgeHeight = h;
+            var rim = ridge.PeakHeight > ridge.MaxHeight
+                ? 1f - CampaignNoise.SmoothStep(RimFree, RimFade,
+                    edge + (noise.Fbm(x * 0.02f + 19f, z * 0.02f + 5f, 2) - 0.5f) * 30f)
+                : 0f;
 
             // Оттенок: сумма оттенков с весами и сумма весов; остаток до 1 — хребет.
             var tint = new Color(0f, 0f, 0f, 0f);
@@ -257,6 +266,7 @@ namespace Emberhold.World.Generation
 
             // Высокие горы поверх уже вырезанных котловин и ущелий: пологие стенки котловины не срезают пик,
             // но от края ближайшего дна гора поднимается не круче PeakWall (местами положе), поэтому дно остаётся своим.
+            var cut = h;
             if (peaks.Length > 0)
             {
                 var peak = ridgeHeight;
@@ -271,27 +281,37 @@ namespace Emberhold.World.Generation
                     var wall = CampaignNoise.Lerp(foothill, PeakWallHigh, CampaignNoise.SmoothStep(5f, 20f, peak - ridgeHeight));
                     var limit = baseDistance < float.MaxValue ? terraceBase + Math.Max(baseDistance, 0f) * wall : peak;
                     // Скругляем только там, где стенка срезает гору; где стенка выше, гора как есть.
+                    cut = Math.Max(h, limit < peak + PeakWallRound ? CampaignNoise.SmoothMin(peak, limit, PeakWallRound) : peak);
+                    if (rim > 0f && baseDistance < float.MaxValue)
+                        limit = CampaignNoise.Lerp(limit, Math.Max(limit, peak),
+                            rim * CampaignNoise.SmoothStep(RimFloor, RimFloor + 16f, baseDistance));
                     h = Math.Max(h, limit < peak + PeakWallRound ? CampaignNoise.SmoothMin(peak, limit, PeakWallRound) : peak);
                 }
+            }
+
+            // У края карты котловина заполняется до хребта, а там, где гора встала над тем, что срезала бы стенка,
+            // трава и деревья — хребта, не локации.
+            var fill = rim > 0f
+                ? 1f - CampaignNoise.SmoothStep(0f, RimFill, edge + (noise.Fbm(x * 0.05f + 7f, z * 0.05f - 3f, 2) - 0.5f) * 12f)
+                : 0f;
+            if (fill > 0f)
+            {
+                h = Math.Max(h, CampaignNoise.Lerp(h, ridgeHeight, fill));
+            }
+            if (h > cut)
+            {
+                var rock = CampaignNoise.SmoothStep(2f, 8f, h - cut);
+                tint *= 1f - rock;
+                kind *= 1f - rock;
+                tintWeight *= 1f - rock;
+                if (rock > 0.5f)
+                    owner = terraceOwner = Ridge;
             }
 
             var ridgeTint = ridge.GrassTint ?? Color.white;
             GrassTints[xi, zi] = tintWeight < 1f ? tint + (1f - tintWeight) * ridgeTint : tint / tintWeight;
             var ridgeKind = Voxels.GrassKinds.Weight(ridge.GrassKind);
             GrassKinds[xi, zi] = tintWeight < 1f ? kind + (1f - tintWeight) * ridgeKind : kind / tintWeight;
-
-            // Борт у края карты: неровная полоса гор поверх всего, что вырезано, чтобы котловины не выходили к краю.
-            if (ridge.PeakHeight > ridge.MaxHeight)
-            {
-                var rimReach = edge + (noise.Fbm(x * 0.05f + 7f, z * 0.05f - 3f, 2) - 0.5f) * 8f;
-                var rim = 1f - CampaignNoise.SmoothStep(0f, RimWidth, rimReach);
-                if (rim > 0f)
-                {
-                    var rimTop = ridge.MaxHeight + 6f
-                        + (ridge.PeakHeight - ridge.MaxHeight - 6f) * noise.Ridged(x * 0.03f, z * 0.03f);
-                    h = Math.Max(h, CampaignNoise.Lerp(h, rimTop, rim));
-                }
-            }
 
             Heights[xi, zi] = Math.Max(1f, Math.Min(maxHeight, h));
             Owners[xi, zi] = owner;
