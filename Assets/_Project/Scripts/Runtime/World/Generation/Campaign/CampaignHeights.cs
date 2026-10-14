@@ -33,8 +33,13 @@ namespace Emberhold.World.Generation
         // где гребни встают до высоты вершин цепи.
         private const float ChainFrequency = 0.009f;
         private const float ChainWarp = 40f;
-        private const float ChainBandNear = 10f;
+        private const float ChainBandNear = -20f;
         private const float ChainBandFar = 70f;
+        // У самого края (до ChainLiftWidth блоков, граница гуляет) долины между гребнями поднимаются: дно долины
+        // встаёт на долю до ChainLift от высоты гребней (местами меньше), чтобы долины цепи не выходили низиной
+        // к обрезу мира, а заканчивались седловинами.
+        private const float ChainLift = 0.35f;
+        private const float ChainLiftWidth = 40f;
         // Вершины цепи вдоль краёв: шаг вдоль края, отступ от края (от RingInsetMin до +RingInsetSpread) и номер,
         // с которого считаются их зёрна шума (после пиков карты).
         private const float RingSpacing = 36f;
@@ -374,6 +379,10 @@ namespace Emberhold.World.Generation
             var wz = z + (noise.Fbm(x * 0.01f + 9f, z * 0.01f, 3) - 0.5f) * ChainWarp;
             var ridged = noise.Ridged(wx * ChainFrequency, wz * ChainFrequency);
             var shape = (float)Math.Pow(CampaignNoise.Clamp01((ridged - 0.2f) / 0.7f), 1.3f);
+            var liftReach = edge + (noise.Fbm(x * 0.02f + 19f, z * 0.02f + 5f, 2) - 0.5f) * 24f;
+            var lift = ChainLift * (1f - CampaignNoise.SmoothStep(0f, ChainLiftWidth, liftReach))
+                       * (0.5f + noise.Fbm(x * 0.015f + 3f, z * 0.015f + 77f, 2));
+            shape = lift + (1f - lift) * shape;
             // Ширина горной полосы у края гуляет, чтобы её граница не шла по линейке.
             var reach = edge + (noise.Fbm(x * 0.012f + 51f, z * 0.012f - 17f, 3) - 0.5f) * 40f;
             var band = CampaignNoise.SmoothStep(ChainBandNear, ChainBandNear + 25f, reach)
