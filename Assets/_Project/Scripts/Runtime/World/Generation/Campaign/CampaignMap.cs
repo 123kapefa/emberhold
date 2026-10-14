@@ -18,6 +18,8 @@ namespace Emberhold.World.Generation
         [SerializeField] private float ridgeMinHeight = 36f;
         [Tooltip("Самые высокие гребни, в блоках.")]
         [SerializeField] private float ridgeMaxHeight = 46f;
+        [Tooltip("Высота вершин горной цепи хребта у краёв карты и в горных массивах, в блоках. Не выше «самых высоких гребней» — хребет ровный, без цепи вершин.")]
+        [SerializeField] private float ridgePeakHeight;
         [Tooltip("Ниже этой высоты склоны хребта и ущелий травяные, выше — камень профиля хребта. 0 — без травы.")]
         [SerializeField] private float ridgeGrassLine = 30f;
         [Tooltip("Горы хребта из скалы, которая не копается: под травой склонов скала до самого дна.")]
@@ -62,6 +64,7 @@ namespace Emberhold.World.Generation
                 {
                     MinHeight = ridgeMinHeight,
                     MaxHeight = Mathf.Max(ridgeMinHeight, ridgeMaxHeight),
+                    PeakHeight = ridgePeakHeight,
                     GrassLine = ridgeGrassLine,
                     Cliff = ridgeCliff,
                     Profile = ridgeProfile != null ? ridgeProfile.Parameters : TerrainProfileParameters.Valley,

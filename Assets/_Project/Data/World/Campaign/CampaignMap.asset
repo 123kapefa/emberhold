@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.CampaignMap
   ridgeMinHeight: 36
   ridgeMaxHeight: 46
+  ridgePeakHeight: 68
   ridgeGrassLine: 30
   smoothSurface: 1
   ridgeProfile: {fileID: 11400000, guid: e1b4646b657448c9bfbd8144d1f15603, type: 2}
@@ -391,11 +392,23 @@ MonoBehaviour:
     teeth: 0.7
   - name: Хребет у маяка
     points:
-    - {x: 300, y: 494}
-    - {x: 496, y: 494}
-    - {x: 496, y: 400}
-    height: 64
-    radius: 28
+    - {x: 300, y: 482}
+    - {x: 482, y: 482}
+    - {x: 484, y: 400}
+    height: 70
+    radius: 26
+    teeth: 0.7
+  - name: Пик маяка
+    points:
+    - {x: 484, y: 484}
+    height: 76
+    radius: 32
+    teeth: 0
+  - name: Северный пик
+    points:
+    - {x: 372, y: 484}
+    height: 72
+    radius: 30
     teeth: 0
   snowLine: 54
   treeLine: 46

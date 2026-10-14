@@ -29,6 +29,12 @@ namespace Emberhold.World.Generation
         // Стенка верхней части высокой горы над котловиной: почти отвесная скала, иначе котловины
         // рядом срезали бы вершину.
         private const float PeakWallHigh = 3.5f;
+        // Горная цепь хребта: частота гребней (на блок), насколько они петляют (в блоках) и полоса от края карты,
+        // где гребни встают до высоты вершин цепи.
+        private const float ChainFrequency = 0.009f;
+        private const float ChainWarp = 40f;
+        private const float ChainBandNear = 10f;
+        private const float ChainBandFar = 70f;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
         // Насколько быстрее рёбер опускаются грани пирамиды: посередине грани гора уже в (1 + PeakFaceDrop) раз.
@@ -125,11 +131,20 @@ namespace Emberhold.World.Generation
             float x = xi, z = zi;
             // Хребет: гребни по «хребтовому» шуму, у края мира чуть выше, чтобы карта была закрыта.
             var edge = Math.Min(Math.Min(x, z), Math.Min(sizeX - x, sizeZ - z));
-            var crest = CampaignNoise.Clamp01((noise.Ridged(x * 0.016f, z * 0.016f) - 0.12f) / 0.72f);
-            var h = CampaignNoise.Lerp(ridge.MinHeight, ridge.MaxHeight, crest)
+            float h;
+            if (ridge.PeakHeight > ridge.MaxHeight)
+            {
+                h = ChainHeight(ridge, noise, x, z, edge) + (1f - CampaignNoise.SmoothStep(0f, 24f, edge)) * 4f;
+                h = Math.Max(ridge.MinHeight, h);
+            }
+            else
+            {
+                var crest = CampaignNoise.Clamp01((noise.Ridged(x * 0.016f, z * 0.016f) - 0.12f) / 0.72f);
+                h = CampaignNoise.Lerp(ridge.MinHeight, ridge.MaxHeight, crest)
                     + (noise.Fbm(x * 0.06f, z * 0.06f) - 0.5f) * 3f
                     + (1f - CampaignNoise.SmoothStep(0f, 24f, edge)) * 4f;
-            h = Math.Max(ridge.MinHeight, Math.Min(ridge.MaxHeight, h));
+                h = Math.Max(ridge.MinHeight, Math.Min(ridge.MaxHeight, h));
+            }
             var ridgeHeight = h;
 
             // Оттенок: сумма оттенков с весами и сумма весов; остаток до 1 — хребет.
@@ -255,6 +270,27 @@ namespace Emberhold.World.Generation
             Owners[xi, zi] = owner;
             TerraceOwners[xi, zi] = terraceOwner;
             TerraceBases[xi, zi] = terraceBase;
+        }
+
+        /// <summary>
+        /// Горная цепь хребта: острые гребни «хребтового» шума с искажением (петляют, сходятся в вершины),
+        /// между ними долины не ниже MinHeight. В полосе ChainBandNear–ChainBandFar блоков от края карты и в горных
+        /// массивах (крупный шум) гребни встают до PeakHeight, в глубине карты — примерно до MaxHeight.
+        /// </summary>
+        private static float ChainHeight(CampaignRidge ridge, CampaignNoise noise, float x, float z, float edge)
+        {
+            var wx = x + (noise.Fbm(x * 0.01f, z * 0.01f + 5f, 3) - 0.5f) * ChainWarp;
+            var wz = z + (noise.Fbm(x * 0.01f + 9f, z * 0.01f, 3) - 0.5f) * ChainWarp;
+            var ridged = noise.Ridged(wx * ChainFrequency, wz * ChainFrequency);
+            var shape = (float)Math.Pow(CampaignNoise.Clamp01((ridged - 0.2f) / 0.7f), 1.3f);
+            var band = CampaignNoise.SmoothStep(ChainBandNear, ChainBandNear + 25f, edge)
+                       * (1f - CampaignNoise.SmoothStep(ChainBandFar, ChainBandFar + 60f, edge));
+            var massif = 0.7f * CampaignNoise.SmoothStep(0.35f, 0.75f, noise.Fbm(x * 0.007f + 13f, z * 0.007f - 29f, 3));
+            // В глубине гребни до MaxHeight: доля, при которой самый высокий гребень как раз MaxHeight.
+            var low = (ridge.MaxHeight - ridge.MinHeight) / (ridge.PeakHeight - ridge.MinHeight);
+            var amplitude = CampaignNoise.Lerp(low, 1f, Math.Max(band, massif));
+            return ridge.MinHeight + (ridge.PeakHeight - ridge.MinHeight) * shape * amplitude
+                   + (noise.Fbm(x * 0.06f, z * 0.06f) - 0.5f) * 3f;
         }
 
         private struct PreparedLocation

@@ -352,6 +352,31 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void Ridge_WithPeakHeight_IsAMountainChain_HighNearTheEdge()
+        {
+            var layout = new CampaignLayout();
+            var plain = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
+            var ridge = layout.Ridge;
+            ridge.PeakHeight = 68f;
+            layout.Ridge = ridge;
+            var chain = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
+
+            float plainMax = float.MinValue, chainMin = float.MaxValue, bandMax = float.MinValue;
+            for (var z = 0; z <= Size; z++)
+            for (var x = 0; x <= Size; x++)
+            {
+                plainMax = Mathf.Max(plainMax, plain.Heights[x, z]);
+                chainMin = Mathf.Min(chainMin, chain.Heights[x, z]);
+                var edge = Mathf.Min(Mathf.Min(x, z), Mathf.Min(Size - x, Size - z));
+                if (edge >= 30 && edge <= 70)
+                    bandMax = Mathf.Max(bandMax, chain.Heights[x, z]);
+            }
+            Assert.That(plainMax, Is.LessThanOrEqualTo(ridge.MaxHeight), "без вершин — плато как было");
+            Assert.That(chainMin, Is.GreaterThanOrEqualTo(ridge.MinHeight), "долины цепи не ниже хребта: он непроходим");
+            Assert.That(bandMax, Is.GreaterThan(ridge.MaxHeight + 8f), "у края гребни встают выше плато");
+        }
+
+        [Test]
         public void CliffSnowBias_GullyAbove_RibBelow_FlatInTheMiddle()
         {
             Assert.That(TerrainGenerator.CliffSnowBias(0f), Is.EqualTo(1.5f));
@@ -403,8 +428,9 @@ namespace Emberhold.Tests.EditMode.World
             var map = AssetDatabase.LoadAssetAtPath<CampaignMap>(MapPath);
             var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>(TerrainPath);
             var layout = map.ToLayout();
-            Assert.That(layout.Peaks, Has.Count.EqualTo(4));
+            Assert.That(layout.Peaks, Has.Count.EqualTo(6));
             var ceiling = settings.SizeInChunks.y * ChunkData.Size - 2;
+            Assert.That(layout.Ridge.PeakHeight, Is.GreaterThan(map.SnowLine + 4f).And.LessThanOrEqualTo(ceiling), "вершины цепи хребта");
             foreach (var peak in layout.Peaks)
             {
                 Assert.That(peak.Height, Is.GreaterThan(map.SnowLine + 4f), $"{peak.Name}: вершина под снегом");
@@ -488,7 +514,17 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(MaxAround(heights, 311, 281, 12), Is.GreaterThan(MaxAround(heights, 256, 256, 15)), "Большой пик");
             Assert.That(MaxAround(heights, 284, 268, 6), Is.GreaterThan(50f), "Зубчатый гребень");
             // Восточная ветка хребта у маяка тоже под снегом, а не срезана стенкой Скалы маяка.
-            Assert.That(MaxAround(heights, 496, 440, 8), Is.GreaterThan(56f), "Восточная ветка у маяка");
+            Assert.That(MaxAround(heights, 484, 440, 8), Is.GreaterThan(56f), "Восточная ветка у маяка");
+            // Вершины на хребте у маяка, отодвинутом от края мира.
+            Assert.That(MaxAround(heights, 484, 484, 12), Is.GreaterThan(66f), "Пик маяка");
+            Assert.That(MaxAround(heights, 372, 484, 12), Is.GreaterThan(64f), "Северный пик");
+            // Окружающий хребет — горная цепь: у краёв гребни под снегом, долины не ниже хребта.
+            var high = 0;
+            for (var z = 0; z <= 512; z += 4)
+            for (var x = 0; x <= 512; x += 4)
+                if (heights.Owners[x, z] == CampaignHeights.Ridge && heights.Heights[x, z] > 56f)
+                    high++;
+            Assert.That(high, Is.GreaterThan(150), "вершины цепи выше снеговой линии");
         }
 
         private static float MaxAround(CampaignHeights heights, int cx, int cz, int r)
