@@ -57,7 +57,7 @@ namespace Emberhold.Tests.EditMode.Workers
         public void EveryClip_KeepsLowestSupportOnGround()
         {
             var matrices = new Matrix4x4[WorkerPose.PartCount];
-            var motion = new WorkerMotion(0.3f, 2.5f, Height, true, false, WorkerCarry.StoneSack);
+            var motion = new WorkerMotion(0.3f, 2.5f, Height, true, false, WorkerCarry.StoneBasket);
             foreach (WorkerClip clip in Enum.GetValues(typeof(WorkerClip)))
             {
                 for (var k = 0; k <= 20; k++)
@@ -95,10 +95,10 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
-        public void CarriedLoad_IsHeldByLeftHand_AndPutOnGround()
+        public void CarriedLoad_IsHeldByLeftHand_BasketHangsOnStraps_AndPutOnGround()
         {
             var matrices = new Matrix4x4[WorkerPose.PartCount];
-            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.StoneSack })
+            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.GrassSack, WorkerCarry.StoneBasket })
             {
                 var motion = new WorkerMotion(0f, 0f, Height, true, false, carry);
                 var pose = WorkerAnimation.Sample(WorkerClip.Carry, 0.3f, motion);
@@ -106,19 +106,25 @@ namespace Emberhold.Tests.EditMode.Workers
                 var fist = matrices[(int)WorkerPart.ForearmLeft].MultiplyPoint3x4(
                     WorkerSkeleton.FistCenter(-1f, Height) - WorkerSkeleton.Pivot(WorkerPart.ForearmLeft, Height));
                 var grip = Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one).MultiplyPoint3x4(WorkerCarryBuilder.Grip(carry, Height));
-                Assert.That(Vector3.Distance(fist, grip), Is.LessThan(0.02f), $"{carry}: кисть на ноше");
+                // Бревно и мешок рука держит, корзина висит на лямках — рука опущена.
+                if (WorkerCarryBuilder.HeldWhileCarried(carry))
+                    Assert.That(Vector3.Distance(fist, grip), Is.LessThan(0.02f), $"{carry}: кисть на ноше");
+                else
+                    Assert.That(fist.y, Is.LessThan(0.45f * Height), $"{carry}: руки свободны");
 
                 var put = WorkerAnimation.Sample(WorkerClip.Put, 0.9f, motion);
                 var ground = WorkerCarryBuilder.Ground(carry, Height);
-                Assert.That(Vector3.Distance(put.LoadPosition, ground.GetColumn(3)), Is.LessThan(1e-3f), $"{carry}: положил на землю");
+                Assert.That(put.LoadPosition.y, Is.EqualTo(ground.GetColumn(3).y).Within(1e-3f), $"{carry}: положил на землю");
+                Assert.That(Vector3.Distance(put.LoadPosition, WorkerAnimation.Sample(WorkerClip.Put, 1f, motion).LoadPosition), Is.LessThan(1e-3f),
+                    $"{carry}: лежит на месте");
             }
         }
 
         [Test]
         public void PutAndPickUp_LoadGoesAroundBody()
         {
-            // Точки ноши (середина и концы бревна, середина мешка) не заходят внутрь туловища ни в какой момент.
-            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.StoneSack })
+            // Точки ноши (середина и концы бревна, середина мешка и корзины) не заходят внутрь туловища ни в какой момент.
+            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.GrassSack, WorkerCarry.StoneBasket })
             {
                 var motion = new WorkerMotion(0f, 0f, Height, true, false, carry);
                 foreach (var clip in new[] { WorkerClip.Put, WorkerClip.PickUp })
@@ -148,23 +154,28 @@ namespace Emberhold.Tests.EditMode.Workers
         [Test]
         public void Sack_HangsDownUnderGravity_WhateverItsTilt()
         {
-            var mesh = WorkerCarryBuilder.Build(WorkerCarry.StoneSack, Height);
+            var mesh = WorkerCarryBuilder.Build(WorkerCarry.GrassSack, Height);
             created.Add(mesh);
-            var shape = new WorkerCarryBuilder.Shape(mesh, WorkerCarry.StoneSack, Height);
+            var rest = mesh.vertices;
+            var shape = new WorkerCarryBuilder.Shape(mesh, WorkerCarry.GrassSack, Height);
             foreach (var tilt in new[] { 0f, 50f, -40f })
             {
-                // Горловина вверх и наклонена; тело мешка (низ сетки) всё равно висит под горловиной.
+                // Верх мешка вверх и наклонён; тело мешка (низ сетки) всё равно висит под сборкой.
                 var world = Matrix4x4.Rotate(Quaternion.Euler(tilt, 0f, tilt * 0.5f));
                 shape.Apply(world, 0f, 0f);
-                var neck = world.MultiplyPoint3x4(new Vector3(0f, 0.05f * Height, 0f));
-                var lowest = Vector3.zero;
-                foreach (var v in mesh.vertices)
+                // Середина тела мешка (всё, что в сетке ниже середины) висит под сборкой.
+                var neck = world.MultiplyPoint3x4(new Vector3(0f, 0.12f * Height, 0f));
+                var vertices = mesh.vertices;
+                var body = Vector3.zero;
+                var count = 0;
+                for (var i = 0; i < vertices.Length; i++)
                 {
-                    var p = world.MultiplyPoint3x4(v);
-                    if (p.y < lowest.y)
-                        lowest = p;
+                    if (rest[i].y >= 0f)
+                        continue;
+                    body += world.MultiplyPoint3x4(vertices[i]);
+                    count++;
                 }
-                var hang = (lowest - neck).normalized;
+                var hang = (body / count - neck).normalized;
                 Assert.That(Vector3.Dot(hang, Vector3.down), Is.GreaterThan(0.9f), $"Наклон {tilt}: мешок висит вниз");
             }
         }
@@ -186,14 +197,15 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
-        public void Carry_DependsOnResource_StokerCarriesBundleOnBack()
+        public void Carry_DependsOnResource_OnlyFreeWorkersCarry()
         {
             Assert.That(WorkerCarryBuilder.CarryFor("wood", WorkerRole.Free), Is.EqualTo(WorkerCarry.Log));
-            Assert.That(WorkerCarryBuilder.CarryFor("stone", WorkerRole.Digger), Is.EqualTo(WorkerCarry.StoneSack));
+            Assert.That(WorkerCarryBuilder.CarryFor("stone", WorkerRole.Free), Is.EqualTo(WorkerCarry.StoneBasket));
             Assert.That(WorkerCarryBuilder.CarryFor("grass", WorkerRole.Free), Is.EqualTo(WorkerCarry.GrassSack));
-            Assert.That(WorkerCarryBuilder.CarryFor("wood", WorkerRole.Stoker), Is.EqualTo(WorkerCarry.None));
             Assert.That(WorkerCarryBuilder.CarryFor(null, WorkerRole.Free), Is.EqualTo(WorkerCarry.None));
-            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.StoneSack, WorkerCarry.GrassSack })
+            foreach (var role in new[] { WorkerRole.Digger, WorkerRole.Stoker, WorkerRole.Archer })
+                Assert.That(WorkerCarryBuilder.CarryFor("stone", role), Is.EqualTo(WorkerCarry.None), $"{role}: с ролью не носят");
+            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.StoneBasket, WorkerCarry.GrassSack })
                 Assert.That(Track(WorkerCarryBuilder.Build(carry, Height)).vertexCount, Is.GreaterThan(0), $"{carry}: есть сетка");
         }
 

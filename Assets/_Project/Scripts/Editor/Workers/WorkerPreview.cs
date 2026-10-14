@@ -31,7 +31,6 @@ namespace Emberhold.Editor.Workers
         private Mesh grid;
         private WorkerCarryBuilder.Shape carryShape;
         private WorkerCarry builtCarry = (WorkerCarry)(-1);
-        private WorkerRole builtRole;
         private float time;
 
         /// <summary>Шаг времени с прошлой отрисовки — для качания мешка; 0 после перемотки и в снимках.</summary>
@@ -198,14 +197,13 @@ namespace Emberhold.Editor.Workers
             var duration = WorkerAnimation.DefaultDuration(Clip);
             var sampleTime = oneShot ? Mathf.Clamp01(time / duration) : time;
             var carry = CarryShown();
-            if (carry != builtCarry || Role != builtRole)
+            if (carry != builtCarry)
             {
-                builtRole = Role;
                 if (carryShape != null)
                     UnityEngine.Object.DestroyImmediate(carryShape.Mesh);
                 carryShape = carry == WorkerCarry.None
                     ? null
-                    : new WorkerCarryBuilder.Shape(Hidden(WorkerCarryBuilder.Build(carry, Height, "Carry Preview")), carry, Height, Role);
+                    : new WorkerCarryBuilder.Shape(Hidden(WorkerCarryBuilder.Build(carry, Height, "Carry Preview")), carry, Height);
                 builtCarry = carry;
             }
             foreach (var figure in figures)

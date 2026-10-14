@@ -11,6 +11,7 @@ namespace Emberhold.Tests.EditMode.Workers
     /// <summary>
     /// Ничто ни во что не залезает: во всех ролях, анимациях (и переходах между ними, какие бывают в игре), с любой ношей
     /// ни одна часть рабочего, его снаряжение или ноша не входят внутрь другой части и не проходят сквозь пелерину и подол.
+    /// Носят только свободные рабочие, у ролей ноши нет.
     /// Жёсткие части проверяются по сеткам «внутри/снаружи» в их собственной системе; ткань — по тому, с какой стороны
     /// от неё точка: под тканью в покое — под ней и в движении. Вершины, которые уже в покое внутри (руки начинаются
     /// в плечах), и вершины у самих суставов не считаются. Касание до <see cref="Contact"/> вершин — не прорыв.
@@ -25,7 +26,7 @@ namespace Emberhold.Tests.EditMode.Workers
         /// <summary>Столько вершин на одну пару частей в кадре ещё касание, а не прорыв.</summary>
         private const int Contact = 3;
 
-        private static readonly WorkerCarry[] Loads = { WorkerCarry.None, WorkerCarry.Log, WorkerCarry.StoneSack, WorkerCarry.GrassSack };
+        private static readonly WorkerCarry[] Loads = { WorkerCarry.None, WorkerCarry.Log, WorkerCarry.StoneBasket, WorkerCarry.GrassSack };
 
         [Test]
         public void EveryRoleClipAndLoad_NothingGoesThroughAnything()
@@ -48,20 +49,21 @@ namespace Emberhold.Tests.EditMode.Workers
                 foreach (var carry in Loads.Skip(1))
                 {
                     var mesh = WorkerCarryBuilder.Build(carry, Height);
-                    loads[carry] = (mesh, new WorkerCarryBuilder.Shape(mesh, carry, Height, role));
+                    loads[carry] = (mesh, new WorkerCarryBuilder.Shape(mesh, carry, Height));
                 }
 
                 void Check(string label, WorkerPose pose, WorkerCarry carry)
                 {
-                    foreach (var (what, count) in body.Collisions(pose, carry == WorkerCarry.None ? default : loads[carry], carry, look))
+                    foreach (var (what, count) in body.Collisions(pose, carry == WorkerCarry.None ? default : loads[carry], carry))
                     {
                         if (count > Contact)
                             failures.Add($"{role} {label} {carry}: {what} — {count} вершин");
                     }
                 }
 
+                var carried = role == WorkerRole.Free ? Loads : new[] { WorkerCarry.None };
                 foreach (WorkerClip clip in Enum.GetValues(typeof(WorkerClip)))
-                foreach (var carry in Loads)
+                foreach (var carry in carried)
                 foreach (var speed in clip == WorkerClip.Carry ? new[] { 0f, 2.5f } : new[] { 2.5f })
                 {
                     // Ноша видна в любой анимации, пока рабочий что-то несёт.
@@ -79,7 +81,7 @@ namespace Emberhold.Tests.EditMode.Workers
                 }
 
                 // Переходы между анимациями, какие бывают в WorkerCrew: садятся только греясь, сидя ношу не берут и не строят.
-                foreach (var carry in new[] { WorkerCarry.None, WorkerCarry.StoneSack })
+                foreach (var carry in carried)
                 foreach (WorkerClip from in Enum.GetValues(typeof(WorkerClip)))
                 foreach (WorkerClip to in Enum.GetValues(typeof(WorkerClip)))
                 {
@@ -150,7 +152,7 @@ namespace Emberhold.Tests.EditMode.Workers
 
             /// <summary>Пары «что во что / сквозь что» и сколько вершин прошло.</summary>
             public IEnumerable<(string what, int count)> Collisions(WorkerPose pose, (Mesh mesh, WorkerCarryBuilder.Shape shape) load,
-                WorkerCarry carry, WorkerLook look)
+                WorkerCarry carry)
             {
                 WorkerSkeleton.Evaluate(pose, Height, matrices);
                 foreach (var a in rigid)
@@ -197,9 +199,8 @@ namespace Emberhold.Tests.EditMode.Workers
                 load.shape.Apply(placed, pose.LoadBend, 0f);
                 var points = load.mesh.vertices.Distinct().Select(v => placed.MultiplyPoint3x4(v)).ToArray();
                 // Кулак, который держит ношу, обхватывает её — это не прорыв.
-                var side = WorkerAnimation.LoadSide(WorkerMotion.For(look, Height, 0f, 0f, carry));
-                var hand = (int)(side < 0f ? WorkerPart.ForearmLeft : WorkerPart.ForearmRight);
-                var fist = matrices[hand].MultiplyPoint3x4(WorkerSkeleton.FistCenter(side, Height) - WorkerSkeleton.Pivot((WorkerPart)hand, Height));
+                const int hand = (int)WorkerPart.ForearmLeft;
+                var fist = matrices[hand].MultiplyPoint3x4(WorkerSkeleton.FistCenter(-1f, Height) - WorkerSkeleton.Pivot(WorkerPart.ForearmLeft, Height));
                 foreach (var b in rigid)
                 {
                     var toB = matrices[b].inverse;

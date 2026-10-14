@@ -74,20 +74,6 @@ namespace Emberhold.Gameplay.Workers
             _ => 0f,
         };
 
-        /// <summary>
-        /// Куда сдвинуть мешок на спине, чтобы он лёг поверх снаряжения (вязанка, щит, доски, колчан): назад от спины (x)
-        /// и вверх (y), доли роста.
-        /// </summary>
-        public static Vector2 BackLoadShift(WorkerRole role) => role switch
-        {
-            // Вязанка поперёк спины ниже мешка: мешок над ней и чуть дальше от спины.
-            WorkerRole.Stoker => new Vector2(0.08f, 0.09f),
-            WorkerRole.Swordsman => new Vector2(0.05f, 0f),
-            WorkerRole.Builder => new Vector2(0.06f, 0f),
-            WorkerRole.Archer => new Vector2(0.09f, 0f),
-            _ => Vector2.zero,
-        };
-
         /// <summary>Насколько рукава брони толще рукава рубахи (доли роста).</summary>
         public static float SleeveExtra(WorkerRole role) => role switch
         {
