@@ -48,6 +48,11 @@ half3 TintGrass(half3 albedo, half4 tint)
 #define EMBERHOLD_SNOW_COLOR half3(0.9h, 0.94h, 1.0h)
 // На сколько блоков снег в кулуарах спускается ниже снеговой линии, а на рёбрах поднимается выше.
 #define EMBERHOLD_SNOW_GULLY 8.0
+// Снег держится на склонах, где нормаль вверх больше этого: у снеговой линии (LOW) и на EMBERHOLD_SNOW_SLOPE_RISE
+// блоков выше (HIGH, почти отвесно).
+#define EMBERHOLD_SNOW_SLOPE_LOW 0.45h
+#define EMBERHOLD_SNOW_SLOPE_HIGH 0.15h
+#define EMBERHOLD_SNOW_SLOPE_RISE 12.0h
 // Мелкая деталь из альфа-канала текстуры ложится во столько раз мельче рисунка и видна только вблизи:
 // полностью ближе DETAIL_NEAR, гаснет к DETAIL_FAR (дистанция камеры 8–80).
 #define EMBERHOLD_DETAIL_SCALE 4.0
@@ -594,7 +599,7 @@ void LitPassFragment(
             rockAlbedo = lerp(rockAlbedo, SampleTriplanar(TEXTURE2D_ARGS(_GroundCliffMap, sampler_RockMap), input.positionWS,
                 normalForTex, dpdx, dpdy, detailFade, flatFade), cliff);
         // Снег на вершинах: выше снеговой линии скала хребта под снегом. Граница гуляет по шуму мира и по рисунку
-        // скалы (на светлых плитах снег держится ниже), на крутых гранях снега нет — там видна скала.
+        // скалы (на светлых плитах снег держится ниже), на самых крутых стенах снега нет — там видна скала.
         UNITY_BRANCH
         if (cliff > 0.001h && input.positionWS.y > _GroundSnowLine - 6.0 - EMBERHOLD_SNOW_GULLY)
         {
@@ -604,8 +609,11 @@ void LitPassFragment(
                 + (GroundValueNoise(input.positionWS.xz * 0.11) - 0.5) * 6.0
                 + (GroundValueNoise(input.positionWS.xz * 0.6 + 7.3) - 0.5) * 1.5;
             half rockLuma = dot(rockAlbedo, half3(0.3h, 0.59h, 0.11h));
+            // Чем выше над линией, тем круче склоны, на которых держится снег: у вершин голая скала только на стенах.
+            half steep = lerp(EMBERHOLD_SNOW_SLOPE_LOW, EMBERHOLD_SNOW_SLOPE_HIGH,
+                saturate((half)(input.positionWS.y - _GroundSnowLine) / EMBERHOLD_SNOW_SLOPE_RISE));
             half snow = smoothstep(-0.4h, 0.4h, (half)(input.positionWS.y - snowEdge) + (rockLuma - 0.3h) * 4.0h)
-                * smoothstep(0.5h, 0.7h, normalForTex.y) * cliff;
+                * smoothstep(steep, steep + 0.2h, normalForTex.y) * cliff;
             half3 snowAlbedo = EMBERHOLD_SNOW_COLOR * lerp(0.86h, 1.0h, saturate(rockLuma * 2.5h));
             rockAlbedo = lerp(rockAlbedo, snowAlbedo, snow);
         }

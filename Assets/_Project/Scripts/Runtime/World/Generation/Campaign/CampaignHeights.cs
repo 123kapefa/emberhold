@@ -29,12 +29,19 @@ namespace Emberhold.World.Generation
         // Стенка верхней части высокой горы над котловиной: почти отвесная скала, иначе котловины
         // рядом срезали бы вершину.
         private const float PeakWallHigh = 3.5f;
-        // Частота рёбер массива: соседние рёбра примерно в 1 / RibFrequency блоков.
-        private const float RibFrequency = 0.035f;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
-        // Расстояние между зубцами гребня в блоках.
-        private const float TeethSpacing = 11f;
+        // Насколько быстрее рёбер опускаются грани пирамиды: посередине грани гора уже в (1 + PeakFaceDrop) раз.
+        private const float PeakFaceDrop = 1f;
+        // Мелкие рёбра и кулуары на гранях пирамиды, доля радиуса.
+        private const float PeakFlutes = 0.12f;
+        // Профиль склона: больше 1 — склон вогнутый, у подножия положе.
+        private const float PeakProfile = 1.15f;
+        // Отроги от гребня вниз по склонам: через сколько блоков и насколько гребень между ними уже.
+        private const float SpurSpacing = 18f;
+        private const float SpurDrop = 0.45f;
+        // Как часто по кромке гребня встают жандармы (выступы), на блок пути.
+        private const float CrestFrequency = 0.07f;
 
         /// <summary>Высота в блоках в углу (x, z); размер (ширина + 1) × (длина + 1).</summary>
         public readonly float[,] Heights;
@@ -336,10 +343,11 @@ namespace Emberhold.World.Generation
             }
 
             /// <summary>
-            /// Высота горы в точке поверх хребта высотой ridge; за подножием — ridge. Это массив, а не конус:
-            /// склоны вогнутые, по ним от вершины расходятся острые рёбра (гребни «хребтового» шума с искажением),
-            /// между рёбрами — кулуары, на рёбрах — вершины пониже главной. Подножие неровное, у самой вершины
-            /// рельеф сходится в одну острую точку на полной высоте.
+            /// Высота горы в точке поверх хребта высотой ridge; за подножием — ridge. Вершина — пирамида: от неё
+            /// вниз расходятся 3–4 острых ребра, между ними вогнутые грани с кулуарами, на рёбрах жандармы.
+            /// Гребень (ломаная) — сплошная острая кромка: её высота неровно гуляет (жандармы и седловины, тем
+            /// глубже, чем больше Teeth), а вниз по склонам через SpurSpacing блоков уходят отроги.
+            /// Подножие неровное, у вершины искажение сходит на нет, чтобы вершина стояла в своей точке.
             /// </summary>
             public float Height(float x, float z, float ridge, CampaignNoise noise)
             {
@@ -347,39 +355,64 @@ namespace Emberhold.World.Generation
                     return ridge;
                 var radius = Math.Max(shape.Radius, 1f);
                 var seed = index * 41.3f;
-                // Неровное подножие: расстояние искажается шумом. К вершине искажение сходит на нет,
-                // чтобы вершина стояла в своей точке на полной высоте.
                 var near = 1f - CampaignNoise.SmoothStep(0.65f, 0.95f, 1f - Distance(x, z) / radius);
                 var wx = x + (noise.Fbm(x * 0.03f + seed, z * 0.03f, 3) - 0.5f) * radius * 0.6f * near;
                 var wz = z + (noise.Fbm(x * 0.03f, z * 0.03f - seed, 3) - 0.5f) * radius * 0.6f * near;
                 var d = Distance(wx, wz, out var along);
-                if (d >= radius)
-                    return ridge;
-                var t = 1f - d / radius;
-                // Вдоль гребня вершины то выше, то ниже, до десятой части высоты.
-                var top = Math.Max(shape.Height * (0.92f + 0.08f * noise.Fbm(x * 0.04f - seed, z * 0.04f + seed, 2)), ridge);
-                // Зубчатый гребень: острые пики «хребтового» шума с седловинами между ними.
-                var teeth = CampaignNoise.Clamp01(shape.Teeth);
-                if (teeth > 0f)
+                var top = Math.Max(shape.Height * (0.95f + 0.05f * noise.Fbm(x * 0.04f - seed, z * 0.04f + seed, 2)), ridge);
+                float spread;
+                var gendarmes = 0f;
+                if (shape.Points.Length == 1)
                 {
-                    // Зубцы вдоль гребня через TeethSpacing блоков (шаг и высота каждого гуляют), между ними седловины.
-                    var place = along / TeethSpacing + 0.35f * (noise.Fbm(along * 0.05f + seed, seed, 2) - 0.5f);
-                    var number = (int)Math.Floor(place);
-                    var f = place - number;
-                    var tooth = (float)Math.Pow(1f - Math.Abs(2f * f - 1f), 1.6f) * (0.7f + 0.3f * noise.Hash(number, index * 13 + 5));
-                    top = ridge + (top - ridge) * (1f - teeth + teeth * tooth);
+                    // Пирамида: угол до ближайшего ребра (0 на ребре, 1 посередине грани). Рёбра чуть изгибаются.
+                    var count = 3 + (noise.Hash(index, 71) > 0.5f ? 1 : 0);
+                    var turn = noise.Hash(index, 72) * 2f * (float)Math.PI;
+                    var angle = (float)Math.Atan2(wz - shape.Points[0].y, wx - shape.Points[0].x);
+                    var sector = (float)Math.PI / count;
+                    var face = 1f;
+                    for (var k = 0; k < count; k++)
+                    {
+                        var edge = turn + k * 2f * sector + (noise.Hash(index, 80 + k) - 0.5f) * 0.7f
+                                   + (noise.Hash(index, 90 + k) - 0.5f) * 0.9f * d / radius;
+                        face = Math.Min(face, Math.Abs(Wrap(angle - edge)) / sector);
+                    }
+                    var flutes = Triangle(angle * count * 3f / (2f * (float)Math.PI) + noise.Fbm(d * 0.05f + seed, seed, 2) * 1.5f);
+                    var grow = CampaignNoise.SmoothStep(0f, 0.35f, d / radius);
+                    spread = 1f + (PeakFaceDrop * (float)Math.Pow(face, 1.3f) + PeakFlutes * flutes) * grow;
+                    // Жандармы на рёбрах: ступени «хребтового» шума вдоль ребра.
+                    var rib = (float)Math.Floor(angle / (2f * sector));
+                    gendarmes = (noise.Ridged(d * 0.12f + seed, rib * 7.1f) - 0.5f) * 4f * (1f - face) * (1f - face);
                 }
-                var body = (float)Math.Pow(t, 1.4f);
-                // Рёбра и кулуары: гребни шума с искажением, чтобы рёбра петляли, а не шли сеткой.
-                var qx = x + (noise.Fbm(x * 0.02f + seed, z * 0.02f + 7f, 3) - 0.5f) * 24f;
-                var qz = z + (noise.Fbm(x * 0.02f - 9f, z * 0.02f - seed, 3) - 0.5f) * 24f;
-                var ribs = noise.Ridged(qx * RibFrequency + seed, qz * RibFrequency - seed);
-                var summit = CampaignNoise.SmoothStep(0.65f, 0.95f, t);
-                var relief = CampaignNoise.Lerp(0.55f + 0.45f * ribs, 1f, summit);
+                else
+                {
+                    // Кромка гребня: жандармы — острые верхушки сложенного шума, между ними седловины.
+                    var crest = 1f - Math.Abs(2f * noise.Fbm(along * CrestFrequency + seed, seed * 0.5f, 3) - 1f);
+                    crest = CampaignNoise.SmoothStep(0.35f, 0.95f, (float)Math.Pow(crest, 1.5f));
+                    var sag = 0.12f + 0.5f * CampaignNoise.Clamp01(shape.Teeth);
+                    top = Math.Max(ridge + (top - ridge) * (1f - sag * (1f - crest)), ridge);
+                    // Отроги: гребень шире там, где от него вниз уходит отрог, и уже между отрогами.
+                    var spur = Triangle(along / SpurSpacing + 0.3f * (noise.Fbm(along * 0.05f + seed, seed, 2) - 0.5f));
+                    spread = 1f + SpurDrop * (1f - (float)Math.Pow(spur, 2.5f));
+                }
+                var reach = d * spread;
+                if (reach >= radius)
+                    return ridge;
+                var t = 1f - reach / radius;
+                var body = (float)Math.Pow(t, PeakProfile);
                 // Мелкие скальные выступы на середине склонов.
-                var crags = (noise.Ridged(x * 0.09f - seed, z * 0.09f) - 0.45f) * 6f * t * (1f - t);
-                return ridge + (top - ridge) * body * relief + crags;
+                var crags = (noise.Ridged(x * 0.09f - seed, z * 0.09f) - 0.45f) * 5f * t * (1f - t);
+                return ridge + (top - ridge) * body + crags + gendarmes * t;
             }
+
+            /// <summary>Угол, приведённый к -π..π.</summary>
+            private static float Wrap(float angle)
+            {
+                var full = 2f * (float)Math.PI;
+                return angle - full * (float)Math.Floor((angle + (float)Math.PI) / full);
+            }
+
+            /// <summary>Треугольная волна 0..1: 0 на целых, 1 посередине между ними.</summary>
+            private static float Triangle(float v) => 1f - Math.Abs(2f * (v - (float)Math.Floor(v)) - 1f);
 
             /// <summary>Расстояние до вершины или до ломаной гребня.</summary>
             private float Distance(float x, float z) => Distance(x, z, out _);

@@ -307,13 +307,13 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
-        public void Peak_IsAMassif_WithRibsAndGullies_NotACone()
+        public void Peak_IsAPyramid_WithEdgesAndFaces_NotACone()
         {
             var layout = new CampaignLayout();
             layout.Peaks.Add(Peak(72f, 45f, new Vector2(80f, 80f)));
             var heights = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
 
-            // По кругу на середине склона у конуса высота почти одна, у массива рёбра чередуются с кулуарами.
+            // По кругу на середине склона у конуса высота почти одна, у пирамиды рёбра высоко, грани между ними низко.
             float min = float.MaxValue, max = float.MinValue;
             for (var a = 0; a < 72; a++)
             {
@@ -323,7 +323,7 @@ namespace Emberhold.Tests.EditMode.World
                 min = Mathf.Min(min, heights.Heights[x, z]);
                 max = Mathf.Max(max, heights.Heights[x, z]);
             }
-            Assert.That(max - min, Is.GreaterThan(3f), "рёбра и кулуары по кругу");
+            Assert.That(max - min, Is.GreaterThan(8f), "рёбра и грани по кругу");
         }
 
         [Test]
@@ -336,7 +336,7 @@ namespace Emberhold.Tests.EditMode.World
             layout.Peaks[0] = new CampaignPeakShape { Name = "Зубчатый", Points = line, Height = 64f, Radius = 16f, Teeth = 0.7f };
             var jagged = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
 
-            // Вдоль гребня у зубчатого высота скачет сильнее: пики и седловины.
+            // Вдоль кромки у неровного гребня высота скачет сильнее: жандармы и седловины.
             Assert.That(Spread(jagged), Is.GreaterThan(Spread(even) + 3f));
 
             static float Spread(CampaignHeights h)

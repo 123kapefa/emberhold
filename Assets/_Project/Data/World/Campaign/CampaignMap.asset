@@ -386,8 +386,8 @@ MonoBehaviour:
     - {x: 262, y: 258}
     - {x: 284, y: 268}
     - {x: 305, y: 278}
-    height: 70
-    radius: 14
+    height: 64
+    radius: 22
     teeth: 0.7
   - name: Хребет у маяка
     points:
