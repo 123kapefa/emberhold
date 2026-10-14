@@ -24,6 +24,10 @@ namespace Emberhold.World.Generation
         private const float GorgeReach = 50f;
         // Самая крутая стенка высокой горы над краем дна котловины или ущелья, блоков на блок.
         private const float PeakWall = 2f;
+        // Насколько пологие стенки массива бывают у котловин: от PeakWallLow до PeakWall блоков на блок по шуму.
+        private const float PeakWallLow = 1.1f;
+        // Частота рёбер массива: соседние рёбра примерно в 1 / RibFrequency блоков.
+        private const float RibFrequency = 0.035f;
 
         /// <summary>Высота в блоках в углу (x, z); размер (ширина + 1) × (длина + 1).</summary>
         public readonly float[,] Heights;
@@ -201,7 +205,7 @@ namespace Emberhold.World.Generation
             }
 
             // Высокие горы поверх уже вырезанных котловин и ущелий: пологие стенки котловины не срезают пик,
-            // но от края ближайшего дна гора поднимается не круче PeakWall, поэтому дно остаётся своим.
+            // но от края ближайшего дна гора поднимается не круче PeakWall (местами положе), поэтому дно остаётся своим.
             if (peaks.Length > 0)
             {
                 var peak = ridgeHeight;
@@ -209,8 +213,10 @@ namespace Emberhold.World.Generation
                     peak = Math.Max(peak, p.Height(x, z, ridgeHeight, noise));
                 if (peak > h)
                 {
-                    var limit = baseDistance < float.MaxValue ? terraceBase + Math.Max(baseDistance, 0f) * PeakWall : peak;
-                    h = Math.Max(h, Math.Min(peak, limit));
+                    // Стенка над дном то круче, то положе (предгорья), и её верх скруглён, чтобы не было бортика.
+                    var wall = CampaignNoise.Lerp(PeakWallLow, PeakWall, noise.Fbm(x * 0.03f + 61f, z * 0.03f - 17f, 3));
+                    var limit = baseDistance < float.MaxValue ? terraceBase + Math.Max(baseDistance, 0f) * wall : peak;
+                    h = Math.Max(h, CampaignNoise.SmoothMin(peak, limit, 8f));
                 }
             }
 
@@ -319,8 +325,10 @@ namespace Emberhold.World.Generation
             }
 
             /// <summary>
-            /// Высота горы в точке поверх хребта высотой ridge; за подножием — ridge. Профиль вогнутый: от подножия
-            /// поднимается полого, к вершине круто и сходится остро. Подножие гуляет по шуму, по граням — выступы.
+            /// Высота горы в точке поверх хребта высотой ridge; за подножием — ridge. Это массив, а не конус:
+            /// склоны вогнутые, по ним от вершины расходятся острые рёбра (гребни «хребтового» шума с искажением),
+            /// между рёбрами — кулуары, на рёбрах — вершины пониже главной. Подножие неровное, у самой вершины
+            /// рельеф сходится в одну острую точку на полной высоте.
             /// </summary>
             public float Height(float x, float z, float ridge, CampaignNoise noise)
             {
@@ -328,19 +336,25 @@ namespace Emberhold.World.Generation
                     return ridge;
                 var radius = Math.Max(shape.Radius, 1f);
                 var seed = index * 41.3f;
-                // Неровное подножие: расстояние искажается шумом на четверть радиуса.
-                var wx = x + (noise.Fbm(x * 0.03f + seed, z * 0.03f, 3) - 0.5f) * radius * 0.5f;
-                var wz = z + (noise.Fbm(x * 0.03f, z * 0.03f - seed, 3) - 0.5f) * radius * 0.5f;
+                // Неровное подножие: расстояние искажается шумом.
+                var wx = x + (noise.Fbm(x * 0.03f + seed, z * 0.03f, 3) - 0.5f) * radius * 0.6f;
+                var wz = z + (noise.Fbm(x * 0.03f, z * 0.03f - seed, 3) - 0.5f) * radius * 0.6f;
                 var d = Distance(wx, wz);
                 if (d >= radius)
                     return ridge;
                 var t = 1f - d / radius;
                 // Вдоль гребня вершины то выше, то ниже, до десятой части высоты.
-                var top = shape.Height * (0.92f + 0.08f * noise.Fbm(x * 0.04f - seed, z * 0.04f + seed, 2));
-                var rise = (float)Math.Pow(t, 1.7f);
-                // Скальные гребни на склонах: сильнее всего на середине высоты, у подножия и на вершине нет.
-                var crags = (noise.Ridged(x * 0.07f + seed, z * 0.07f) - 0.45f) * 10f * t * (1f - t);
-                return CampaignNoise.Lerp(ridge, Math.Max(top, ridge), rise) + crags;
+                var top = Math.Max(shape.Height * (0.92f + 0.08f * noise.Fbm(x * 0.04f - seed, z * 0.04f + seed, 2)), ridge);
+                var body = (float)Math.Pow(t, 1.4f);
+                // Рёбра и кулуары: гребни шума с искажением, чтобы рёбра петляли, а не шли сеткой.
+                var qx = x + (noise.Fbm(x * 0.02f + seed, z * 0.02f + 7f, 3) - 0.5f) * 24f;
+                var qz = z + (noise.Fbm(x * 0.02f - 9f, z * 0.02f - seed, 3) - 0.5f) * 24f;
+                var ribs = noise.Ridged(qx * RibFrequency + seed, qz * RibFrequency - seed);
+                var summit = CampaignNoise.SmoothStep(0.65f, 0.95f, t);
+                var relief = CampaignNoise.Lerp(0.55f + 0.45f * ribs, 1f, summit);
+                // Мелкие скальные выступы на середине склонов.
+                var crags = (noise.Ridged(x * 0.09f - seed, z * 0.09f) - 0.45f) * 6f * t * (1f - t);
+                return ridge + (top - ridge) * body * relief + crags;
             }
 
             /// <summary>Расстояние до вершины или до ломаной гребня.</summary>

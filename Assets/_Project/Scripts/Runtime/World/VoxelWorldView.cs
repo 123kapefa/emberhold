@@ -123,6 +123,24 @@ namespace Emberhold.World
         }
 
         /// <summary>
+        /// Выше ли земля столбца границы леса карты кампании (граница гуляет по шуму на ±3 блока): там деревья
+        /// не растут. Без карты кампании границы нет.
+        /// </summary>
+        public bool AboveTreeLine(Vector2Int column) =>
+            AboveLine(column, terrain != null && terrain.Map != null ? terrain.Map.TreeLine : NoSnow, 0f);
+
+        /// <summary>Выше ли земля столбца снеговой линии карты кампании (с тем же разбросом): там нет мелочи на земле.</summary>
+        public bool AboveSnowLine(Vector2Int column) => AboveLine(column, SnowLine(), 37f);
+
+        private bool AboveLine(Vector2Int column, float line, float noiseOffset)
+        {
+            if (campaign == null)
+                return false;
+            var height = campaign.Heights[column.x, column.y];
+            return height > line + (Mathf.PerlinNoise(column.x * 0.07f + noiseOffset, column.y * 0.07f) - 0.5f) * 6f;
+        }
+
+        /// <summary>
         /// Вне Play: сгенерировать рельеф по настройкам и зонам сцены, как при старте, и показать его во временном
         /// объекте. Сам вид не сдвигается, сцена не меняется. Повторный вызов перестраивает предпросмотр.
         /// </summary>

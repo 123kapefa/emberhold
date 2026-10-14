@@ -262,7 +262,7 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(ColumnMaterials(world, 36, 80), Has.Member(BlockMaterials.Stone));
             Assert.That(ColumnMaterials(world, 36, 80), Has.No.Member(BlockMaterials.Cliff), "дно локации копается");
             // Переход гладкой земли на хребте рисуется скалой, у локации — камнем (доля скалы в альфе смеси видов травы).
-            Assert.That(world.GrassTint.SampleKinds(2f, 2f).a, Is.EqualTo(1f));
+            Assert.That(world.GrassTint.SampleKinds(2f, 2f).a, Is.InRange(1f, 2f), "на хребте доля скалы 1, сверх неё — вогнутость для снега");
             Assert.That(world.GrassTint.SampleKinds(36f, 80f).a, Is.EqualTo(0f));
         }
 
@@ -307,6 +307,34 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void Peak_IsAMassif_WithRibsAndGullies_NotACone()
+        {
+            var layout = new CampaignLayout();
+            layout.Peaks.Add(Peak(72f, 45f, new Vector2(80f, 80f)));
+            var heights = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
+
+            // По кругу на середине склона у конуса высота почти одна, у массива рёбра чередуются с кулуарами.
+            float min = float.MaxValue, max = float.MinValue;
+            for (var a = 0; a < 72; a++)
+            {
+                var angle = a * Mathf.PI * 2f / 72f;
+                var x = Mathf.RoundToInt(80f + Mathf.Cos(angle) * 20f);
+                var z = Mathf.RoundToInt(80f + Mathf.Sin(angle) * 20f);
+                min = Mathf.Min(min, heights.Heights[x, z]);
+                max = Mathf.Max(max, heights.Heights[x, z]);
+            }
+            Assert.That(max - min, Is.GreaterThan(3f), "рёбра и кулуары по кругу");
+        }
+
+        [Test]
+        public void CliffSnowBias_GullyAbove_RibBelow_FlatInTheMiddle()
+        {
+            Assert.That(TerrainGenerator.CliffSnowBias(0f), Is.EqualTo(1.5f));
+            Assert.That(TerrainGenerator.CliffSnowBias(5f), Is.EqualTo(2f), "кулуар");
+            Assert.That(TerrainGenerator.CliffSnowBias(-5f), Is.EqualTo(1f), "ребро: доля скалы всё ещё 1");
+        }
+
+        [Test]
         public void Peak_KeepsLocationFloors()
         {
             var layout = TwoLocations();
@@ -340,7 +368,7 @@ namespace Emberhold.Tests.EditMode.World
 
             // Вдоль всей ломаной высоко, у потолка мира срезано.
             foreach (var (x, z) in new[] { (40, 140), (90, 140), (140, 140), (140, 90), (140, 50) })
-                Assert.That(heights.Heights[x, z], Is.GreaterThan(50f).And.LessThanOrEqualTo(60f), $"Гребень в {x},{z}");
+                Assert.That(heights.Heights[x, z], Is.GreaterThan(48f).And.LessThanOrEqualTo(60f), $"Гребень в {x},{z}");
             Assert.That(heights.Heights[60, 60], Is.LessThanOrEqualTo(46f), "вдали от гребня — обычный хребет");
         }
 

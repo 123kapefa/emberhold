@@ -37,6 +37,8 @@ namespace Emberhold.World.Generation
         [SerializeField] private List<Peak> peaks = new();
         [Tooltip("Выше этой высоты (в блоках) скала гор под снегом; граница гуляет по шуму, на крутых гранях снега нет.")]
         [SerializeField] private float snowLine = 54f;
+        [Tooltip("Граница леса в блоках: выше неё деревья не растут; граница гуляет по шуму на несколько блоков.")]
+        [SerializeField] private float treeLine = 46f;
 
         public IReadOnlyList<Location> Locations => locations;
         public IReadOnlyList<Gorge> Gorges => gorges;
@@ -44,6 +46,9 @@ namespace Emberhold.World.Generation
 
         /// <summary>Снеговая линия в блоках: выше неё скала гор рисуется под снегом.</summary>
         public float SnowLine => snowLine;
+
+        /// <summary>Граница леса в блоках: выше неё деревья не растут.</summary>
+        public float TreeLine => treeLine;
 
         /// <summary>
         /// Схема для генератора. Ущелье с неизвестной локацией на конце пропускается с предупреждением.

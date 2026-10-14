@@ -205,15 +205,37 @@ namespace Emberhold.World.Generation
         }
 
         /// <summary>
-        /// Доля скалы в углах (альфа смеси видов травы, <see cref="GroundTint"/>): 1 у хребта, 0 у локаций.
-        /// По ней шейдер земли рисует переход гладкой земли на хребте скалой, а не камнем.
+        /// Скала и снег в углах (альфа смеси видов травы, <see cref="GroundTint"/>): 0 у локаций, у хребта от 1 до 2.
+        /// Доля скалы — альфа до 1: по ней шейдер земли рисует гладкую землю хребта скалой, а не камнем.
+        /// Сверх 1 — вогнутость рельефа (<see cref="CliffSnowBias"/>): в кулуарах снег спускается ниже, на рёбрах
+        /// его выдувает и снеговая линия выше.
         /// </summary>
         private static void MarkCliff(CampaignHeights heights)
         {
-            for (var z = 0; z < heights.Owners.GetLength(1); z++)
-            for (var x = 0; x < heights.Owners.GetLength(0); x++)
-                heights.GrassKinds[x, z].a = heights.Owners[x, z] == CampaignHeights.Ridge ? 1f : 0f;
+            var h = heights.Heights;
+            var sizeX = h.GetLength(0);
+            var sizeZ = h.GetLength(1);
+            for (var z = 0; z < sizeZ; z++)
+            for (var x = 0; x < sizeX; x++)
+            {
+                if (heights.Owners[x, z] != CampaignHeights.Ridge)
+                {
+                    heights.GrassKinds[x, z].a = 0f;
+                    continue;
+                }
+                const int step = 3;
+                var around = (h[Math.Max(x - step, 0), z] + h[Math.Min(x + step, sizeX - 1), z]
+                              + h[x, Math.Max(z - step, 0)] + h[x, Math.Min(z + step, sizeZ - 1)]) * 0.25f;
+                heights.GrassKinds[x, z].a = CliffSnowBias(around - h[x, z]);
+            }
         }
+
+        /// <summary>
+        /// Альфа смеси видов травы на хребте по вогнутости (средняя высота соседей минус своя, в блоках):
+        /// 1,5 на ровном склоне, к 2 в кулуаре, к 1 на ребре. Шейдер берёт долю скалы как saturate(a),
+        /// а сдвиг снеговой линии как (a − 1,5) · 2.
+        /// </summary>
+        public static float CliffSnowBias(float concavity) => 1.5f + 0.5f * Mathf.Clamp(concavity / 2f, -1f, 1f);
 
         /// <summary>
         /// Карта кампании с гладкой поверхностью (<see cref="TerrainSurface"/>): высоты идут в поверхность как есть,

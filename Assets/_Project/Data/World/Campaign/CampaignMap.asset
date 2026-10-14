@@ -382,3 +382,4 @@ MonoBehaviour:
     height: 64
     radius: 28
   snowLine: 54
+  treeLine: 46

@@ -28,7 +28,8 @@ TEXTURE2D(_GrassDeadMap);
 TEXTURE2D(_GrassMountainMap);
 // Цвет камня перехода гладкой земли — общее свойство, его ставит VoxelWorldView (цвет материала камня).
 half4 _GroundRockColor;
-// Скала гор (#97): на хребте карты кампании гладкая земля переходит не в камень, а в скалу; доля скалы — в UV4.w.
+// Скала гор (#97): на хребте карты кампании гладкая земля переходит не в камень, а в скалу; доля скалы — в UV4.w
+// до 1, сверх 1 — вогнутость рельефа для снега (#101).
 // Общая текстура, её ставит VoxelWorldView (текстура материала скалы). Сэмплер общий с _RockMap.
 TEXTURE2D(_GroundCliffMap);
 // Снеговая линия гор (#101) в блоках: выше неё скала хребта под снегом. Общее свойство, его ставит VoxelWorldView.
@@ -45,6 +46,8 @@ half3 TintGrass(half3 albedo, half4 tint)
 #define EMBERHOLD_GROUND_TILE 8.0
 // Цвет снега на вершинах гор: чуть холодный белый.
 #define EMBERHOLD_SNOW_COLOR half3(0.9h, 0.94h, 1.0h)
+// На сколько блоков снег в кулуарах спускается ниже снеговой линии, а на рёбрах поднимается выше.
+#define EMBERHOLD_SNOW_GULLY 8.0
 // Мелкая деталь из альфа-канала текстуры ложится во столько раз мельче рисунка и видна только вблизи:
 // полностью ближе DETAIL_NEAR, гаснет к DETAIL_FAR (дистанция камеры 8–80).
 #define EMBERHOLD_DETAIL_SCALE 4.0
@@ -593,9 +596,12 @@ void LitPassFragment(
         // Снег на вершинах: выше снеговой линии скала хребта под снегом. Граница гуляет по шуму мира и по рисунку
         // скалы (на светлых плитах снег держится ниже), на крутых гранях снега нет — там видна скала.
         UNITY_BRANCH
-        if (cliff > 0.001h && input.positionWS.y > _GroundSnowLine - 6.0)
+        if (cliff > 0.001h && input.positionWS.y > _GroundSnowLine - 6.0 - EMBERHOLD_SNOW_GULLY)
         {
-            float snowEdge = _GroundSnowLine + (GroundValueNoise(input.positionWS.xz * 0.11) - 0.5) * 6.0
+            // Сверх доли скалы в UV4.w — вогнутость рельефа: в кулуарах снег языками ниже, на рёбрах выдут.
+            half gully = saturate(input.grassKinds.w - 1.0h) * 2.0h - 1.0h;
+            float snowEdge = _GroundSnowLine - gully * EMBERHOLD_SNOW_GULLY
+                + (GroundValueNoise(input.positionWS.xz * 0.11) - 0.5) * 6.0
                 + (GroundValueNoise(input.positionWS.xz * 0.6 + 7.3) - 0.5) * 1.5;
             half rockLuma = dot(rockAlbedo, half3(0.3h, 0.59h, 0.11h));
             half snow = smoothstep(-0.4h, 0.4h, (half)(input.positionWS.y - snowEdge) + (rockLuma - 0.3h) * 4.0h)

@@ -138,6 +138,9 @@ namespace Emberhold.Gameplay.Trees
             var clear = clearAroundFire * clearAroundFire;
             var planted = ForestScatter.Scatter(worldView.World, terrain.Seed, worldView.ForestAt, forest, column =>
             {
+                // Выше границы леса на горах деревьев нет.
+                if (worldView.AboveTreeLine(column))
+                    return true;
                 foreach (var fire in fires)
                 {
                     var d = new Vector2(column.x + 0.5f - fire.x, column.y + 0.5f - fire.z);
