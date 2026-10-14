@@ -436,12 +436,12 @@ namespace Emberhold.World.Generation
                     top = Math.Max(ridge + (top - ridge) * (1f - (0.12f + 0.2f * teeth) * (1f - crest)), ridge);
                     // Жандармы через GendarmeSpacing блоков: острая вершина смещена от середины, поэтому один склон
                     // круче другого, высота у каждого своя; на макушке сколы. Между жандармами гребень уже.
-                    var cell = along / GendarmeSpacing + 0.25f * (noise.Fbm(along * 0.04f + seed, seed + 3f, 2) - 0.5f);
+                    var cell = along / GendarmeSpacing + 0.45f * (noise.Fbm(along * 0.04f + seed, seed + 3f, 2) - 0.5f);
                     var number = (int)Math.Floor(cell);
                     var f = cell - number;
                     var tip = 0.3f + 0.4f * noise.Hash(number, index * 17 + 1);
                     var u = f < tip ? (tip - f) / tip : (f - tip) / (1f - tip);
-                    var tooth = (float)Math.Pow(1f - u, 1.1f) * (0.6f + 0.4f * noise.Hash(number, index * 17 + 2));
+                    var tooth = (float)Math.Pow(1f - u, 1.1f) * (0.45f + 0.55f * noise.Hash(number, index * 17 + 2));
                     var chips = Math.Abs(2f * noise.Value(along * 0.45f + seed, seed + 11f) - 1f);
                     top = Math.Max(top - teeth * (GendarmeDepth * (1f - tooth) + GendarmeChips * chips * tooth), ridge);
                     // Отроги: гребень шире там, где от него вниз уходит отрог, и уже между отрогами.

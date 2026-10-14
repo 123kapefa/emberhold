@@ -521,7 +521,7 @@ namespace Emberhold.Tests.EditMode.World
             // Хребты вдоль западного, южного и восточного краёв с пиками.
             Assert.That(MaxAround(heights, 18, 160, 12), Is.GreaterThan(62f), "Западный пик");
             Assert.That(MaxAround(heights, 250, 18, 12), Is.GreaterThan(62f), "Южный пик");
-            Assert.That(MaxAround(heights, 492, 200, 12), Is.GreaterThan(62f), "Восточный пик");
+            Assert.That(MaxAround(heights, 502, 205, 12), Is.GreaterThan(62f), "Восточный пик");
             // Окружающий хребет — горная цепь: у краёв гребни под снегом, долины не ниже хребта.
             var high = 0;
             for (var z = 0; z <= 512; z += 4)

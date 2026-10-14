@@ -60,8 +60,8 @@ MonoBehaviour:
     grassKind: 0
   - id: plain
     name: Речная пойма
-    center: {x: 86, y: 300}
-    radius: {x: 60, y: 46}
+    center: {x: 98, y: 300}
+    radius: {x: 56, y: 46}
     profile: {fileID: 11400000, guid: 66133786c0e64bc68785d5e5f2a8cafb, type: 2}
     floorHeight: 7.5
     rise: 0
@@ -360,8 +360,8 @@ MonoBehaviour:
     to: cedar
     waypoints:
     - {x: 472, y: 140}
-    - {x: 490, y: 200}
-    - {x: 484, y: 268}
+    - {x: 476, y: 200}
+    - {x: 474, y: 268}
     - {x: 478, y: 316}
     widthStart: 10
     widthEnd: 10
@@ -431,8 +431,9 @@ MonoBehaviour:
   - name: Восточный хребет
     points:
     - {x: 494, y: 40}
-    - {x: 492, y: 180}
-    - {x: 494, y: 310}
+    - {x: 500, y: 130}
+    - {x: 502, y: 210}
+    - {x: 502, y: 300}
     height: 66
     radius: 24
     teeth: 0.7
@@ -462,9 +463,9 @@ MonoBehaviour:
     teeth: 0
   - name: Восточный пик
     points:
-    - {x: 492, y: 200}
+    - {x: 502, y: 205}
     height: 72
-    radius: 30
+    radius: 26
     teeth: 0
   snowLine: 54
   treeLine: 46
