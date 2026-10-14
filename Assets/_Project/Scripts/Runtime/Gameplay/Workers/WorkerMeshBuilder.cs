@@ -5,13 +5,18 @@ using UnityEngine;
 namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
-    /// Гранёная low-poly сетка рабочего в стиле деревьев: сапоги, штаны, рубаха с поясом и сумкой, руки с кистями,
-    /// голова с носом, глазами и бровями, у части борода, капюшон с хвостом и накидка на плечи и спину.
+    /// Гранёная low-poly сетка рабочего в стиле деревьев, слепленная лофтами — кольцами разного сечения: сапоги с носком,
+    /// ноги с икрой и коленом, рубаха с талией, грудью и покатыми плечами, руки с локтем и кистью с большим пальцем,
+    /// голова с челюстью, скулами, носом, ушами и волосами, у части борода. Капюшон цвета роли откинут на спину:
+    /// пелерина на плечах, валик вокруг шеи и мешок капюшона на лопатках.
     /// Ноги в (0, 0, 0), лицо смотрит в +Z, единица — блок, рост height. Все размеры — доли роста.
     /// Цвет вершин — цвет части, a = 0: шейдер Emberhold/World/Tree оставляет его как есть.
     /// </summary>
     public static class WorkerMeshBuilder
     {
+        private const int Sides = 14;
+        private const int LimbSides = 10;
+
         private static readonly Color Pants = new(0.29f, 0.243f, 0.196f);
         private static readonly Color Boots = new(0.18f, 0.149f, 0.125f);
         private static readonly Color Leather = new(0.369f, 0.251f, 0.157f);
@@ -21,74 +26,125 @@ namespace Emberhold.Gameplay.Workers
         public static Mesh Build(WorkerLook look, float height, string name = "Worker")
         {
             var mesh = new FacetedMesh();
-            var u = height;
+            var scale = Matrix4x4.Scale(Vector3.one * height);
+            mesh.Transform = scale;
             var tunic = Paint(look.Tunic);
             var skin = Paint(look.Skin);
+            var hair = Paint(look.Hair);
             var hood = Paint(look.Hood);
 
-            // Ноги: ступня, голенище сапога, голень, бедро.
+            // Ноги: сапог с носком, голень с икрой, колено, бедро толще к тазу.
             foreach (var side in new[] { -1f, 1f })
             {
-                var x = side * 0.055f * u;
-                mesh.AddBox(new Vector3(x, 0.025f * u, 0.015f * u), new Vector3(0.075f, 0.05f, 0.12f) * u, Paint(Boots));
-                mesh.AddPrism(6, new Vector3(x, 0.04f * u, 0f), 0.034f * u, 0.036f * u, 0.1f * u, 0f, null, Paint(Boots));
-                mesh.AddPrism(6, new Vector3(x, 0.13f * u, 0f), 0.034f * u, 0.038f * u, 0.16f * u, 0f, null, Paint(Pants));
-                mesh.AddPrism(6, new Vector3(x, 0.275f * u, 0f), 0.04f * u, 0.048f * u, 0.17f * u, 0f, null, Paint(Pants));
+                var x = side * 0.058f;
+                mesh.AddLoft(new[]
+                {
+                    new LoftRing(0f, 0.036f, 0.062f, 0.022f, x), new LoftRing(0.03f, 0.038f, 0.066f, 0.024f, x),
+                    new LoftRing(0.05f, 0.034f, 0.044f, 0.008f, x), new LoftRing(0.13f, 0.034f, 0.036f, 0f, x),
+                }, LimbSides, Paint(Boots));
+                mesh.AddLoft(new[]
+                {
+                    new LoftRing(0.12f, 0.031f, 0.032f, 0f, x), new LoftRing(0.2f, 0.035f, 0.04f, -0.006f, x),
+                    new LoftRing(0.265f, 0.031f, 0.033f, 0.002f, x), new LoftRing(0.36f, 0.044f, 0.048f, 0.004f, x * 0.95f),
+                    new LoftRing(0.44f, 0.054f, 0.055f, 0f, x * 0.85f),
+                }, LimbSides, Paint(Pants));
             }
 
-            // Подол, грудь, пояс с пряжкой и сумкой.
-            mesh.AddPrism(8, new Vector3(0f, 0.405f * u, 0f), 0.15f * u, 0.12f * u, 0.13f * u, 0f, null, tunic);
-            mesh.AddPrism(8, new Vector3(0f, 0.52f * u, 0f), 0.12f * u, 0.14f * u, 0.24f * u, 0f, null, tunic);
-            mesh.AddPrism(8, new Vector3(0f, 0.5175f * u, 0f), 0.125f * u, 0.125f * u, 0.025f * u, 0f, null, Paint(Leather));
-            mesh.AddBox(new Vector3(0f, 0.53f * u, 0.125f * u), new Vector3(0.03f, 0.025f, 0.012f) * u, Paint(Buckle));
-            Place(mesh, new Vector3(0.1f * u, 0.5f * u, 0.06f * u), Quaternion.Euler(0f, 30f, 0f));
-            mesh.AddBox(Vector3.zero, new Vector3(0.05f, 0.055f, 0.03f) * u, Paint(Leather));
+            // Рубаха: подол расходится, бёдра, талия уже, грудь, покатые плечи, ворот у шеи.
+            mesh.AddLoft(new[]
+            {
+                new LoftRing(0.37f, 0.148f, 0.098f, 0.002f), new LoftRing(0.44f, 0.128f, 0.086f), new LoftRing(0.51f, 0.112f, 0.076f),
+                new LoftRing(0.6f, 0.13f, 0.088f, 0.01f), new LoftRing(0.68f, 0.148f, 0.088f, 0.008f), new LoftRing(0.735f, 0.14f, 0.074f),
+                new LoftRing(0.765f, 0.07f, 0.05f), new LoftRing(0.775f, 0.042f, 0.04f, 0.004f),
+            }, Sides, tunic);
+            // Пояс с пряжкой и сумка на боку.
+            mesh.AddLoft(new[] { new LoftRing(0.5f, 0.116f, 0.08f), new LoftRing(0.528f, 0.116f, 0.08f) }, Sides, Paint(Leather));
+            mesh.AddBox(new Vector3(0f, 0.514f, 0.081f), new Vector3(0.03f, 0.024f, 0.01f), Paint(Buckle));
+            mesh.Transform = scale * Matrix4x4.TRS(new Vector3(0.095f, 0.49f, 0.045f), Quaternion.Euler(0f, 35f, 0f), Vector3.one);
+            mesh.AddBox(Vector3.zero, new Vector3(0.045f, 0.055f, 0.03f), Paint(Leather));
+            mesh.Transform = scale;
 
-            // Накидка цвета роли: на плечах и короткая на спине.
-            Place(mesh, Vector3.zero, Quaternion.identity);
-            mesh.AddPrism(8, new Vector3(0f, 0.715f * u, 0f), 0.17f * u, 0.1f * u, 0.07f * u, 0f, null, hood);
-            Place(mesh, new Vector3(0f, 0.62f * u, -0.13f * u), Quaternion.Euler(7f, 0f, 0f));
-            mesh.AddBox(Vector3.zero, new Vector3(0.22f, 0.26f, 0.02f) * u, hood);
-
-            // Руки чуть вперёд и в стороны: плечо, предплечье, кисть.
+            // Руки: плечо, локоть чуть назад, предплечье вперёд; плоская кисть с большим пальцем.
             foreach (var side in new[] { -1f, 1f })
             {
-                var shoulder = Matrix4x4.TRS(new Vector3(side * 0.155f * u, 0.75f * u, 0f),
-                    Quaternion.Euler(-14f, 0f, side * 7f), Vector3.one);
-                mesh.Transform = shoulder;
-                mesh.AddPrism(6, new Vector3(0f, -0.15f * u, 0f), 0.032f * u, 0.036f * u, 0.15f * u, 0f, null, tunic);
-                mesh.Transform = shoulder * Matrix4x4.TRS(new Vector3(0f, -0.15f * u, 0f), Quaternion.Euler(-12f, 0f, 0f), Vector3.one);
-                mesh.AddPrism(6, new Vector3(0f, -0.13f * u, 0f), 0.028f * u, 0.032f * u, 0.13f * u, 0f, null, tunic);
-                mesh.AddBlob(new Vector3(0f, -0.15f * u, 0f), Vector3.one * (0.03f * u), 0, 0f, null, skin);
+                mesh.AddTube(new[]
+                {
+                    new Vector3(side * 0.135f, 0.74f, 0f), new Vector3(side * 0.158f, 0.7f, -0.004f), new Vector3(side * 0.17f, 0.62f, -0.01f),
+                    new Vector3(side * 0.175f, 0.55f, -0.008f), new Vector3(side * 0.178f, 0.48f, 0.018f), new Vector3(side * 0.178f, 0.42f, 0.04f),
+                }, new[]
+                {
+                    new Vector2(0.04f, 0.04f), new Vector2(0.044f, 0.042f), new Vector2(0.036f, 0.036f),
+                    new Vector2(0.031f, 0.032f), new Vector2(0.033f, 0.031f), new Vector2(0.028f, 0.027f),
+                }, LimbSides, tunic);
+                mesh.AddTube(new[]
+                {
+                    new Vector3(side * 0.178f, 0.425f, 0.04f), new Vector3(side * 0.179f, 0.4f, 0.046f), new Vector3(side * 0.18f, 0.37f, 0.05f),
+                    new Vector3(side * 0.178f, 0.345f, 0.052f),
+                }, new[] { new Vector2(0.022f, 0.02f), new Vector2(0.026f, 0.016f), new Vector2(0.026f, 0.016f), new Vector2(0.016f, 0.011f) },
+                    LimbSides, skin);
+                mesh.AddTube(new[] { new Vector3(side * 0.17f, 0.4f, 0.062f), new Vector3(side * 0.166f, 0.375f, 0.074f) },
+                    new[] { new Vector2(0.009f, 0.009f), new Vector2(0.007f, 0.007f) }, 6, skin);
             }
 
-            // Шея и голова.
-            Place(mesh, Vector3.zero, Quaternion.identity);
-            mesh.AddPrism(6, new Vector3(0f, 0.765f * u, 0f), 0.045f * u, 0.04f * u, 0.05f * u, 0f, null, skin);
-            var head = new Vector3(0f, 0.875f * u, 0.005f * u);
-            mesh.AddBlob(head, new Vector3(0.076f, 0.086f, 0.08f) * u, 1, 0f, null, skin);
+            // Голова: шея, подбородок, челюсть, скулы, лоб, затылок, макушка.
+            mesh.AddLoft(new[]
+            {
+                new LoftRing(0.77f, 0.036f, 0.036f), new LoftRing(0.8f, 0.036f, 0.038f, 0.004f),
+                new LoftRing(0.808f, 0.03f, 0.03f, 0.05f), new LoftRing(0.82f, 0.05f, 0.058f, 0.024f),
+                new LoftRing(0.845f, 0.062f, 0.07f, 0.012f), new LoftRing(0.875f, 0.07f, 0.078f, 0.008f),
+                new LoftRing(0.91f, 0.072f, 0.08f, 0.004f), new LoftRing(0.945f, 0.066f, 0.074f, -0.002f),
+                new LoftRing(0.97f, 0.048f, 0.056f, -0.004f), new LoftRing(0.983f, 0.02f, 0.024f, -0.004f),
+            }, Sides, skin, capStart: false);
+            // Нос — четырёхгранный клин посередине лица, чуть темнее кожи.
+            mesh.AddLoft(new[] { new LoftRing(0.866f, 0.012f, 0.012f, 0.088f), new LoftRing(0.876f, 0.01f, 0.01f, 0.09f), new LoftRing(0.9f, 0.006f, 0.006f, 0.084f) },
+                4, Paint(look.Skin * 0.9f));
             foreach (var side in new[] { -1f, 1f })
             {
-                mesh.AddBox(head + new Vector3(side * 0.029f, 0.014f, 0.074f) * u, new Vector3(0.014f, 0.012f, 0.01f) * u, Paint(Eyes));
-                mesh.AddBox(head + new Vector3(side * 0.03f, 0.033f, 0.068f) * u, new Vector3(0.03f, 0.007f, 0.012f) * u, Paint(look.Hair));
+                mesh.AddBox(new Vector3(side * 0.03f, 0.89f, 0.08f), new Vector3(0.014f, 0.013f, 0.01f), Paint(Eyes));
+                mesh.AddBox(new Vector3(side * 0.07f, 0.88f, 0.002f), new Vector3(0.012f, 0.028f, 0.022f), Paint(look.Skin * 0.92f));
+                // Брови чуть домиком.
+                mesh.Transform = scale * Matrix4x4.TRS(new Vector3(side * 0.031f, 0.906f, 0.08f), Quaternion.Euler(0f, 0f, side * -8f), Vector3.one);
+                mesh.AddBox(Vector3.zero, new Vector3(0.03f, 0.007f, 0.012f), hair);
+                mesh.Transform = scale;
             }
+            // Борода по челюсти — передняя половина кольца; рот — тёмная полоска (в бороде — темнее её).
             if (look.Beard)
-                mesh.AddBlob(head + new Vector3(0f, -0.045f, 0.045f) * u, new Vector3(0.055f, 0.045f, 0.03f) * u, 0, 0f, null, Paint(look.Hair));
-            Place(mesh, head + new Vector3(0f, -0.005f, 0.065f) * u, Quaternion.Euler(90f, 0f, 0f));
-            mesh.AddCone(4, Vector3.zero, 0.014f * u, 0.035f * u, 0f, null, skin);
+            {
+                mesh.AddLoft(new[]
+                {
+                    new LoftRing(0.8f, 0.028f, 0.02f, 0.062f), new LoftRing(0.818f, 0.05f, 0.03f, 0.052f),
+                    new LoftRing(0.845f, 0.062f, 0.03f, 0.05f), new LoftRing(0.86f, 0.06f, 0.024f, 0.05f),
+                }, Sides, hair, arc: 0.5f, twoSided: true);
+            }
+            mesh.AddBox(new Vector3(0f, look.Beard ? 0.852f : 0.848f, 0.077f), new Vector3(0.026f, 0.005f, 0.01f),
+                Paint(look.Beard ? look.Hair * 0.55f : Eyes));
+            // Волосы: шапка поверх черепа, спереди открыт лоб.
+            mesh.AddLoft(new[]
+            {
+                new LoftRing(0.87f, 0.074f, 0.082f, -0.004f), new LoftRing(0.915f, 0.077f, 0.084f, 0.002f),
+                new LoftRing(0.95f, 0.07f, 0.078f, -0.002f), new LoftRing(0.975f, 0.05f, 0.06f, -0.004f),
+                new LoftRing(0.99f, 0.02f, 0.026f, -0.004f),
+            }, Sides, hair, capStart: false, arc: 0.62f, twoSided: true);
 
-            // Капюшон: облегает голову сзади и сверху, лицо открыто; хвост свисает по спине.
-            Place(mesh, Vector3.zero, Quaternion.identity);
-            mesh.AddBlob(head + new Vector3(0f, 0.012f, -0.028f) * u, new Vector3(0.095f, 0.1f, 0.092f) * u, 1, 0f, null, hood);
-            Place(mesh, head + new Vector3(0f, 0.02f, -0.085f) * u, Quaternion.Euler(-160f, 0f, 0f));
-            mesh.AddCone(6, Vector3.zero, 0.04f * u, 0.13f * u, 0f, null, hood);
+            // Капюшон откинут: валик вокруг шеи сзади, мешок капюшона на лопатках, пелерина на плечах.
+            mesh.AddLoft(new[]
+            {
+                new LoftRing(0.745f, 0.1f, 0.075f, -0.008f), new LoftRing(0.775f, 0.075f, 0.062f, -0.01f), new LoftRing(0.8f, 0.058f, 0.056f, -0.012f),
+            }, Sides, hood, capStart: false, capEnd: false, arc: 0.8f, twoSided: true);
+            mesh.AddLoft(new[]
+            {
+                new LoftRing(0.79f, 0.075f, 0.03f, -0.07f), new LoftRing(0.745f, 0.085f, 0.04f, -0.095f), new LoftRing(0.68f, 0.07f, 0.034f, -0.1f),
+                new LoftRing(0.63f, 0.035f, 0.02f, -0.096f), new LoftRing(0.6f, 0.006f, 0.006f, -0.09f),
+            }, Sides, hood);
+            mesh.AddLoft(new[]
+            {
+                new LoftRing(0.685f, 0.152f, 0.096f, -0.002f), new LoftRing(0.725f, 0.142f, 0.086f), new LoftRing(0.758f, 0.1f, 0.068f),
+                new LoftRing(0.776f, 0.058f, 0.052f),
+            }, Sides, hood, capStart: false, capEnd: false, twoSided: true);
 
             mesh.Transform = Matrix4x4.identity;
             return mesh.ToMesh(name);
         }
-
-        private static void Place(FacetedMesh mesh, Vector3 position, Quaternion rotation) =>
-            mesh.Transform = Matrix4x4.TRS(position, rotation, Vector3.one);
 
         private static Func<Vector3, Color> Paint(Color color)
         {

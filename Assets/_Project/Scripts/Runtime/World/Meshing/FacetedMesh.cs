@@ -3,8 +3,33 @@ using UnityEngine;
 
 namespace Emberhold.World.Meshing
 {
+    /// <summary>Кольцо лофта: центр и полуоси вдоль осей Right и Forward.</summary>
+    public readonly struct LoftRing
+    {
+        /// <summary>Горизонтальное кольцо на высоте y, сдвинутое по X на cx и по Z на cz.</summary>
+        public LoftRing(float y, float radiusX, float radiusZ, float cz = 0f, float cx = 0f)
+            : this(new Vector3(cx, y, cz), radiusX, radiusZ, Vector3.right, Vector3.forward)
+        {
+        }
+
+        public LoftRing(Vector3 center, float radiusX, float radiusZ, Vector3 right, Vector3 forward)
+        {
+            Center = center;
+            RadiusX = radiusX;
+            RadiusZ = radiusZ;
+            Right = right;
+            Forward = forward;
+        }
+
+        public Vector3 Center { get; }
+        public float RadiusX { get; }
+        public float RadiusZ { get; }
+        public Vector3 Right { get; }
+        public Vector3 Forward { get; }
+    }
+
     /// <summary>
-    /// Гранёная low-poly сетка из простых тел (усечённый конус, конус, коробка, комок): тела из общих точек,
+    /// Гранёная low-poly сетка из простых тел (усечённый конус, конус, коробка, комок, лофт по кольцам): тела из общих точек,
     /// каждая грань — свои три вершины с нормалью грани, поэтому грани читаются при любом свете. Цвет вершины задаёт
     /// функция от её положения. Общая для деревьев (<see cref="Trees.TreeMeshBuilder"/>) и рабочих.
     /// </summary>
@@ -110,6 +135,87 @@ namespace Emberhold.World.Meshing
                 points[i] = center + Vector3.Scale(p, radii);
             }
             Emit(center, color);
+        }
+
+        /// <summary>
+        /// Лофт: кольца разного сечения, соединённые гранями (туловище, нога, голова). arc — доля окружности
+        /// с серединой на спине (−Forward): меньше 1 — открытая спереди оболочка. Открытая оболочка без крышек;
+        /// twoSided — грани видны с обеих сторон (тонкая ткань).
+        /// </summary>
+        public void AddLoft(IReadOnlyList<LoftRing> rings, int sides, System.Func<Vector3, Color> color,
+            bool capStart = true, bool capEnd = true, float arc = 1f, bool twoSided = false)
+        {
+            var full = arc >= 0.999f;
+            var count = full ? sides : sides + 1;
+            var ring = new Vector3[rings.Count * count];
+            for (var r = 0; r < rings.Count; r++)
+            for (var i = 0; i < count; i++)
+            {
+                // Угол 0 — середина спины.
+                var turn = full ? (float)i / sides : 0.5f - arc * 0.5f + arc * i / sides;
+                var angle = turn * Mathf.PI * 2f;
+                var k = rings[r];
+                ring[r * count + i] = k.Center + k.Right * (Mathf.Sin(angle) * k.RadiusX) - k.Forward * (Mathf.Cos(angle) * k.RadiusZ);
+            }
+            for (var r = 0; r + 1 < rings.Count; r++)
+            {
+                var inside = (rings[r].Center + rings[r + 1].Center) * 0.5f;
+                for (var i = 0; i < sides; i++)
+                {
+                    var j = full ? (i + 1) % sides : i + 1;
+                    var a = ring[r * count + i];
+                    var b = ring[(r + 1) * count + i];
+                    var c = ring[(r + 1) * count + j];
+                    var d = ring[r * count + j];
+                    AddFace(a, b, c, inside, color, twoSided);
+                    AddFace(a, c, d, inside, color, twoSided);
+                }
+            }
+            if (!full)
+                return;
+            if (capStart)
+                AddCap(ring, 0, sides, rings[0].Center, rings[Mathf.Min(1, rings.Count - 1)].Center, color);
+            if (capEnd)
+                AddCap(ring, (rings.Count - 1) * sides, sides, rings[^1].Center, rings[Mathf.Max(0, rings.Count - 2)].Center, color);
+        }
+
+        /// <summary>Труба вдоль ломаной (рука, кисть): кольца поперёк хода, radii — полуоси колец.</summary>
+        public void AddTube(IReadOnlyList<Vector3> path, IReadOnlyList<Vector2> radii, int sides, System.Func<Vector3, Color> color)
+        {
+            var rings = new LoftRing[path.Count];
+            for (var i = 0; i < path.Count; i++)
+            {
+                var along = (path[Mathf.Min(i + 1, path.Count - 1)] - path[Mathf.Max(i - 1, 0)]).normalized;
+                var right = Vector3.Cross(along, Vector3.forward);
+                right = right.sqrMagnitude < 1e-4f ? Vector3.right : right.normalized;
+                rings[i] = new LoftRing(path[i], radii[i].x, radii[i].y, right, Vector3.Cross(right, along).normalized);
+            }
+            AddLoft(rings, sides, color);
+        }
+
+        private void AddCap(Vector3[] ring, int start, int sides, Vector3 center, Vector3 inside, System.Func<Vector3, Color> color)
+        {
+            for (var i = 0; i < sides; i++)
+                AddFace(center, ring[start + i], ring[start + (i + 1) % sides], inside, color, false);
+        }
+
+        /// <summary>Одна грань в Transform; нормаль от inside наружу, у двусторонней — и обратная.</summary>
+        private void AddFace(Vector3 a, Vector3 b, Vector3 c, Vector3 inside, System.Func<Vector3, Color> color, bool twoSided)
+        {
+            points.Clear();
+            faces.Clear();
+            points.Add(a);
+            points.Add(b);
+            points.Add(c);
+            faces.AddRange(new[] { 0, 1, 2 });
+            Emit(inside, color);
+            if (!twoSided)
+                return;
+            // Обратная сторона: та же грань, «внутри» по другую сторону от неё.
+            var outward = Vector3.Cross(b - a, c - a);
+            if (Vector3.Dot(outward, (a + b + c) / 3f - inside) < 0f)
+                outward = -outward;
+            Emit((a + b + c) / 3f + outward, color);
         }
 
         public Mesh ToMesh(string name)

@@ -46,7 +46,31 @@ namespace Emberhold.Tests.EditMode.Workers
                 back = Mathf.Min(back, v.z);
             }
             Assert.That(front, Is.GreaterThan(0.15f), "Нос впереди");
-            Assert.That(back, Is.LessThan(-0.15f), "Хвост капюшона сзади");
+            Assert.That(back, Is.LessThan(-0.1f), "Затылок сзади");
+            Assert.That(front, Is.GreaterThan(-back), "Нос выступает дальше затылка");
+        }
+
+        [Test]
+        public void Build_HoodLiesOnBack()
+        {
+            // Капюшон откинут: всё цвета капюшона ниже макушки и в среднем за спиной.
+            var look = Look(beard: false);
+            var mesh = Build(look, 1.9f);
+            var hood = Linear(look.Hood);
+            var colors = mesh.colors;
+            var vertices = mesh.vertices;
+            var sumZ = 0f;
+            var count = 0;
+            for (var i = 0; i < vertices.Length; i++)
+            {
+                if (colors[i] != hood)
+                    continue;
+                Assert.That(vertices[i].y, Is.LessThan(0.85f * 1.9f), "Капюшон не на голове");
+                sumZ += vertices[i].z;
+                count++;
+            }
+            Assert.That(count, Is.GreaterThan(0));
+            Assert.That(sumZ / count, Is.LessThan(0f), "Капюшон за спиной");
         }
 
         [Test]
@@ -126,6 +150,27 @@ namespace Emberhold.Tests.EditMode.Workers
             Assert.That(bounds.size.y, Is.LessThan(0.5f));
             foreach (var n in result.normals)
                 Assert.That(n.magnitude, Is.EqualTo(1f).Within(1e-3f));
+        }
+
+        [Test]
+        public void FacetedMesh_LoftNormalsPointOutward()
+        {
+            var mesh = new FacetedMesh();
+            mesh.AddLoft(new[] { new LoftRing(0f, 1f, 0.5f), new LoftRing(1f, 0.5f, 0.25f) }, 8, _ => Color.white);
+            var result = mesh.ToMesh("Loft");
+            created.Add(result);
+
+            var bounds = result.bounds;
+            Assert.That(bounds.size.x, Is.EqualTo(2f).Within(1e-3f), "Полуось по X");
+            Assert.That(bounds.size.z, Is.EqualTo(1f).Within(1e-3f), "Полуось по Z");
+            var vertices = result.vertices;
+            var normals = result.normals;
+            for (var i = 0; i < vertices.Length; i++)
+            {
+                // Крышки смотрят вниз и вверх, бока — от оси.
+                var outward = new Vector3(vertices[i].x, vertices[i].y - 0.5f, vertices[i].z);
+                Assert.That(Vector3.Dot(normals[i], outward), Is.GreaterThan(0f));
+            }
         }
 
         private Mesh Build(WorkerLook look, float height)

@@ -58,8 +58,8 @@ namespace Emberhold.Gameplay.Workers
         [Tooltip("Рост рабочего, блоков. Дверь — 2 блока в высоту.")]
         [Range(0.5f, 1.99f)]
         [SerializeField] private float height = 1.9f;
-        [Tooltip("Цвет капюшона и накидки. Потом у каждой роли будет свой.")]
-        [SerializeField] private Color hoodColor = new(0.725f, 0.659f, 0.533f);
+        [Tooltip("Цвет откинутого капюшона и пелерины. Потом у каждой роли будет свой.")]
+        [SerializeField] private Color hoodColor = new(0.26f, 0.36f, 0.3f);
         [Tooltip("Цвета кожи: каждому рабочему достаётся один по его номеру.")]
         [SerializeField] private Color[] skinColors = { new(0.910f, 0.753f, 0.604f), new(0.851f, 0.655f, 0.486f), new(0.769f, 0.541f, 0.376f), new(0.941f, 0.812f, 0.682f) };
         [Tooltip("Цвета волос, бровей и бороды.")]
