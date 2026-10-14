@@ -26,12 +26,15 @@ namespace Emberhold.World.Generation
         private const float PeakWall = 2f;
         // Насколько пологие стенки массива бывают у котловин: от PeakWallLow до PeakWall блоков на блок по шуму.
         private const float PeakWallLow = 1.1f;
+        // Стенка верхней части высокой горы над котловиной: почти отвесная скала, иначе котловины
+        // рядом срезали бы вершину.
+        private const float PeakWallHigh = 3.5f;
         // Частота рёбер массива: соседние рёбра примерно в 1 / RibFrequency блоков.
         private const float RibFrequency = 0.035f;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
         // Частота зубцов гребня: соседние пики примерно в 1 / TeethFrequency блоков.
-        private const float TeethFrequency = 0.08f;
+        private const float TeethFrequency = 0.06f;
 
         /// <summary>Высота в блоках в углу (x, z); размер (ширина + 1) × (длина + 1).</summary>
         public readonly float[,] Heights;
@@ -218,10 +221,10 @@ namespace Emberhold.World.Generation
                 if (peak > h)
                 {
                     // Стенка над дном то круче, то положе (предгорья), и её верх скруглён, чтобы не было бортика.
-                    // Пологие предгорья только внизу массива: чем выше гора над хребтом, тем стенка ближе к PeakWall,
+                    // Пологие предгорья только внизу массива: чем выше гора над хребтом, тем стенка круче, до PeakWallHigh,
                     // иначе пологий участок срезал бы вершину.
                     var foothill = CampaignNoise.Lerp(PeakWallLow, PeakWall, noise.Fbm(x * 0.03f + 61f, z * 0.03f - 17f, 3));
-                    var wall = CampaignNoise.Lerp(foothill, PeakWall, CampaignNoise.SmoothStep(5f, 20f, peak - ridgeHeight));
+                    var wall = CampaignNoise.Lerp(foothill, PeakWallHigh, CampaignNoise.SmoothStep(5f, 20f, peak - ridgeHeight));
                     var limit = baseDistance < float.MaxValue ? terraceBase + Math.Max(baseDistance, 0f) * wall : peak;
                     // Скругляем только там, где стенка срезает гору; где стенка выше, гора как есть.
                     h = Math.Max(h, limit < peak + PeakWallRound ? CampaignNoise.SmoothMin(peak, limit, PeakWallRound) : peak);
@@ -358,7 +361,10 @@ namespace Emberhold.World.Generation
                 // Зубчатый гребень: острые пики «хребтового» шума с седловинами между ними.
                 var teeth = CampaignNoise.Clamp01(shape.Teeth);
                 if (teeth > 0f)
-                    top = ridge + (top - ridge) * (1f - teeth + teeth * noise.Ridged(x * TeethFrequency + seed, z * TeethFrequency - seed));
+                {
+                    var tooth = noise.Ridged(x * TeethFrequency + seed, z * TeethFrequency - seed);
+                    top = ridge + (top - ridge) * (1f - teeth + teeth * tooth * tooth);
+                }
                 var body = (float)Math.Pow(t, 1.4f);
                 // Рёбра и кулуары: гребни шума с искажением, чтобы рёбра петляли, а не шли сеткой.
                 var qx = x + (noise.Fbm(x * 0.02f + seed, z * 0.02f + 7f, 3) - 0.5f) * 24f;

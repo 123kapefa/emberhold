@@ -333,7 +333,7 @@ namespace Emberhold.Tests.EditMode.World
             var line = new[] { new Vector2(20f, 80f), new Vector2(140f, 80f) };
             layout.Peaks.Add(new CampaignPeakShape { Name = "Ровный", Points = line, Height = 64f, Radius = 16f });
             var even = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
-            layout.Peaks[0] = new CampaignPeakShape { Name = "Зубчатый", Points = line, Height = 64f, Radius = 16f, Teeth = 0.45f };
+            layout.Peaks[0] = new CampaignPeakShape { Name = "Зубчатый", Points = line, Height = 64f, Radius = 16f, Teeth = 0.7f };
             var jagged = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
 
             // Вдоль гребня у зубчатого высота скачет сильнее: пики и седловины.
@@ -485,8 +485,8 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(MaxAround(heights, 400, 494, 15), Is.GreaterThan(58f), "Хребет у маяка");
             Assert.That(MaxAround(heights, 256, 256, 15), Is.LessThanOrEqualTo(78f));
             // Справа от центрального — большой пик выше него, между ними зубчатый гребень выше хребта.
-            Assert.That(MaxAround(heights, 325, 280, 15), Is.GreaterThan(MaxAround(heights, 256, 256, 15)), "Большой пик");
-            Assert.That(MaxAround(heights, 292, 274, 6), Is.GreaterThan(50f), "Зубчатый гребень");
+            Assert.That(MaxAround(heights, 311, 281, 12), Is.GreaterThan(MaxAround(heights, 256, 256, 15)), "Большой пик");
+            Assert.That(MaxAround(heights, 284, 268, 6), Is.GreaterThan(50f), "Зубчатый гребень");
             // Восточная ветка хребта у маяка тоже под снегом, а не срезана стенкой Скалы маяка.
             Assert.That(MaxAround(heights, 496, 440, 8), Is.GreaterThan(56f), "Восточная ветка у маяка");
         }
