@@ -22,6 +22,7 @@ namespace Emberhold.World.Generation
         [SerializeField] private int bedrockDepth = 4;
 
         public int Seed => seed;
+        public int BedrockDepth => bedrockDepth;
         public Vector3Int SizeInChunks => sizeInChunks;
         public TerrainProfileParameters Profile => profile != null ? profile.Parameters : TerrainProfileParameters.Valley;
 

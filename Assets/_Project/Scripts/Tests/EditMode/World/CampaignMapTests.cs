@@ -423,6 +423,17 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void MapAsset_BedrockStaysUnderTheLowestFloor()
+        {
+            // Коренная порода в нижних BedrockDepth слоях. Верхний блок дна с шумом и стыком с ущельем стоит
+            // не ниже FloorHeight - 1, и под ним должно остаться хотя бы 2 копаемых блока.
+            var map = AssetDatabase.LoadAssetAtPath<CampaignMap>(MapPath);
+            var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>(TerrainPath);
+            foreach (var location in map.ToLayout().Locations)
+                Assert.That(location.FloorHeight - 1f - settings.BedrockDepth, Is.GreaterThanOrEqualTo(2f), location.Name);
+        }
+
+        [Test]
         public void MapAsset_PeaksAboveTheSnowLine_FitTheWorld()
         {
             var map = AssetDatabase.LoadAssetAtPath<CampaignMap>(MapPath);

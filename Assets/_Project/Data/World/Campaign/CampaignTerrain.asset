@@ -16,3 +16,4 @@ MonoBehaviour:
   sizeInChunks: {x: 32, y: 5, z: 32}
   profile: {fileID: 0}
   map: {fileID: 11400000, guid: 9b362be1b78f40d1b3b7a1304bb0f890, type: 2}
+  bedrockDepth: 2
