@@ -33,8 +33,8 @@ namespace Emberhold.World.Generation
         private const float RibFrequency = 0.035f;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
-        // Частота зубцов гребня: соседние пики примерно в 1 / TeethFrequency блоков.
-        private const float TeethFrequency = 0.06f;
+        // Расстояние между зубцами гребня в блоках.
+        private const float TeethSpacing = 11f;
 
         /// <summary>Высота в блоках в углу (x, z); размер (ширина + 1) × (длина + 1).</summary>
         public readonly float[,] Heights;
@@ -352,7 +352,7 @@ namespace Emberhold.World.Generation
                 var near = 1f - CampaignNoise.SmoothStep(0.65f, 0.95f, 1f - Distance(x, z) / radius);
                 var wx = x + (noise.Fbm(x * 0.03f + seed, z * 0.03f, 3) - 0.5f) * radius * 0.6f * near;
                 var wz = z + (noise.Fbm(x * 0.03f, z * 0.03f - seed, 3) - 0.5f) * radius * 0.6f * near;
-                var d = Distance(wx, wz);
+                var d = Distance(wx, wz, out var along);
                 if (d >= radius)
                     return ridge;
                 var t = 1f - d / radius;
@@ -362,8 +362,12 @@ namespace Emberhold.World.Generation
                 var teeth = CampaignNoise.Clamp01(shape.Teeth);
                 if (teeth > 0f)
                 {
-                    var tooth = noise.Ridged(x * TeethFrequency + seed, z * TeethFrequency - seed);
-                    top = ridge + (top - ridge) * (1f - teeth + teeth * tooth * tooth);
+                    // Зубцы вдоль гребня через TeethSpacing блоков (шаг и высота каждого гуляют), между ними седловины.
+                    var place = along / TeethSpacing + 0.35f * (noise.Fbm(along * 0.05f + seed, seed, 2) - 0.5f);
+                    var number = (int)Math.Floor(place);
+                    var f = place - number;
+                    var tooth = (float)Math.Pow(1f - Math.Abs(2f * f - 1f), 1.6f) * (0.7f + 0.3f * noise.Hash(number, index * 13 + 5));
+                    top = ridge + (top - ridge) * (1f - teeth + teeth * tooth);
                 }
                 var body = (float)Math.Pow(t, 1.4f);
                 // Рёбра и кулуары: гребни шума с искажением, чтобы рёбра петляли, а не шли сеткой.
@@ -378,12 +382,17 @@ namespace Emberhold.World.Generation
             }
 
             /// <summary>Расстояние до вершины или до ломаной гребня.</summary>
-            private float Distance(float x, float z)
+            private float Distance(float x, float z) => Distance(x, z, out _);
+
+            /// <summary>Расстояние до вершины или до ломаной гребня и путь вдоль гребня до ближайшей точки, в блоках.</summary>
+            private float Distance(float x, float z, out float along)
             {
+                along = 0f;
                 var points = shape.Points;
                 if (points.Length == 1)
                     return (float)Math.Sqrt((x - points[0].x) * (x - points[0].x) + (z - points[0].y) * (z - points[0].y));
                 var best = float.MaxValue;
+                var start = 0f;
                 for (var i = 1; i < points.Length; i++)
                 {
                     var a = points[i - 1];
@@ -393,7 +402,13 @@ namespace Emberhold.World.Generation
                     var s = l2 > 0f ? CampaignNoise.Clamp01(((x - a.x) * dx + (z - a.y) * dz) / l2) : 0f;
                     var ex = x - a.x - s * dx;
                     var ez = z - a.y - s * dz;
-                    best = Math.Min(best, ex * ex + ez * ez);
+                    var length = (float)Math.Sqrt(l2);
+                    if (ex * ex + ez * ez < best)
+                    {
+                        best = ex * ex + ez * ez;
+                        along = start + s * length;
+                    }
+                    start += length;
                 }
                 return (float)Math.Sqrt(best);
             }
