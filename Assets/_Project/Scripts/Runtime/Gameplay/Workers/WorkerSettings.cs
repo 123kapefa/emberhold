@@ -54,6 +54,22 @@ namespace Emberhold.Gameplay.Workers
         [Range(0.05f, 5f)]
         [SerializeField] private float idleSearchSeconds = 0.5f;
 
+        [Header("Вид")]
+        [Tooltip("Рост рабочего, блоков. Дверь — 2 блока в высоту.")]
+        [Range(0.5f, 1.99f)]
+        [SerializeField] private float height = 1.9f;
+        [Tooltip("Цвет капюшона и накидки. Потом у каждой роли будет свой.")]
+        [SerializeField] private Color hoodColor = new(0.725f, 0.659f, 0.533f);
+        [Tooltip("Цвета кожи: каждому рабочему достаётся один по его номеру.")]
+        [SerializeField] private Color[] skinColors = { new(0.910f, 0.753f, 0.604f), new(0.851f, 0.655f, 0.486f), new(0.769f, 0.541f, 0.376f), new(0.941f, 0.812f, 0.682f) };
+        [Tooltip("Цвета волос, бровей и бороды.")]
+        [SerializeField] private Color[] hairColors = { new(0.227f, 0.165f, 0.110f), new(0.420f, 0.290f, 0.165f), new(0.627f, 0.478f, 0.282f), new(0.165f, 0.149f, 0.133f), new(0.541f, 0.518f, 0.471f) };
+        [Tooltip("Цвета рубахи.")]
+        [SerializeField] private Color[] tunicColors = { new(0.541f, 0.353f, 0.212f), new(0.478f, 0.384f, 0.282f), new(0.431f, 0.314f, 0.251f), new(0.549f, 0.416f, 0.267f) };
+        [Tooltip("Доля рабочих с бородой.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float beardChance = 0.5f;
+
         public int Count => count;
         public float MoveSpeed => moveSpeed;
         public float MaxStep => maxStep;
@@ -67,5 +83,9 @@ namespace Emberhold.Gameplay.Workers
         public float IdleSearchSeconds => idleSearchSeconds;
         public string FuelItemId => string.IsNullOrEmpty(fuelItemId) ? "wood" : fuelItemId;
         public int FuelPerTrip => fuelPerTrip;
+        public float Height => height;
+
+        /// <summary>Облик рабочего с номером index: один номер всегда даёт один облик.</summary>
+        public WorkerLook LookFor(int index) => WorkerLook.Pick(index, skinColors, hairColors, tunicColors, hoodColor, beardChance);
     }
 }

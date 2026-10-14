@@ -15,7 +15,7 @@ namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
     /// Отряд рабочих в сцене: при старте ставит их у первого источника света, каждый кадр обновляет задачи
-    /// и рабочих, рисует рабочих (капсула, над головой — кубик ноши), рамки чертежей и приказов копать и рубить.
+    /// и рабочих, рисует рабочих (гранёный человек из WorkerMeshBuilder, над головой — кубик ноши), рамки чертежей и приказов копать и рубить.
     /// Чертежи и приказы ставит игрок инструментами BlockEditController (4 и 5). Топливо для огней отряд заводит сам:
     /// у каждого огня, в котором есть место хотя бы под одно полено, висит задача принести поленья.
     /// Урон блоков и устойчивость общие с BlockEditController, ресурсы на земле — из DroppedItemsView.
@@ -47,7 +47,7 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private float outlinePadding = 0.03f;
 
         private readonly List<Worker> workers = new();
-        private readonly List<(Transform body, MeshRenderer carry)> visuals = new();
+        private readonly List<WorkerVisual> visuals = new();
         private readonly Dictionary<LightSource, FuelTarget> fuelTargets = new();
         private readonly List<LightSource> goneFires = new();
         private readonly LightZone litZone = new();
@@ -87,10 +87,11 @@ namespace Emberhold.Gameplay.Workers
         private void OnDestroy()
         {
             Orders.Cancelled -= OnOrderCancelled;
-            foreach (var (body, _) in visuals)
+            foreach (var visual in visuals)
             {
-                if (body != null)
-                    Destroy(body.gameObject);
+                if (visual.Body != null)
+                    Destroy(visual.Body.gameObject);
+                Destroy(visual.Mesh);
             }
             DestroyLines(blueprintLines);
             DestroyLines(digLines);
@@ -117,10 +118,20 @@ namespace Emberhold.Gameplay.Workers
             for (var i = 0; i < workers.Count; i++)
             {
                 var worker = workers[i];
-                var (body, carry) = visuals[i];
-                // Капсула 0.9 блока ростом стоит ногами на верхе столбца.
-                body.SetPositionAndRotation(space.TransformPoint(worker.Position + Vector3.up * 0.45f), space.rotation);
-                body.localScale = space.lossyScale.x * new Vector3(0.4f, 0.45f, 0.4f);
+                var visual = visuals[i];
+                var body = visual.Body;
+                var carry = visual.Carry;
+                // Лицом туда, куда идёт, а за работой — к задаче.
+                var look = worker.State == WorkerState.Working && worker.Order != null
+                    ? worker.Order.Cell + new Vector3(0.5f, 0f, 0.5f) - worker.Position
+                    : worker.Position - visual.LastPosition;
+                look.y = 0f;
+                if (look.sqrMagnitude > 1e-6f)
+                    visual.Yaw = Mathf.Atan2(look.x, look.z) * Mathf.Rad2Deg;
+                visual.LastPosition = worker.Position;
+                // Сетка в блоках, ноги в начале координат: стоит на верхе столбца.
+                body.SetPositionAndRotation(space.TransformPoint(worker.Position), space.rotation * Quaternion.Euler(0f, visual.Yaw, 0f));
+                body.localScale = space.lossyScale;
                 carry.gameObject.SetActive(worker.Carrying != null);
                 // Ноша того же цвета, что кучка ресурса: поленья не спутать с камнем.
                 if (worker.Carrying is { } item && droppedItems.MaterialFor(item.ItemId) is { } material && carry.sharedMaterial != material)
@@ -237,31 +248,32 @@ namespace Emberhold.Gameplay.Workers
                 column.x = Mathf.Clamp(column.x, 0, world.SizeInBlocks.x - 1);
                 column.y = Mathf.Clamp(column.y, 0, world.SizeInBlocks.z - 1);
                 workers.Add(new Worker(context, context.Surface.StandPoint(column)));
-                visuals.Add(CreateVisual(i));
+                visuals.Add(CreateVisual(i, workers[i].Position));
             }
         }
 
-        private (Transform, MeshRenderer) CreateVisual(int index)
+        private WorkerVisual CreateVisual(int index, Vector3 position)
         {
-            var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            body.name = $"Worker {index + 1}";
-            // Без коллайдеров: рабочий не должен мешать лучу выбора блока.
-            Destroy(body.GetComponent<Collider>());
+            var body = new GameObject($"Worker {index + 1}");
             body.transform.SetParent(transform, false);
+            // Облик по номеру рабочего: у каждого свои кожа, волосы и рубаха. Коллайдера нет: рабочий не мешает лучу выбора блока.
+            var mesh = WorkerMeshBuilder.Build(settings.LookFor(index), settings.Height, body.name);
+            body.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = body.AddComponent<MeshRenderer>();
             if (workerMaterial != null)
-                body.GetComponent<MeshRenderer>().sharedMaterial = workerMaterial;
+                renderer.sharedMaterial = workerMaterial;
 
             var carry = GameObject.CreatePrimitive(PrimitiveType.Cube);
             carry.name = "Carried Item";
             Destroy(carry.GetComponent<Collider>());
             carry.transform.SetParent(body.transform, false);
-            // Над головой: капсула в своих координатах от -1 до 1 по высоте.
-            carry.transform.localPosition = new Vector3(0f, 1.45f, 0f);
-            carry.transform.localScale = new Vector3(0.8f, 0.7f, 0.8f);
+            // Над головой.
+            carry.transform.localPosition = new Vector3(0f, settings.Height + 0.25f, 0f);
+            carry.transform.localScale = new Vector3(0.32f, 0.3f, 0.32f);
             if (carryMaterial != null)
                 carry.GetComponent<MeshRenderer>().sharedMaterial = carryMaterial;
             carry.SetActive(false);
-            return (body.transform, carry.GetComponent<MeshRenderer>());
+            return new WorkerVisual(body.transform, carry.GetComponent<MeshRenderer>(), mesh, position);
         }
 
         private GameObject CreateLines(string name, Color color)
@@ -350,6 +362,26 @@ namespace Emberhold.Gameplay.Workers
             public float FuelSpace => source.Fuel?.Space ?? 0f;
 
             public float AddFuel(float amount) => source.AddFuel(amount);
+        }
+
+        private sealed class WorkerVisual
+        {
+            public WorkerVisual(Transform body, MeshRenderer carry, Mesh mesh, Vector3 position)
+            {
+                Body = body;
+                Carry = carry;
+                Mesh = mesh;
+                LastPosition = position;
+            }
+
+            public Transform Body { get; }
+            public MeshRenderer Carry { get; }
+            public Mesh Mesh { get; }
+
+            /// <summary>Куда рабочий смотрит, градусов вокруг оси Y мира блоков; держится, пока он стоит.</summary>
+            public float Yaw { get; set; }
+
+            public Vector3 LastPosition { get; set; }
         }
     }
 }
