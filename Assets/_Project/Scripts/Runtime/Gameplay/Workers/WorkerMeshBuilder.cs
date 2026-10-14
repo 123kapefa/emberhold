@@ -42,10 +42,12 @@ namespace Emberhold.Gameplay.Workers
                     new LoftRing(0f, 0.036f, 0.062f, 0.022f, x), new LoftRing(0.03f, 0.038f, 0.066f, 0.024f, x),
                     new LoftRing(0.05f, 0.034f, 0.044f, 0.008f, x), new LoftRing(0.13f, 0.034f, 0.036f, 0f, x),
                 }, LimbSides, Paint(Boots));
+                // Отворот голенища.
+                mesh.AddLoft(new[] { new LoftRing(0.112f, 0.039f, 0.041f, 0f, x), new LoftRing(0.14f, 0.04f, 0.043f, 0f, x) }, LimbSides, Paint(Leather));
                 mesh.AddLoft(new[]
                 {
                     new LoftRing(0.12f, 0.031f, 0.032f, 0f, x), new LoftRing(0.2f, 0.035f, 0.04f, -0.006f, x),
-                    new LoftRing(0.265f, 0.031f, 0.033f, 0.002f, x), new LoftRing(0.36f, 0.044f, 0.048f, 0.004f, x * 0.95f),
+                    new LoftRing(0.265f, 0.031f, 0.033f, 0.002f, x), new LoftRing(0.36f, 0.046f, 0.05f, 0.004f, x * 0.95f),
                     new LoftRing(0.44f, 0.054f, 0.055f, 0f, x * 0.85f),
                 }, LimbSides, Paint(Pants));
             }
@@ -57,6 +59,9 @@ namespace Emberhold.Gameplay.Workers
                 new LoftRing(0.6f, 0.13f, 0.088f, 0.01f), new LoftRing(0.68f, 0.148f, 0.088f, 0.008f), new LoftRing(0.735f, 0.14f, 0.074f),
                 new LoftRing(0.765f, 0.07f, 0.052f), new LoftRing(0.775f, 0.047f, 0.046f, 0.004f),
             }, Sides, tunic);
+            // Тёмная кайма по подолу.
+            mesh.AddLoft(new[] { new LoftRing(0.369f, 0.15f, 0.1f, 0.002f), new LoftRing(0.39f, 0.145f, 0.097f, 0.0015f) }, Sides,
+                Paint(look.Tunic * 0.72f), capStart: false, capEnd: false);
             // Пояс с пряжкой и сумка на боку.
             mesh.AddLoft(new[] { new LoftRing(0.5f, 0.116f, 0.08f), new LoftRing(0.528f, 0.116f, 0.08f) }, Sides, Paint(Leather));
             mesh.AddBox(new Vector3(0f, 0.514f, 0.081f), new Vector3(0.03f, 0.024f, 0.01f), Paint(Buckle));
@@ -76,14 +81,18 @@ namespace Emberhold.Gameplay.Workers
                     new Vector2(0.034f, 0.034f), new Vector2(0.043f, 0.041f), new Vector2(0.036f, 0.036f),
                     new Vector2(0.031f, 0.032f), new Vector2(0.033f, 0.031f), new Vector2(0.028f, 0.027f),
                 }, LimbSides, tunic);
+                // Манжета рукава темнее рубахи.
+                mesh.AddTube(new[] { new Vector3(side * 0.178f, 0.445f, 0.031f), new Vector3(side * 0.178f, 0.418f, 0.042f) },
+                    new[] { new Vector2(0.031f, 0.03f), new Vector2(0.031f, 0.03f) }, LimbSides, Paint(look.Tunic * 0.72f));
+                // Кисть — сжатая ладонь, большой палец впереди.
                 mesh.AddTube(new[]
                 {
-                    new Vector3(side * 0.178f, 0.425f, 0.04f), new Vector3(side * 0.179f, 0.4f, 0.046f), new Vector3(side * 0.18f, 0.37f, 0.05f),
-                    new Vector3(side * 0.178f, 0.345f, 0.052f),
-                }, new[] { new Vector2(0.022f, 0.02f), new Vector2(0.026f, 0.016f), new Vector2(0.026f, 0.016f), new Vector2(0.016f, 0.011f) },
+                    new Vector3(side * 0.178f, 0.425f, 0.04f), new Vector3(side * 0.179f, 0.4f, 0.046f), new Vector3(side * 0.18f, 0.368f, 0.05f),
+                    new Vector3(side * 0.178f, 0.342f, 0.052f),
+                }, new[] { new Vector2(0.023f, 0.021f), new Vector2(0.029f, 0.021f), new Vector2(0.029f, 0.021f), new Vector2(0.019f, 0.014f) },
                     LimbSides, skin);
-                mesh.AddTube(new[] { new Vector3(side * 0.17f, 0.4f, 0.062f), new Vector3(side * 0.166f, 0.375f, 0.074f) },
-                    new[] { new Vector2(0.009f, 0.009f), new Vector2(0.007f, 0.007f) }, 6, skin);
+                mesh.AddTube(new[] { new Vector3(side * 0.168f, 0.402f, 0.064f), new Vector3(side * 0.162f, 0.376f, 0.08f) },
+                    new[] { new Vector2(0.011f, 0.011f), new Vector2(0.008f, 0.008f) }, 6, skin);
             }
 
             // Голова: шея, плавно переходящая в челюсть, скулы, лоб, затылок, макушка.
@@ -100,12 +109,14 @@ namespace Emberhold.Gameplay.Workers
                 4, Paint(look.Skin * 0.9f));
             foreach (var side in new[] { -1f, 1f })
             {
-                mesh.AddBox(new Vector3(side * 0.03f, 0.89f, 0.08f), new Vector3(0.014f, 0.013f, 0.01f), Paint(Eyes));
-                mesh.AddBox(new Vector3(side * 0.07f, 0.88f, 0.002f), new Vector3(0.012f, 0.028f, 0.022f), Paint(look.Skin * 0.92f));
-                // Брови чуть домиком.
-                mesh.Transform = scale * Matrix4x4.TRS(new Vector3(side * 0.031f, 0.906f, 0.08f), Quaternion.Euler(0f, 0f, side * -8f), Vector3.one);
-                mesh.AddBox(Vector3.zero, new Vector3(0.03f, 0.007f, 0.012f), hair);
+                // Глаза и брови повёрнуты по скруглению лица, чтобы не торчали сбоку.
+                mesh.Transform = scale * Matrix4x4.TRS(new Vector3(side * 0.029f, 0.889f, 0.079f), Quaternion.Euler(0f, side * 20f, 0f), Vector3.one);
+                mesh.AddBox(Vector3.zero, new Vector3(0.013f, 0.012f, 0.01f), Paint(Eyes));
+                mesh.Transform = scale * Matrix4x4.TRS(new Vector3(side * 0.03f, 0.905f, 0.077f), Quaternion.Euler(0f, side * 22f, side * -8f), Vector3.one);
+                mesh.AddBox(Vector3.zero, new Vector3(0.025f, 0.007f, 0.012f), hair);
                 mesh.Transform = scale;
+                // Уши — сплюснутые комки.
+                mesh.AddBlob(new Vector3(side * 0.071f, 0.878f, 0.0f), new Vector3(0.009f, 0.02f, 0.015f), 1, 0f, null, Paint(look.Skin * 0.92f));
             }
             // Борода по челюсти — передняя половина кольца; рот — тёмная полоска (в бороде — темнее её).
             if (look.Beard)
@@ -116,32 +127,49 @@ namespace Emberhold.Gameplay.Workers
                     new LoftRing(0.845f, 0.062f, 0.03f, 0.05f), new LoftRing(0.86f, 0.06f, 0.024f, 0.05f),
                 }, Sides, hair, arc: 0.5f, arcMiddle: 0.5f, twoSided: true);
             }
-            mesh.AddBox(new Vector3(0f, look.Beard ? 0.852f : 0.848f, 0.077f), new Vector3(0.026f, 0.005f, 0.01f),
+            mesh.AddBox(new Vector3(0f, look.Beard ? 0.852f : 0.848f, 0.08f), new Vector3(0.026f, 0.005f, 0.008f),
                 Paint(look.Beard ? look.Hair * 0.55f : Eyes));
-            // Волосы: сзади и с боков от затылка до висков, сверху шапка до линии лба. Верх боковой части заходит
-            // под шапку, чтобы между ними не было щели.
+            // Волосы: сзади и с боков от затылка до висков, сверху шапка до линии лба. Дуга нижней части — ровно
+            // HairSides граней полного кольца, поэтому её верхний край совпадает с краем шапки без шва.
+            const int hairSides = 10;
+            var hairEdge = new LoftRing(0.905f, 0.08f, 0.088f, 0.002f);
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.835f, 0.064f, 0.07f, -0.014f), new LoftRing(0.875f, 0.075f, 0.083f, -0.004f),
-                new LoftRing(0.915f, 0.076f, 0.084f, 0.001f), new LoftRing(0.94f, 0.07f, 0.078f, -0.002f),
-            }, Sides, hair, capStart: false, capEnd: false, arc: 0.68f, twoSided: true);
+                new LoftRing(0.83f, 0.066f, 0.073f, -0.016f), new LoftRing(0.87f, 0.078f, 0.086f, -0.004f), hairEdge,
+            }, hairSides, hair, capStart: false, capEnd: false, arc: (float)hairSides / Sides, twoSided: true);
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.905f, 0.078f, 0.086f, 0.002f), new LoftRing(0.95f, 0.072f, 0.081f, -0.002f),
-                new LoftRing(0.975f, 0.052f, 0.062f, -0.004f), new LoftRing(0.99f, 0.02f, 0.026f, -0.004f),
+                hairEdge, new LoftRing(0.95f, 0.074f, 0.083f, -0.002f),
+                new LoftRing(0.977f, 0.054f, 0.064f, -0.004f), new LoftRing(0.992f, 0.02f, 0.026f, -0.004f),
             }, Sides, hair, capStart: false, twoSided: true);
+            // Пряди на затылке и висках: плоские гранёные клинья остриём вниз от края волос, лежат по шее —
+            // неровный край вместо ровной «шапки».
+            for (var i = 0; i <= 8; i++)
+            {
+                var angle = -112f + 28f * i;
+                var radians = angle * Mathf.Deg2Rad;
+                var length = i % 2 == 0 ? 0.06f : 0.044f;
+                var root = new Vector3(Mathf.Sin(radians) * 0.056f, 0.855f, -0.012f - Mathf.Cos(radians) * 0.062f);
+                // Локальная +Z смотрит от головы наружу; клин наклонён вниз и к шее.
+                mesh.Transform = scale * Matrix4x4.TRS(root, Quaternion.Euler(0f, 180f - angle, 0f) * Quaternion.Euler(200f, 0f, 0f),
+                    new Vector3(1f, 1f, 0.5f));
+                mesh.AddCone(5, Vector3.zero, 0.022f, length, 0f, null, hair);
+            }
+            mesh.Transform = scale;
 
-            // Капюшон откинут: валик вокруг шеи сзади и пустой мешок капюшона на лопатках, изнанка темнее;
+            // Капюшон откинут: валик вокруг шеи сзади и пустой мешок капюшона по спине, изнанка темнее;
             // пелерина на плечах закрывает начало рук.
             var lining = Paint(look.Hood * 0.45f);
             mesh.AddLoft(new[]
             {
                 new LoftRing(0.745f, 0.1f, 0.075f, -0.008f), new LoftRing(0.77f, 0.078f, 0.064f, -0.008f), new LoftRing(0.79f, 0.052f, 0.05f, -0.004f),
             }, Sides, hood, capStart: false, capEnd: false, arc: 0.7f, twoSided: true, innerColor: lining);
+            // Мешок капюшона продолжает валик и лежит по спинке пелерины, кончиком чуть ниже её края.
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.62f, 0.005f, 0.004f, -0.098f), new LoftRing(0.65f, 0.03f, 0.012f, -0.1f), new LoftRing(0.7f, 0.055f, 0.02f, -0.103f),
-                new LoftRing(0.755f, 0.065f, 0.024f, -0.102f), new LoftRing(0.785f, 0.06f, 0.022f, -0.096f),
+                new LoftRing(0.61f, 0.003f, 0.003f, -0.12f), new LoftRing(0.628f, 0.014f, 0.007f, -0.123f), new LoftRing(0.66f, 0.04f, 0.012f, -0.124f),
+                new LoftRing(0.695f, 0.058f, 0.015f, -0.117f), new LoftRing(0.735f, 0.065f, 0.016f, -0.097f), new LoftRing(0.767f, 0.06f, 0.017f, -0.074f),
+                new LoftRing(0.792f, 0.05f, 0.02f, -0.058f),
             }, Sides, hood, capStart: true, capEnd: false, twoSided: true, innerColor: lining);
             mesh.AddLoft(new[]
             {
