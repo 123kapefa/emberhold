@@ -235,7 +235,8 @@ namespace Emberhold.Gameplay.Workers
                 // Сетка ноши у каждого своя: мешок гнётся по позе.
                 visual.CarryShape = carry == WorkerCarry.None
                     ? null
-                    : new WorkerCarryBuilder.Shape(WorkerCarryBuilder.Build(carry, settings.Height, "Carry " + carry), carry, settings.Height);
+                    : new WorkerCarryBuilder.Shape(WorkerCarryBuilder.Build(carry, settings.Height, "Carry " + carry), carry, settings.Height,
+                        visual.Look.Role);
                 visual.Carry.sharedMesh = visual.CarryShape?.Mesh;
             }
             visual.Carry.transform.SetLocalPositionAndRotation(pose.LoadPosition, pose.LoadRotation);
@@ -393,7 +394,7 @@ namespace Emberhold.Gameplay.Workers
             {
                 parts[k] = CreatePart(body.transform, ((WorkerPart)k).ToString(), meshes[k]);
                 if (WorkerSkin.IsSoft((WorkerPart)k))
-                    skins[k] = new WorkerSkin(meshes[k], (WorkerPart)k, settings.Height);
+                    skins[k] = new WorkerSkin(meshes[k], (WorkerPart)k, settings.Height, look.Role);
             }
             var carry = CreatePart(body.transform, "Carried Item", null);
             // Фаза анимаций своя у каждого, чтобы отряд не дышал и не шагал в такт.

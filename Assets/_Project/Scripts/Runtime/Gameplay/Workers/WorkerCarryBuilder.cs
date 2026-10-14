@@ -49,7 +49,7 @@ namespace Emberhold.Gameplay.Workers
         /// </summary>
         private static readonly Vector3[] SackNeckOverShoulder =
         {
-            new(-0.12f, 0.785f, 0f), new(-0.12f, 0.765f, 0.062f), new(-0.118f, 0.725f, 0.108f), new(-0.116f, 0.69f, 0.128f),
+            new(-0.12f, 0.795f, 0f), new(-0.12f, 0.775f, 0.064f), new(-0.118f, 0.725f, 0.108f), new(-0.116f, 0.69f, 0.128f),
             new(-0.114f, 0.672f, 0.168f),
         };
 
@@ -107,11 +107,12 @@ namespace Emberhold.Gameplay.Workers
             Matrix4x4 At(Vector3 position, Quaternion rotation) => Matrix4x4.TRS(position * height, rotation, Vector3.one);
             if (carry == WorkerCarry.Log)
             {
+                // С плеча бревно сначала уходит вперёд и наружу, дальше от плеча: поднятая рука под ним не проходит сквозь него.
                 var along = Quaternion.LookRotation(new Vector3(0.05f, 0.1f, 1f));
                 var level = Quaternion.LookRotation(new Vector3(0.05f, 0f, 1f));
                 return new[]
                 {
-                    At(new Vector3(-0.17f, 0.8f, 0.22f), along),
+                    At(new Vector3(-0.3f, 0.8f, 0.22f), along),
                     At(new Vector3(-0.25f, 0.52f, 0.2f), level),
                     At(new Vector3(-0.25f, LogRadius, 0.22f), level),
                 };
@@ -129,12 +130,41 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Где ноша, положенная на землю перед рабочим: система рабочего, ноги в нуле.</summary>
         public static Matrix4x4 Ground(WorkerCarry carry, float height) => PathDown(carry, height)[^1];
 
-        /// <summary>За что держит левая рука, в системе ноши.</summary>
-        public static Vector3 Grip(WorkerCarry carry, float height) => carry == WorkerCarry.Log
+        /// <summary>
+        /// За что держит левая рука, в системе ноши. bend — изгиб мешка (<see cref="WorkerPose.LoadBend"/>): на плече
+        /// горловина перекинута и рука держит её у груди, снятый с плеча мешок висит на распрямлённой горловине.
+        /// </summary>
+        public static Vector3 Grip(WorkerCarry carry, float height, float bend = 1f) => carry == WorkerCarry.Log
             // Сбоку снаружи и чуть сверху, ближе к переднему концу.
             ? new Vector3(-LogRadius - 0.022f, 0.022f, 0.1f) * height
-            // Горловина у груди.
-            : OnSack(SackNeckOverShoulder[SackGripIndex]) * height;
+            : Vector3.Lerp(NeckStraight(NeckGripIndex), NeckLine[NeckGripIndex], Mathf.Clamp01(bend)) * height;
+
+        /// <summary>
+        /// Ось горловины в системе мешка (доли роста), когда мешок на плече: от тела по оси мешка, через плечо, вниз по груди
+        /// к руке и устью.
+        /// </summary>
+        private static readonly Vector3[] NeckLine = BuildNeckLine();
+
+        private const int NeckGripIndex = SackGripIndex + 2;
+
+        private static Vector3[] BuildNeckLine()
+        {
+            var line = new Vector3[SackNeckOverShoulder.Length + 2];
+            line[0] = new Vector3(0f, 0.19f, 0f);
+            line[1] = new Vector3(0f, 0.25f, 0f);
+            for (var i = 0; i < SackNeckOverShoulder.Length; i++)
+                line[i + 2] = OnSack(SackNeckOverShoulder[i]);
+            return line;
+        }
+
+        /// <summary>Точка i оси горловины, когда она распрямлена вдоль оси мешка.</summary>
+        private static Vector3 NeckStraight(int i)
+        {
+            var length = NeckLine[0].y;
+            for (var k = 1; k <= i; k++)
+                length += Vector3.Distance(NeckLine[k - 1], NeckLine[k]);
+            return new Vector3(0f, length, 0f);
+        }
 
         /// <summary>Куда отводить локоть, когда рука держит ношу: в системе рабочего, относительно точки хвата.</summary>
         public static Vector3 ElbowHint(float height) => new Vector3(-0.25f, -0.35f, -0.05f) * height;
@@ -245,16 +275,25 @@ namespace Emberhold.Gameplay.Workers
             private readonly Vector3[] normals;
             private readonly float height;
             private readonly bool bends;
+
+            /// <summary>Насколько тело мешка на спине отодвинуто назад (система мешка, блоки): за снаряжением роли.</summary>
+            private readonly Vector3 clearance;
+
+            /// <summary>Где вершина горловины, когда горловина распрямлена; у тела мешка — там же, где в сетке.</summary>
+            private readonly Vector3[] straight;
             private Vector3 hang = Vector3.down;
             private Vector3 hangVelocity;
             private Vector3 lastPosition;
             private Vector3 lastVelocity;
             private bool hasLast;
 
-            public Shape(Mesh mesh, WorkerCarry carry, float height)
+            /// <summary>role — чья ноша: мешок на спине ложится поверх того, что у роли уже висит на спине.</summary>
+            public Shape(Mesh mesh, WorkerCarry carry, float height, WorkerRole role = WorkerRole.Free)
             {
                 this.mesh = mesh;
                 this.height = height;
+                var shift = WorkerGearBuilder.BackLoadShift(role);
+                clearance = Quaternion.Inverse(SackRotation) * new Vector3(0f, shift.y, -shift.x) * height;
                 bends = carry is WorkerCarry.StoneSack or WorkerCarry.GrassSack;
                 if (!bends)
                     return;
@@ -263,6 +302,36 @@ namespace Emberhold.Gameplay.Workers
                 restNormals = mesh.normals;
                 vertices = new Vector3[restVertices.Length];
                 normals = new Vector3[restNormals.Length];
+                straight = new Vector3[restVertices.Length];
+                for (var v = 0; v < restVertices.Length; v++)
+                    straight[v] = Straighten(restVertices[v] / height) * height;
+            }
+
+            /// <summary>
+            /// Точка горловины (доли роста) там, где она окажется, если горловину распрямить вдоль оси мешка: ближайший отрезок
+            /// оси (последний — с продолжением, там устье с камнями или травой) поворачивается вдоль +Y вместе с точкой.
+            /// </summary>
+            private static Vector3 Straighten(Vector3 p)
+            {
+                if (p.y <= NeckLine[0].y)
+                    return p;
+                var best = float.MaxValue;
+                var result = p;
+                for (var k = 1; k < NeckLine.Length; k++)
+                {
+                    var a = NeckLine[k - 1];
+                    var ab = NeckLine[k] - a;
+                    var t = Vector3.Dot(p - a, ab) / ab.sqrMagnitude;
+                    t = k == NeckLine.Length - 1 ? Mathf.Max(0f, t) : Mathf.Clamp01(t);
+                    var on = a + ab * t;
+                    var distance = Vector3.Distance(p, on);
+                    if (distance >= best)
+                        continue;
+                    best = distance;
+                    var from = NeckStraight(k - 1);
+                    result = from + Vector3.up * (ab.magnitude * t) + Quaternion.FromToRotation(ab, Vector3.up) * (p - on);
+                }
+                return result;
             }
 
             public Mesh Mesh => mesh;
@@ -287,7 +356,10 @@ namespace Emberhold.Gameplay.Workers
                 var hinge = new Vector3(0f, SackHinge * height, 0f);
                 for (var v = 0; v < restVertices.Length; v++)
                 {
-                    var p = restVertices[v];
+                    // Горловина перекинута через плечо, пока мешок на спине, и распрямляется, когда его снимают.
+                    var p = Vector3.Lerp(straight[v], restVertices[v], flatten);
+                    // На спине тело мешка лежит поверх снаряжения роли.
+                    p += clearance * (flatten * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(NeckLine[1].y, NeckLine[0].y - 0.08f, p.y / height)));
                     // Ниже перегиба тело мешка плавно поворачивается вниз; на спине — сплющено.
                     var w = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(SackHinge + 0.02f, SackHinge - 0.12f, p.y / height));
                     var turn = Quaternion.Euler(aroundX * w, 0f, aroundZ * w);

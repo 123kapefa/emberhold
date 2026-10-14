@@ -31,6 +31,7 @@ namespace Emberhold.Editor.Workers
         private Mesh grid;
         private WorkerCarryBuilder.Shape carryShape;
         private WorkerCarry builtCarry = (WorkerCarry)(-1);
+        private WorkerRole builtRole;
         private float time;
 
         /// <summary>Шаг времени с прошлой отрисовки — для качания мешка; 0 после перемотки и в снимках.</summary>
@@ -144,7 +145,7 @@ namespace Emberhold.Editor.Workers
                     Hidden(parts[k]);
                     edges[k] = Hidden(Edges(parts[k]));
                     if (WorkerSkin.IsSoft((WorkerPart)k))
-                        skins[k] = new WorkerSkin(parts[k], (WorkerPart)k, Height);
+                        skins[k] = new WorkerSkin(parts[k], (WorkerPart)k, Height, look.Role);
                 }
                 var x = Lineup ? LineupX(i, roles.Length) : 0f;
                 figures.Add(new Figure(look, parts, edges, skins, new Vector3(x, 0f, 0f), Lineup ? i * 0.137f % 1f : 0f));
@@ -197,13 +198,14 @@ namespace Emberhold.Editor.Workers
             var duration = WorkerAnimation.DefaultDuration(Clip);
             var sampleTime = oneShot ? Mathf.Clamp01(time / duration) : time;
             var carry = CarryShown();
-            if (carry != builtCarry)
+            if (carry != builtCarry || Role != builtRole)
             {
+                builtRole = Role;
                 if (carryShape != null)
                     UnityEngine.Object.DestroyImmediate(carryShape.Mesh);
                 carryShape = carry == WorkerCarry.None
                     ? null
-                    : new WorkerCarryBuilder.Shape(Hidden(WorkerCarryBuilder.Build(carry, Height, "Carry Preview")), carry, Height);
+                    : new WorkerCarryBuilder.Shape(Hidden(WorkerCarryBuilder.Build(carry, Height, "Carry Preview")), carry, Height, Role);
                 builtCarry = carry;
             }
             foreach (var figure in figures)

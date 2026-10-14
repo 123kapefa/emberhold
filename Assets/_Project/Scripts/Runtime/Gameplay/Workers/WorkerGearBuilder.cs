@@ -40,6 +40,62 @@ namespace Emberhold.Gameplay.Workers
             (0.6f, 0.13f, 0.088f, 0.01f), (0.68f, 0.148f, 0.088f, 0.008f), (0.735f, 0.14f, 0.074f, 0f),
         };
 
+        /// <summary>
+        /// Сечения того, что надето на корпус под пелериной (y, полуширина, полуглубина, сдвиг вперёд; доли роста):
+        /// кольчуга, стёганка или рубаха из <see cref="WorkerMeshBuilder"/>.
+        /// </summary>
+        public static Vector4[] TorsoUnderCape(WorkerRole role) => role switch
+        {
+            WorkerRole.Swordsman => new[]
+            {
+                new Vector4(0.505f, 0.118f, 0.082f, 0f), new Vector4(0.6f, 0.136f, 0.094f, 0.01f), new Vector4(0.68f, 0.154f, 0.094f, 0.008f),
+                new Vector4(0.735f, 0.146f, 0.08f, 0f), new Vector4(0.772f, 0.072f, 0.056f, 0f),
+            },
+            WorkerRole.Spearman => new[]
+            {
+                new Vector4(0.505f, 0.122f, 0.086f, 0f), new Vector4(0.6f, 0.139f, 0.097f, 0.01f), new Vector4(0.68f, 0.157f, 0.097f, 0.008f),
+                new Vector4(0.735f, 0.148f, 0.082f, 0f), new Vector4(0.772f, 0.072f, 0.056f, 0f),
+            },
+            _ => new[]
+            {
+                new Vector4(0.505f, 0.112f, 0.076f, 0f), new Vector4(0.6f, 0.13f, 0.088f, 0.01f), new Vector4(0.68f, 0.148f, 0.088f, 0.008f),
+                new Vector4(0.735f, 0.14f, 0.074f, 0f), new Vector4(0.765f, 0.07f, 0.052f, 0f), new Vector4(0.775f, 0.047f, 0.046f, 0.004f),
+            },
+        };
+
+        /// <summary>
+        /// Что лежит на корпусе под пелериной поверх рубахи (лямки, ремни, верёвка) — насколько оно толще рубахи, доли роста.
+        /// </summary>
+        public static float UnderCapeExtra(WorkerRole role) => role switch
+        {
+            WorkerRole.Woodcutter => 0.036f,
+            WorkerRole.Swordsman => 0.018f,
+            WorkerRole.Stoker or WorkerRole.Archer => 0.016f,
+            _ => 0f,
+        };
+
+        /// <summary>
+        /// Куда сдвинуть мешок на спине, чтобы он лёг поверх снаряжения (вязанка, щит, доски, колчан): назад от спины (x)
+        /// и вверх (y), доли роста.
+        /// </summary>
+        public static Vector2 BackLoadShift(WorkerRole role) => role switch
+        {
+            // Вязанка поперёк спины ниже мешка: мешок над ней и чуть дальше от спины.
+            WorkerRole.Stoker => new Vector2(0.08f, 0.09f),
+            WorkerRole.Swordsman => new Vector2(0.05f, 0f),
+            WorkerRole.Builder => new Vector2(0.06f, 0f),
+            WorkerRole.Archer => new Vector2(0.09f, 0f),
+            _ => Vector2.zero,
+        };
+
+        /// <summary>Насколько рукава брони толще рукава рубахи (доли роста).</summary>
+        public static float SleeveExtra(WorkerRole role) => role switch
+        {
+            WorkerRole.Swordsman => 0.005f,
+            WorkerRole.Spearman => 0.007f,
+            _ => 0f,
+        };
+
         /// <summary>Центр кулака: через него проходит рукоять.</summary>
         public static Vector3 FistCenter(float side) => new(side * 0.179f, 0.383f, 0.05f);
 
@@ -296,9 +352,10 @@ namespace Emberhold.Gameplay.Workers
 
         private static void RopeCoil(Gear g)
         {
-            // Два витка верёвки через плечо: с правого плеча через грудь к левому бедру, по телу.
-            TorsoLoop(g, 0.565f, 0.15f, 0.014f, 0f, 0.024f, 0.022f, Rope);
-            TorsoLoop(g, 0.54f, 0.15f, 0.014f, 0f, 0.024f, 0.022f, Rope * 0.88f);
+            // Два витка верёвки через плечо: с правого плеча через грудь к левому боку над поясом, по телу.
+            // Ниже пояса не спускаются: там подол, он гнётся за бёдрами и прошёл бы сквозь верёвку.
+            TorsoLoop(g, 0.623f, 0.092f, 0.014f, 0f, 0.024f, 0.022f, Rope);
+            TorsoLoop(g, 0.61f, 0.092f, 0.014f, 0f, 0.024f, 0.022f, Rope * 0.88f);
         }
 
         private static void LeatherApron(Gear g)
@@ -322,13 +379,14 @@ namespace Emberhold.Gameplay.Workers
 
         private static void MinerPouch(Gear g)
         {
-            // Шахтёрская поясная сумка на левом боку: короб с клапаном и пряжкой, висит на петле с пояса.
-            var turn = Quaternion.Euler(0f, 90f, 0f);
-            var side = TorsoPoint(-95f, 0.465f, 0.03f);
+            // Шахтёрская поясная сумка на левом боку ближе к спине (там, где не ходит рука): короб с клапаном и пряжкой,
+            // висит на петле с пояса.
+            var turn = Quaternion.Euler(0f, 120f, 0f);
+            var side = TorsoPoint(-120f, 0.465f, 0.03f);
             g.Box(side, turn, new Vector3(0.085f, 0.085f, 0.05f), Apron);
             g.Box(side + new Vector3(-0.003f, 0.03f, 0f), turn, new Vector3(0.09f, 0.032f, 0.056f), Apron * 0.72f);
             g.Box(side + new Vector3(-0.027f, 0.012f, 0f), turn, new Vector3(0.012f, 0.014f, 0.004f), MetalDark);
-            g.Band(new List<Vector3> { TorsoPoint(-100f, 0.53f, 0.004f), TorsoPoint(-96f, 0.51f, 0.016f), side + new Vector3(0f, 0.04f, 0f) },
+            g.Band(new List<Vector3> { TorsoPoint(-125f, 0.53f, 0.004f), TorsoPoint(-121f, 0.51f, 0.016f), side + new Vector3(0f, 0.04f, 0f) },
                 0.016f, 0.004f, OiledLeather, closed: false);
         }
 
@@ -346,7 +404,10 @@ namespace Emberhold.Gameplay.Workers
                 g.Box(center, Quaternion.LookRotation(back, plankUp), new Vector3(0.056f, 0.4f, 0.012f), WoodLight * shade);
             }
             TorsoLoop(g, 0.6f, 0f, 0.006f, 0.062f, 0.012f, 0.012f, Rope);
+            // Нижняя верёвка ниже пояса — на подоле: гнётся вместе с ним, когда бёдра уходят вперёд.
+            g.OnPart(WorkerPart.Hips);
             TorsoLoop(g, 0.455f, 0f, 0.006f, 0.04f, 0.012f, 0.012f, Rope);
+            g.OnPart(WorkerPart.Torso);
         }
 
         private static void ToolBag(Gear g)
@@ -377,7 +438,7 @@ namespace Emberhold.Gameplay.Workers
                 // Лямка выходит с верха вязанки, у самой спины, и сразу ложится на тело.
                 var points = new List<Vector3> { high + new Vector3(side * 0.07f, 0.026f, -0.004f) };
                 // Под пелериной лямка идёт по плечу точками на уровне её края, чтобы не проходить сквозь тело.
-                foreach (var (degrees, y) in new[] { (162f, 0.615f), (125f, 0.66f), (95f, 0.668f), (65f, 0.668f), (40f, 0.66f), (30f, 0.58f), (55f, 0.5f), (100f, 0.47f), (140f, 0.47f) })
+                foreach (var (degrees, y) in new[] { (162f, 0.615f), (125f, 0.66f), (95f, 0.668f), (65f, 0.668f), (40f, 0.66f), (30f, 0.58f), (55f, 0.53f), (100f, 0.52f), (140f, 0.52f) })
                     points.Add(TorsoPoint(side * degrees, y, 0.006f));
                 points.Add(low + new Vector3(side * 0.07f, -0.026f, -0.012f));
                 g.Band(points, 0.016f, 0.005f, Strap, closed: false);
@@ -399,8 +460,9 @@ namespace Emberhold.Gameplay.Workers
                 g.Rod(start, end, 0.003f, WoodLight, 4);
                 g.Box(end - along * 0.02f, Quaternion.FromToRotation(Vector3.up, along), new Vector3(0.018f, 0.035f, 0.003f), Fletching);
             }
-            // Ремень колчана по телу: с правого плеча через грудь к левому бедру и назад поверх колчана.
-            TorsoLoop(g, 0.575f, 0.13f, 0.006f, 0.068f, 0.016f, 0.005f, Strap);
+            // Ремень колчана по телу: из-под правой руки наискось через грудь к левому боку над поясом и назад поверх колчана.
+            // Не заходит ни под пелерину (её поднимает рука), ни ниже пояса (там подол, он гнётся за бёдрами).
+            TorsoLoop(g, 0.56f, 0.04f, 0.006f, 0.068f, 0.016f, 0.005f, Strap);
         }
 
         private static void Bracer(Gear g, float side) =>
@@ -423,7 +485,7 @@ namespace Emberhold.Gameplay.Workers
                 new LoftRing(0.6f, 0.136f, 0.094f, 0.01f), new LoftRing(0.68f, 0.154f, 0.094f, 0.008f), new LoftRing(0.735f, 0.146f, 0.08f),
                 new LoftRing(0.772f, 0.072f, 0.056f),
             }, WorkerMeshBuilder.Sides, Mail, capStart: false, capEnd: false, twoSided: true, inner: Mail * 0.6f);
-            Sleeves(g, Mail, 0.005f);
+            Sleeves(g, Mail, SleeveExtra(WorkerRole.Swordsman));
             Belt(g, 0.124f, 0.089f);
         }
 
@@ -450,7 +512,7 @@ namespace Emberhold.Gameplay.Workers
                     WorkerMeshBuilder.Sides, Linen * 0.62f, capStart: false, capEnd: false);
             }
             g.OnPart(WorkerPart.Torso);
-            Sleeves(g, Linen, 0.007f);
+            Sleeves(g, Linen, SleeveExtra(WorkerRole.Spearman));
             Belt(g, 0.127f, 0.092f);
         }
 
@@ -494,7 +556,8 @@ namespace Emberhold.Gameplay.Workers
             g.Loft(new[] { Ring(0.014f, 0.14f), Ring(0.016f, 0.001f) }, 16, face, capStart: false, capEnd: false);
             g.Loft(new[] { Ring(-0.001f, 0.146f), Ring(0.018f, 0.146f) }, 16, MetalDark, capStart: false, capEnd: false, twoSided: true);
             g.Blob(inner + outward * 0.02f, new Vector3(0.036f, 0.036f, 0.036f), Metal);
-            TorsoLoop(g, 0.58f, 0.14f, 0.008f, 0.06f, 0.018f, 0.005f, Strap);
+            // Ремень щита — из-под правой руки к левому боку над поясом: не под пелериной и не ниже пояса.
+            TorsoLoop(g, 0.585f, 0.065f, 0.008f, 0.06f, 0.018f, 0.005f, Strap);
         }
 
         // ── Головные уборы ───────────────────────────────────────────────────────────────
