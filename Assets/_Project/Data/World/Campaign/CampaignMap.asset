@@ -410,5 +410,61 @@ MonoBehaviour:
     height: 72
     radius: 30
     teeth: 0
+  - name: Западный хребет
+    points:
+    - {x: 18, y: 90}
+    - {x: 16, y: 200}
+    - {x: 20, y: 330}
+    - {x: 22, y: 450}
+    height: 66
+    radius: 24
+    teeth: 0.7
+  - name: Южный хребет
+    points:
+    - {x: 90, y: 18}
+    - {x: 220, y: 16}
+    - {x: 360, y: 20}
+    - {x: 480, y: 18}
+    height: 66
+    radius: 24
+    teeth: 0.7
+  - name: Восточный хребет
+    points:
+    - {x: 494, y: 40}
+    - {x: 492, y: 180}
+    - {x: 494, y: 310}
+    height: 66
+    radius: 24
+    teeth: 0.7
+  - name: Западный пик
+    points:
+    - {x: 18, y: 160}
+    height: 72
+    radius: 30
+    teeth: 0
+  - name: Северо-западный пик
+    points:
+    - {x: 26, y: 486}
+    height: 74
+    radius: 30
+    teeth: 0
+  - name: Южный пик
+    points:
+    - {x: 250, y: 18}
+    height: 72
+    radius: 30
+    teeth: 0
+  - name: Юго-восточный пик
+    points:
+    - {x: 486, y: 24}
+    height: 74
+    radius: 30
+    teeth: 0
+  - name: Восточный пик
+    points:
+    - {x: 492, y: 200}
+    height: 72
+    radius: 30
+    teeth: 0
   snowLine: 54
   treeLine: 46
