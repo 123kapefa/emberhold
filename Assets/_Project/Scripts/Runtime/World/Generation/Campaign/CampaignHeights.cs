@@ -42,8 +42,14 @@ namespace Emberhold.World.Generation
         // Отроги от гребня вниз по склонам: через сколько блоков и насколько гребень между ними уже.
         private const float SpurSpacing = 18f;
         private const float SpurDrop = 0.45f;
-        // Как часто по кромке гребня встают жандармы (выступы), на блок пути.
+        // Как часто по кромке гребня крупные подъёмы и седловины, на блок пути.
         private const float CrestFrequency = 0.1f;
+        // Жандармы на кромке: через сколько блоков, насколько ниже вершин жандарма кромка между ними,
+        // глубина сколов на макушке и насколько гребень уже между жандармами (всё при Teeth = 1).
+        private const float GendarmeSpacing = 10f;
+        private const float GendarmeDepth = 16f;
+        private const float GendarmeChips = 2.5f;
+        private const float GendarmePinch = 0.7f;
 
         /// <summary>Высота в блоках в углу (x, z); размер (ширина + 1) × (длина + 1).</summary>
         public readonly float[,] Heights;
@@ -347,8 +353,8 @@ namespace Emberhold.World.Generation
             /// <summary>
             /// Высота горы в точке поверх хребта высотой ridge; за подножием — ridge. Вершина — пирамида: от неё
             /// вниз расходятся 3–4 острых ребра, между ними вогнутые грани с кулуарами, на рёбрах жандармы.
-            /// Гребень (ломаная) — сплошная острая кромка: её высота неровно гуляет (жандармы и седловины, тем
-            /// глубже, чем больше Teeth), а вниз по склонам через SpurSpacing блоков уходят отроги.
+            /// Гребень (ломаная) — сплошная острая кромка: её высота неровно гуляет, на ней острые несимметричные
+            /// жандармы со сколами (тем выше, чем больше Teeth), а вниз по склонам через SpurSpacing блоков уходят отроги.
             /// Подножие неровное, у вершины искажение сходит на нет, чтобы вершина стояла в своей точке.
             /// </summary>
             public float Height(float x, float z, float ridge, CampaignNoise noise)
@@ -387,14 +393,24 @@ namespace Emberhold.World.Generation
                 }
                 else
                 {
-                    // Кромка гребня: жандармы — острые верхушки сложенного шума, между ними седловины.
+                    // Кромка гребня: крупные подъёмы и седловины — сложенный шум (острые верхушки, без полок).
+                    var teeth = CampaignNoise.Clamp01(shape.Teeth);
                     var crest = 1f - Math.Abs(2f * noise.Fbm(along * CrestFrequency + seed, seed * 0.5f, 3) - 1f);
-                    crest = CampaignNoise.SmoothStep(0.35f, 0.95f, crest * crest);
-                    var sag = 0.12f + 0.5f * CampaignNoise.Clamp01(shape.Teeth);
-                    top = Math.Max(ridge + (top - ridge) * (1f - sag * (1f - crest)), ridge);
+                    crest = (float)Math.Pow(crest, 1.5f);
+                    top = Math.Max(ridge + (top - ridge) * (1f - (0.12f + 0.2f * teeth) * (1f - crest)), ridge);
+                    // Жандармы через GendarmeSpacing блоков: острая вершина смещена от середины, поэтому один склон
+                    // круче другого, высота у каждого своя; на макушке сколы. Между жандармами гребень уже.
+                    var cell = along / GendarmeSpacing + 0.25f * (noise.Fbm(along * 0.04f + seed, seed + 3f, 2) - 0.5f);
+                    var number = (int)Math.Floor(cell);
+                    var f = cell - number;
+                    var tip = 0.3f + 0.4f * noise.Hash(number, index * 17 + 1);
+                    var u = f < tip ? (tip - f) / tip : (f - tip) / (1f - tip);
+                    var tooth = (float)Math.Pow(1f - u, 1.1f) * (0.6f + 0.4f * noise.Hash(number, index * 17 + 2));
+                    var chips = Math.Abs(2f * noise.Value(along * 0.45f + seed, seed + 11f) - 1f);
+                    top = Math.Max(top - teeth * (GendarmeDepth * (1f - tooth) + GendarmeChips * chips * tooth), ridge);
                     // Отроги: гребень шире там, где от него вниз уходит отрог, и уже между отрогами.
                     var spur = Triangle(along / SpurSpacing + 0.3f * (noise.Fbm(along * 0.05f + seed, seed, 2) - 0.5f));
-                    spread = 1f + SpurDrop * (1f - (float)Math.Pow(spur, 2.5f));
+                    spread = (1f + SpurDrop * (1f - (float)Math.Pow(spur, 2.5f))) * (1f + GendarmePinch * teeth * (1f - tooth));
                 }
                 var reach = d * spread;
                 if (reach >= radius)
