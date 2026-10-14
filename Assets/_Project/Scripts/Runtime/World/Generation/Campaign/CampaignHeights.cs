@@ -22,6 +22,8 @@ namespace Emberhold.World.Generation
         // Дальше этого от края локация или ущелье на высоту не влияют.
         private const float LocationReach = 60f;
         private const float GorgeReach = 50f;
+        // Самая крутая стенка высокой горы над краем дна котловины или ущелья, блоков на блок.
+        private const float PeakWall = 2f;
 
         /// <summary>Высота в блоках в углу (x, z); размер (ширина + 1) × (длина + 1).</summary>
         public readonly float[,] Heights;
@@ -102,8 +104,7 @@ namespace Emberhold.World.Generation
                     + (noise.Fbm(x * 0.06f, z * 0.06f) - 0.5f) * 3f
                     + (1f - CampaignNoise.SmoothStep(0f, 24f, edge)) * 4f;
             h = Math.Max(ridge.MinHeight, Math.Min(ridge.MaxHeight, h));
-            foreach (var peak in peaks)
-                h = Math.Max(h, peak.Height(x, z, h, noise));
+            var ridgeHeight = h;
 
             // Оттенок: сумма оттенков с весами и сумма весов; остаток до 1 — хребет.
             var tint = new Color(0f, 0f, 0f, 0f);
@@ -196,6 +197,20 @@ namespace Emberhold.World.Generation
                 {
                     baseDistance = d;
                     terraceBase = gorge.Floor(t);
+                }
+            }
+
+            // Высокие горы поверх уже вырезанных котловин и ущелий: пологие стенки котловины не срезают пик,
+            // но от края ближайшего дна гора поднимается не круче PeakWall, поэтому дно остаётся своим.
+            if (peaks.Length > 0)
+            {
+                var peak = ridgeHeight;
+                foreach (var p in peaks)
+                    peak = Math.Max(peak, p.Height(x, z, ridgeHeight, noise));
+                if (peak > h)
+                {
+                    var limit = baseDistance < float.MaxValue ? terraceBase + Math.Max(baseDistance, 0f) * PeakWall : peak;
+                    h = Math.Max(h, Math.Min(peak, limit));
                 }
             }
 

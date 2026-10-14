@@ -319,6 +319,19 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void Peak_NearLocationsAndGorge_StillReachesItsHeight()
+        {
+            // Пологие стенки котловин и ущелья рядом не срезают вершину: гора встаёт над ними крутой стеной.
+            var layout = TwoLocations();
+            layout.Peaks.Add(Peak(72f, 40f, new Vector2(80f, 130f)));
+            var heights = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
+
+            Assert.That(MaxAround(heights, 80, 130, 10), Is.GreaterThan(62f));
+            Assert.That(heights.Heights[36, 80], Is.EqualTo(10f).Within(1.5f), "дно западной котловины");
+            Assert.That(heights.Heights[124, 80], Is.EqualTo(14f).Within(1.5f), "дно восточной котловины");
+        }
+
+        [Test]
         public void Peak_AlongALine_IsARidge_AndFitsTheWorld()
         {
             var layout = new CampaignLayout();
@@ -415,9 +428,11 @@ namespace Emberhold.Tests.EditMode.World
                 Assert.That(heights.Heights[x, z], Is.InRange(location.FloorHeight - 3f, top + 4f), location.Name);
             }
             // Высокие горы: вершины выше снеговой линии, но в мире.
-            Assert.That(MaxAround(heights, 256, 256, 15), Is.GreaterThan(64f), "Центральный пик");
-            Assert.That(MaxAround(heights, 400, 494, 15), Is.GreaterThan(56f), "Хребет у маяка");
+            Assert.That(MaxAround(heights, 256, 256, 15), Is.GreaterThan(66f), "Центральный пик");
+            Assert.That(MaxAround(heights, 400, 494, 15), Is.GreaterThan(58f), "Хребет у маяка");
             Assert.That(MaxAround(heights, 256, 256, 15), Is.LessThanOrEqualTo(78f));
+            // Восточная ветка хребта у маяка тоже под снегом, а не срезана стенкой Скалы маяка.
+            Assert.That(MaxAround(heights, 496, 440, 8), Is.GreaterThan(56f), "Восточная ветка у маяка");
         }
 
         private static float MaxAround(CampaignHeights heights, int cx, int cz, int r)
@@ -425,7 +440,7 @@ namespace Emberhold.Tests.EditMode.World
             var max = float.MinValue;
             for (var z = cz - r; z <= cz + r; z++)
             for (var x = cx - r; x <= cx + r; x++)
-                max = Mathf.Max(max, heights.Heights[Mathf.Clamp(x, 0, 512), Mathf.Clamp(z, 0, 512)]);
+                max = Mathf.Max(max, heights.Heights[Mathf.Clamp(x, 0, heights.Heights.GetLength(0) - 1), Mathf.Clamp(z, 0, heights.Heights.GetLength(1) - 1)]);
             return max;
         }
     }
