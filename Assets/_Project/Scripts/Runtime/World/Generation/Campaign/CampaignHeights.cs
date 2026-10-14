@@ -35,6 +35,12 @@ namespace Emberhold.World.Generation
         private const float ChainWarp = 40f;
         private const float ChainBandNear = 10f;
         private const float ChainBandFar = 70f;
+        // Вершины цепи вдоль краёв: шаг вдоль края, отступ от края (от RingInsetMin до +RingInsetSpread) и номер,
+        // с которого считаются их зёрна шума (после пиков карты).
+        private const float RingSpacing = 46f;
+        private const float RingInsetMin = 20f;
+        private const float RingInsetSpread = 50f;
+        private const int RingIndex = 100;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
         // Насколько быстрее рёбер опускаются грани пирамиды: посередине грани гора уже в (1 + PeakFaceDrop) раз.
@@ -109,9 +115,14 @@ namespace Emberhold.World.Generation
             var gorges = new PreparedGorge[layout.Gorges.Count];
             for (var i = 0; i < gorges.Length; i++)
                 gorges[i] = new PreparedGorge(layout, layout.Gorges[i], i, noise);
-            var peaks = new PreparedPeak[layout.Peaks.Count];
-            for (var i = 0; i < peaks.Length; i++)
+            var ring = layout.Ridge.PeakHeight > layout.Ridge.MaxHeight
+                ? RingPeaks(layout.Ridge, sizeX, sizeZ, noise)
+                : new List<CampaignPeakShape>();
+            var peaks = new PreparedPeak[layout.Peaks.Count + ring.Count];
+            for (var i = 0; i < layout.Peaks.Count; i++)
                 peaks[i] = new PreparedPeak(layout.Peaks[i], i);
+            for (var i = 0; i < ring.Count; i++)
+                peaks[layout.Peaks.Count + i] = new PreparedPeak(ring[i], RingIndex + i);
 
             Parallel.For(0, sizeZ + 1, z =>
             {
@@ -273,6 +284,45 @@ namespace Emberhold.World.Generation
         }
 
         /// <summary>
+        /// Вершины горной цепи вдоль краёв карты: пирамиды через RingSpacing блоков (шаг гуляет), каждая на своём
+        /// отступе от края (RingInsetMin…+RingInsetSpread), своей высоты (от MaxHeight + 6 до PeakHeight) и ширины.
+        /// Соседние пирамиды сливаются рёбрами в неровные массивы с ветвями, а не в ровный хребет вдоль края.
+        /// </summary>
+        private static List<CampaignPeakShape> RingPeaks(CampaignRidge ridge, int sizeX, int sizeZ, CampaignNoise noise)
+        {
+            var result = new List<CampaignPeakShape>();
+            var perimeter = 2f * (sizeX + sizeZ);
+            var along = 0f;
+            for (var i = 0; along < perimeter; i++)
+            {
+                var inset = RingInsetMin + RingInsetSpread * noise.Hash(i, 201);
+                var height = CampaignNoise.Lerp(ridge.MaxHeight + 6f, ridge.PeakHeight, noise.Hash(i, 202));
+                var radius = 24f + 16f * noise.Hash(i, 203);
+                var step = noise.Hash(i, 204);
+                var t = along + (step - 0.5f) * RingSpacing * 0.5f;
+                t = (t % perimeter + perimeter) % perimeter;
+                Vector2 point;
+                if (t < sizeX)
+                    point = new Vector2(t, inset);
+                else if (t < sizeX + sizeZ)
+                    point = new Vector2(sizeX - inset, t - sizeX);
+                else if (t < 2f * sizeX + sizeZ)
+                    point = new Vector2(2f * sizeX + sizeZ - t, sizeZ - inset);
+                else
+                    point = new Vector2(inset, perimeter - t);
+                result.Add(new CampaignPeakShape
+                {
+                    Name = $"Вершина цепи {i}",
+                    Points = new[] { point },
+                    Height = height,
+                    Radius = radius,
+                });
+                along += RingSpacing * (0.7f + 0.6f * step);
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Горная цепь хребта: острые гребни «хребтового» шума с искажением (петляют, сходятся в вершины),
         /// между ними долины не ниже MinHeight. В полосе ChainBandNear–ChainBandFar блоков от края карты и в горных
         /// массивах (крупный шум) гребни встают до PeakHeight, в глубине карты — примерно до MaxHeight.
@@ -283,8 +333,10 @@ namespace Emberhold.World.Generation
             var wz = z + (noise.Fbm(x * 0.01f + 9f, z * 0.01f, 3) - 0.5f) * ChainWarp;
             var ridged = noise.Ridged(wx * ChainFrequency, wz * ChainFrequency);
             var shape = (float)Math.Pow(CampaignNoise.Clamp01((ridged - 0.2f) / 0.7f), 1.3f);
-            var band = CampaignNoise.SmoothStep(ChainBandNear, ChainBandNear + 25f, edge)
-                       * (1f - CampaignNoise.SmoothStep(ChainBandFar, ChainBandFar + 60f, edge));
+            // Ширина горной полосы у края гуляет, чтобы её граница не шла по линейке.
+            var reach = edge + (noise.Fbm(x * 0.012f + 51f, z * 0.012f - 17f, 3) - 0.5f) * 40f;
+            var band = CampaignNoise.SmoothStep(ChainBandNear, ChainBandNear + 25f, reach)
+                       * (1f - CampaignNoise.SmoothStep(ChainBandFar, ChainBandFar + 60f, reach));
             var massif = 0.7f * CampaignNoise.SmoothStep(0.35f, 0.75f, noise.Fbm(x * 0.007f + 13f, z * 0.007f - 29f, 3));
             // В глубине гребни до MaxHeight: доля, при которой самый высокий гребень как раз MaxHeight.
             var low = (ridge.MaxHeight - ridge.MinHeight) / (ridge.PeakHeight - ridge.MinHeight);

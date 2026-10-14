@@ -428,7 +428,7 @@ namespace Emberhold.Tests.EditMode.World
             var map = AssetDatabase.LoadAssetAtPath<CampaignMap>(MapPath);
             var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>(TerrainPath);
             var layout = map.ToLayout();
-            Assert.That(layout.Peaks, Has.Count.EqualTo(14));
+            Assert.That(layout.Peaks, Has.Count.EqualTo(11));
             var ceiling = settings.SizeInChunks.y * ChunkData.Size - 2;
             Assert.That(layout.Ridge.PeakHeight, Is.GreaterThan(map.SnowLine + 4f).And.LessThanOrEqualTo(ceiling), "вершины цепи хребта");
             foreach (var peak in layout.Peaks)
@@ -518,7 +518,7 @@ namespace Emberhold.Tests.EditMode.World
             // Вершины на хребте у маяка, отодвинутом от края мира.
             Assert.That(MaxAround(heights, 484, 484, 12), Is.GreaterThan(66f), "Пик маяка");
             Assert.That(MaxAround(heights, 372, 484, 12), Is.GreaterThan(64f), "Северный пик");
-            // Хребты вдоль западного, южного и восточного краёв с пиками.
+            // Пики вдоль западного, южного и восточного краёв.
             Assert.That(MaxAround(heights, 18, 160, 12), Is.GreaterThan(62f), "Западный пик");
             Assert.That(MaxAround(heights, 250, 18, 12), Is.GreaterThan(62f), "Южный пик");
             Assert.That(MaxAround(heights, 502, 205, 12), Is.GreaterThan(62f), "Восточный пик");
