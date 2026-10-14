@@ -77,11 +77,11 @@ namespace Emberhold.Gameplay.Workers
             Place(mesh, head + new Vector3(0f, -0.005f, 0.065f) * u, Quaternion.Euler(90f, 0f, 0f));
             mesh.AddCone(4, Vector3.zero, 0.014f * u, 0.035f * u, 0f, null, skin);
 
-            // Капюшон: облегает голову сзади и сверху, лицо открыто; хвост свисает назад.
+            // Капюшон: облегает голову сзади и сверху, лицо открыто; хвост свисает по спине.
             Place(mesh, Vector3.zero, Quaternion.identity);
             mesh.AddBlob(head + new Vector3(0f, 0.012f, -0.028f) * u, new Vector3(0.095f, 0.1f, 0.092f) * u, 1, 0f, null, hood);
-            Place(mesh, head + new Vector3(0f, 0.05f, -0.07f) * u, Quaternion.Euler(-120f, 0f, 0f));
-            mesh.AddCone(6, Vector3.zero, 0.045f * u, 0.12f * u, 0f, null, hood);
+            Place(mesh, head + new Vector3(0f, 0.02f, -0.085f) * u, Quaternion.Euler(-160f, 0f, 0f));
+            mesh.AddCone(6, Vector3.zero, 0.04f * u, 0.13f * u, 0f, null, hood);
 
             mesh.Transform = Matrix4x4.identity;
             return mesh.ToMesh(name);

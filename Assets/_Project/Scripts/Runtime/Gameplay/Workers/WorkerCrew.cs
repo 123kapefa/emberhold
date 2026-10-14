@@ -248,11 +248,13 @@ namespace Emberhold.Gameplay.Workers
                 column.x = Mathf.Clamp(column.x, 0, world.SizeInBlocks.x - 1);
                 column.y = Mathf.Clamp(column.y, 0, world.SizeInBlocks.z - 1);
                 workers.Add(new Worker(context, context.Surface.StandPoint(column)));
-                visuals.Add(CreateVisual(i, workers[i].Position));
+                // Сначала лицом к огню.
+                var yaw = Mathf.Atan2(center.x - point.x, center.z - point.z) * Mathf.Rad2Deg;
+                visuals.Add(CreateVisual(i, workers[i].Position, yaw));
             }
         }
 
-        private WorkerVisual CreateVisual(int index, Vector3 position)
+        private WorkerVisual CreateVisual(int index, Vector3 position, float yaw)
         {
             var body = new GameObject($"Worker {index + 1}");
             body.transform.SetParent(transform, false);
@@ -273,7 +275,7 @@ namespace Emberhold.Gameplay.Workers
             if (carryMaterial != null)
                 carry.GetComponent<MeshRenderer>().sharedMaterial = carryMaterial;
             carry.SetActive(false);
-            return new WorkerVisual(body.transform, carry.GetComponent<MeshRenderer>(), mesh, position);
+            return new WorkerVisual(body.transform, carry.GetComponent<MeshRenderer>(), mesh, position) { Yaw = yaw };
         }
 
         private GameObject CreateLines(string name, Color color)
