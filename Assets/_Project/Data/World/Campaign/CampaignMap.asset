@@ -373,7 +373,7 @@ MonoBehaviour:
     points:
     - {x: 256, y: 256}
     height: 70
-    radius: 45
+    radius: 36
     teeth: 0
   - name: Большой пик
     points:
@@ -383,10 +383,10 @@ MonoBehaviour:
     teeth: 0
   - name: Зубчатый гребень
     points:
-    - {x: 262, y: 258}
+    - {x: 268, y: 261}
     - {x: 284, y: 268}
-    - {x: 305, y: 278}
-    height: 64
+    - {x: 303, y: 277}
+    height: 66
     radius: 22
     teeth: 0.7
   - name: Хребет у маяка

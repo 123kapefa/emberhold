@@ -35,13 +35,15 @@ namespace Emberhold.World.Generation
         private const float PeakFaceDrop = 1f;
         // Мелкие рёбра и кулуары на гранях пирамиды, доля радиуса.
         private const float PeakFlutes = 0.12f;
+        // Рёбра и грани проступают уже с этой доли радиуса от вершины: меньше — острее верх, без купола.
+        private const float PeakSharpTop = 0.15f;
         // Профиль склона: больше 1 — склон вогнутый, у подножия положе.
         private const float PeakProfile = 1.15f;
         // Отроги от гребня вниз по склонам: через сколько блоков и насколько гребень между ними уже.
         private const float SpurSpacing = 18f;
         private const float SpurDrop = 0.45f;
         // Как часто по кромке гребня встают жандармы (выступы), на блок пути.
-        private const float CrestFrequency = 0.07f;
+        private const float CrestFrequency = 0.1f;
 
         /// <summary>Высота в блоках в углу (x, z); размер (ширина + 1) × (длина + 1).</summary>
         public readonly float[,] Heights;
@@ -377,7 +379,7 @@ namespace Emberhold.World.Generation
                         face = Math.Min(face, Math.Abs(Wrap(angle - edge)) / sector);
                     }
                     var flutes = Triangle(angle * count * 3f / (2f * (float)Math.PI) + noise.Fbm(d * 0.05f + seed, seed, 2) * 1.5f);
-                    var grow = CampaignNoise.SmoothStep(0f, 0.35f, d / radius);
+                    var grow = CampaignNoise.SmoothStep(0f, PeakSharpTop, d / radius);
                     spread = 1f + (PeakFaceDrop * (float)Math.Pow(face, 1.3f) + PeakFlutes * flutes) * grow;
                     // Жандармы на рёбрах: ступени «хребтового» шума вдоль ребра.
                     var rib = (float)Math.Floor(angle / (2f * sector));
@@ -387,7 +389,7 @@ namespace Emberhold.World.Generation
                 {
                     // Кромка гребня: жандармы — острые верхушки сложенного шума, между ними седловины.
                     var crest = 1f - Math.Abs(2f * noise.Fbm(along * CrestFrequency + seed, seed * 0.5f, 3) - 1f);
-                    crest = CampaignNoise.SmoothStep(0.35f, 0.95f, (float)Math.Pow(crest, 1.5f));
+                    crest = CampaignNoise.SmoothStep(0.35f, 0.95f, crest * crest);
                     var sag = 0.12f + 0.5f * CampaignNoise.Clamp01(shape.Teeth);
                     top = Math.Max(ridge + (top - ridge) * (1f - sag * (1f - crest)), ridge);
                     // Отроги: гребень шире там, где от него вниз уходит отрог, и уже между отрогами.
