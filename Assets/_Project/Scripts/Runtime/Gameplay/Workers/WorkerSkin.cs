@@ -80,8 +80,8 @@ namespace Emberhold.Gameplay.Workers
             var torso = (int)WorkerPart.Torso;
             if (part == WorkerPart.Cape)
             {
-                // Пелерина над плечом идёт за плечом, к середине — за корпусом.
-                var arm = 0.6f * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.07f, 0.17f, Mathf.Abs(p.x)));
+                // Пелерина на краю плеча идёт за рукой целиком (рукав не выходит из-под неё), к шее плавно переходит к корпусу.
+                var arm = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.06f, 0.19f, Mathf.Abs(p.x)));
                 Set(at, torso, 1f - arm, p.x < 0f ? (int)WorkerPart.UpperArmLeft : (int)WorkerPart.UpperArmRight, arm, torso, 0f);
                 return;
             }

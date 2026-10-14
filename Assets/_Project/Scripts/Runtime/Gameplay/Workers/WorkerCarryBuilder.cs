@@ -19,8 +19,8 @@ namespace Emberhold.Gameplay.Workers
     /// <summary>
     /// Сетка ноши и где она бывает: на плече (<see cref="ShoulderAnchor"/>, в системе корпуса), путь с плеча на землю
     /// (<see cref="PathDown"/>, в системе рабочего), за что её держит левая рука (<see cref="Grip"/>, в системе ноши).
-    /// Бревно лежит на левом плече вдоль хода, рука обхватывает его сбоку сверху. Мешок висит на спине, его короткая
-    /// горловина идёт через левое плечо, рука держит её на плече. Единицы — блоки при росте height.
+    /// Бревно лежит на левом плече вдоль хода, рука обхватывает его сбоку сверху. Мешок висит на спине, его горловина
+    /// перекинута через левое плечо и спускается по груди, рука держит её у груди, локоть опущен. Единицы — блоки при росте height.
     /// </summary>
     public static class WorkerCarryBuilder
     {
@@ -37,14 +37,36 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Тело мешка: полуоси (доли роста). Начало координат мешка — середина тела, горловина — вдоль +Y.</summary>
         private static readonly Vector3 SackBody = new(0.115f, 0.15f, 0.09f);
 
-        /// <summary>Длина мешка от середины тела до конца горловины, доли роста.</summary>
-        private const float SackLength = 0.31f;
-
         /// <summary>Середина мешка на спине, в системе рабочего (доли роста).</summary>
         private static readonly Vector3 SackOnBack = new(-0.08f, 0.6f, -0.21f);
 
-        /// <summary>Конец горловины на вершине левого плеча — за него держит рука; система рабочего.</summary>
-        private static readonly Vector3 SackGripOnShoulder = new(-0.125f, 0.81f, -0.02f);
+        /// <summary>Куда идёт горловина от мешка — на вершину левого плеча: по этой оси стоит мешок; система рабочего.</summary>
+        private static readonly Vector3 SackNeckOnShoulder = new(-0.125f, 0.81f, -0.02f);
+
+        /// <summary>
+        /// Горловина за плечом, система рабочего: лежит на вершине плеча поверх пелерины, спускается по груди,
+        /// за <see cref="SackGripIndex"/> её держит рука, конец с устьем чуть выходит из кулака вперёд.
+        /// </summary>
+        private static readonly Vector3[] SackNeckOverShoulder =
+        {
+            new(-0.12f, 0.785f, 0f), new(-0.12f, 0.765f, 0.062f), new(-0.118f, 0.725f, 0.108f), new(-0.116f, 0.69f, 0.128f),
+            new(-0.114f, 0.672f, 0.168f),
+        };
+
+        private const int SackGripIndex = 3;
+
+        /// <summary>Поворот мешка на спине в системе рабочего: горловина (+Y) — к плечу.</summary>
+        private static Quaternion SackRotation
+        {
+            get
+            {
+                var up = (SackNeckOnShoulder - SackOnBack).normalized;
+                return Quaternion.LookRotation(Vector3.ProjectOnPlane(Vector3.forward, up), up);
+            }
+        }
+
+        /// <summary>Точка рабочего (мешок на спине) в системе мешка, доли роста.</summary>
+        private static Vector3 OnSack(Vector3 worker) => Quaternion.Inverse(SackRotation) * (worker - SackOnBack);
 
         /// <summary>Пояс — точка вращения корпуса, доли роста: от неё считаются места ноши на плече.</summary>
         private const float Waist = 0.515f;
@@ -71,10 +93,8 @@ namespace Emberhold.Gameplay.Workers
                 // Бревно на вершине левого плеча, передний конец чуть выше.
                 return Matrix4x4.TRS(new Vector3(-0.138f, 0.284f, 0.02f) * height, Quaternion.LookRotation(new Vector3(0.05f, 0.1f, 1f)), Vector3.one);
             }
-            // Мешок висит на спине, горловина — через плечо к руке на плече.
-            var up = (SackGripOnShoulder - SackOnBack).normalized;
-            var rotation = Quaternion.LookRotation(Vector3.ProjectOnPlane(Vector3.forward, up), up);
-            return Matrix4x4.TRS((SackOnBack - Vector3.up * Waist) * height, rotation, Vector3.one);
+            // Мешок висит на спине, горловина — через плечо к руке у груди.
+            return Matrix4x4.TRS((SackOnBack - Vector3.up * Waist) * height, SackRotation, Vector3.one);
         }
 
         /// <summary>
@@ -113,8 +133,8 @@ namespace Emberhold.Gameplay.Workers
         public static Vector3 Grip(WorkerCarry carry, float height) => carry == WorkerCarry.Log
             // Сбоку снаружи и чуть сверху, ближе к переднему концу.
             ? new Vector3(-LogRadius - 0.022f, 0.022f, 0.1f) * height
-            // Конец горловины.
-            : new Vector3(0f, SackLength - 0.02f, 0f) * height;
+            // Горловина у груди.
+            : OnSack(SackNeckOverShoulder[SackGripIndex]) * height;
 
         /// <summary>Куда отводить локоть, когда рука держит ношу: в системе рабочего, относительно точки хвата.</summary>
         public static Vector3 ElbowHint(float height) => new Vector3(-0.25f, -0.35f, -0.05f) * height;
@@ -134,7 +154,7 @@ namespace Emberhold.Gameplay.Workers
                     for (var i = 0; i < 4; i++)
                     {
                         var a = i * 1.7f;
-                        mesh.AddBlob(Mouth + new Vector3(Mathf.Cos(a) * 0.014f, -0.004f + 0.006f * (i % 2), Mathf.Sin(a) * 0.012f),
+                        mesh.AddBlob(Mouth + MouthTurn * new Vector3(Mathf.Cos(a) * 0.014f, -0.004f + 0.006f * (i % 2), Mathf.Sin(a) * 0.012f),
                             Vector3.one * (0.024f - 0.002f * i), 0, 0.3f, new System.Random(i + 3), Paint(Stone * (0.85f + 0.05f * i)));
                     }
                     break;
@@ -144,8 +164,8 @@ namespace Emberhold.Gameplay.Workers
                     for (var i = 0; i < 6; i++)
                     {
                         var a = i * 1.05f;
-                        mesh.Transform = scale * Matrix4x4.TRS(Mouth + new Vector3(Mathf.Cos(a) * 0.012f, -0.01f, Mathf.Sin(a) * 0.01f),
-                            Quaternion.Euler(Mathf.Sin(a) * 25f, 0f, Mathf.Cos(a) * 25f), new Vector3(1f, 1f, 0.35f));
+                        mesh.Transform = scale * Matrix4x4.TRS(Mouth + MouthTurn * new Vector3(Mathf.Cos(a) * 0.012f, -0.01f, Mathf.Sin(a) * 0.01f),
+                            MouthTurn * Quaternion.Euler(Mathf.Sin(a) * 25f, 0f, Mathf.Cos(a) * 25f), new Vector3(1f, 1f, 0.35f));
                         mesh.AddCone(4, Vector3.zero, 0.013f, 0.08f + 0.012f * (i % 3), 0f, null, Paint(Grass * (0.85f + 0.06f * (i % 3))));
                     }
                     break;
@@ -154,7 +174,12 @@ namespace Emberhold.Gameplay.Workers
             return mesh.ToMesh(name);
         }
 
-        private static Vector3 Mouth => new(0f, SackLength + 0.004f, 0f);
+        /// <summary>Устье — конец горловины у груди, система мешка.</summary>
+        private static Vector3 Mouth => OnSack(SackNeckOverShoulder[^1]) + MouthTurn * new Vector3(0f, 0.004f, 0f);
+
+        /// <summary>Поворот от оси мешка (+Y) к направлению, куда смотрит устье.</summary>
+        private static Quaternion MouthTurn =>
+            Quaternion.FromToRotation(Vector3.up, OnSack(SackNeckOverShoulder[^1]) - OnSack(SackNeckOverShoulder[^2]));
 
         private static void Log(FacetedMesh mesh)
         {
@@ -172,15 +197,25 @@ namespace Emberhold.Gameplay.Workers
 
         private static void Sack(FacetedMesh mesh, Color cloth)
         {
-            // Тело мешка — шире к дну; сверху короткая прямая горловина, перехваченная завязкой, и раскрытый край.
+            // Тело мешка — шире к дну; сверху горловина, перехваченная завязкой, через плечо вниз по груди, и раскрытый край.
             mesh.AddBlob(Vector3.zero, SackBody, 1, 0.08f, new System.Random(7), Paint(cloth));
             mesh.AddBlob(new Vector3(0f, -0.05f, 0f), new Vector3(SackBody.x * 1.08f, SackBody.y * 0.68f, SackBody.z * 1.08f), 1, 0.06f,
                 new System.Random(9), Paint(cloth * 0.95f));
-            mesh.AddLoft(new[]
+            mesh.AddLoft(new[] { new LoftRing(0.11f, 0.075f, 0.06f), new LoftRing(0.19f, 0.03f, 0.026f), new LoftRing(0.25f, 0.022f, 0.02f) },
+                8, Paint(cloth * 0.93f), capStart: false, capEnd: false);
+            var neck = new Vector3[SackNeckOverShoulder.Length + 1];
+            var radii = new Vector2[neck.Length];
+            neck[0] = new Vector3(0f, 0.25f, 0f);
+            radii[0] = new Vector2(0.022f, 0.02f);
+            for (var i = 0; i < SackNeckOverShoulder.Length; i++)
             {
-                new LoftRing(0.11f, 0.075f, 0.06f), new LoftRing(0.19f, 0.03f, 0.026f), new LoftRing(0.25f, 0.022f, 0.02f),
-                new LoftRing(SackLength - 0.012f, 0.034f, 0.03f), new LoftRing(SackLength, 0.03f, 0.027f),
-            }, 8, Paint(cloth * 0.93f), capStart: false, capEnd: false);
+                neck[i + 1] = OnSack(SackNeckOverShoulder[i]);
+                radii[i + 1] = new Vector2(0.021f, 0.02f);
+            }
+            mesh.AddTube(neck, radii, 8, Paint(cloth * 0.93f));
+            var mouth = OnSack(SackNeckOverShoulder[^1]);
+            mesh.AddTube(new[] { mouth - MouthTurn * new Vector3(0f, 0.012f, 0f), mouth }, new[] { new Vector2(0.034f, 0.03f), new Vector2(0.03f, 0.027f) },
+                8, Paint(cloth * 0.93f));
             mesh.AddLoft(new[] { new LoftRing(0.235f, 0.026f, 0.024f), new LoftRing(0.255f, 0.026f, 0.024f) }, 8, Paint(Twine));
         }
 
