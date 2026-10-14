@@ -47,8 +47,8 @@ namespace Emberhold.World.Generation
         private const float RimFree = 30f;
         private const float RimFade = 70f;
         private const float RimFloor = 4f;
-        // Полоса у самого края, где дно котловины поднимается до хребта (граница гуляет).
-        private const float RimFill = 12f;
+        // Полоса у самого края, где котловина закрыта бортом (граница гуляет).
+        private const float RimFill = 16f;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
         // Насколько быстрее рёбер опускаются грани пирамиды: посередине грани гора уже в (1 + PeakFaceDrop) раз.
@@ -289,14 +289,19 @@ namespace Emberhold.World.Generation
                 }
             }
 
-            // У края карты котловина заполняется до хребта, а там, где гора встала над тем, что срезала бы стенка,
+            // У края карты котловина закрыта горным бортом, а там, где гора встала над тем, что срезала бы стенка,
             // трава и деревья — хребта, не локации.
             var fill = rim > 0f
                 ? 1f - CampaignNoise.SmoothStep(0f, RimFill, edge + (noise.Fbm(x * 0.05f + 7f, z * 0.05f - 3f, 2) - 0.5f) * 12f)
                 : 0f;
             if (fill > 0f)
             {
-                h = Math.Max(h, CampaignNoise.Lerp(h, ridgeHeight, fill));
+                // Над котловиной (где дно вырезано ниже хребта) борт встаёт горой неровной высоты, иначе обрез мира
+                // над ней был бы ниже хребта вокруг; вне котловин край остаётся таким, каким его сделали цепь и вершины.
+                var carved = CampaignNoise.SmoothStep(2f, 10f, ridgeHeight - h);
+                var rimTop = ridge.MaxHeight + 6f + (ridge.PeakHeight - ridge.MaxHeight - 6f) * noise.Ridged(x * 0.03f, z * 0.03f);
+                var target = CampaignNoise.Lerp(ridgeHeight, Math.Max(ridgeHeight, rimTop), carved);
+                h = Math.Max(h, CampaignNoise.Lerp(h, target, fill));
             }
             if (h > cut)
             {
