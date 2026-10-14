@@ -55,7 +55,7 @@ namespace Emberhold.Gameplay.Workers
             {
                 new LoftRing(0.37f, 0.148f, 0.098f, 0.002f), new LoftRing(0.44f, 0.128f, 0.086f), new LoftRing(0.51f, 0.112f, 0.076f),
                 new LoftRing(0.6f, 0.13f, 0.088f, 0.01f), new LoftRing(0.68f, 0.148f, 0.088f, 0.008f), new LoftRing(0.735f, 0.14f, 0.074f),
-                new LoftRing(0.765f, 0.07f, 0.05f), new LoftRing(0.775f, 0.042f, 0.04f, 0.004f),
+                new LoftRing(0.765f, 0.07f, 0.052f), new LoftRing(0.775f, 0.047f, 0.046f, 0.004f),
             }, Sides, tunic);
             // Пояс с пряжкой и сумка на боку.
             mesh.AddLoft(new[] { new LoftRing(0.5f, 0.116f, 0.08f), new LoftRing(0.528f, 0.116f, 0.08f) }, Sides, Paint(Leather));
@@ -86,11 +86,11 @@ namespace Emberhold.Gameplay.Workers
                     new[] { new Vector2(0.009f, 0.009f), new Vector2(0.007f, 0.007f) }, 6, skin);
             }
 
-            // Голова: шея, подбородок, челюсть, скулы, лоб, затылок, макушка.
+            // Голова: шея, плавно переходящая в челюсть, скулы, лоб, затылок, макушка.
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.77f, 0.036f, 0.036f), new LoftRing(0.8f, 0.036f, 0.038f, 0.004f),
-                new LoftRing(0.808f, 0.03f, 0.03f, 0.05f), new LoftRing(0.82f, 0.05f, 0.058f, 0.024f),
+                new LoftRing(0.77f, 0.042f, 0.042f), new LoftRing(0.8f, 0.043f, 0.045f, 0.006f),
+                new LoftRing(0.815f, 0.05f, 0.056f, 0.02f), new LoftRing(0.83f, 0.057f, 0.065f, 0.016f),
                 new LoftRing(0.845f, 0.062f, 0.07f, 0.012f), new LoftRing(0.875f, 0.07f, 0.078f, 0.008f),
                 new LoftRing(0.91f, 0.072f, 0.08f, 0.004f), new LoftRing(0.945f, 0.066f, 0.074f, -0.002f),
                 new LoftRing(0.97f, 0.048f, 0.056f, -0.004f), new LoftRing(0.983f, 0.02f, 0.024f, -0.004f),
@@ -136,12 +136,12 @@ namespace Emberhold.Gameplay.Workers
             var lining = Paint(look.Hood * 0.45f);
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.745f, 0.1f, 0.075f, -0.008f), new LoftRing(0.775f, 0.075f, 0.062f, -0.01f), new LoftRing(0.8f, 0.058f, 0.056f, -0.012f),
+                new LoftRing(0.745f, 0.1f, 0.075f, -0.008f), new LoftRing(0.77f, 0.078f, 0.064f, -0.008f), new LoftRing(0.79f, 0.052f, 0.05f, -0.004f),
             }, Sides, hood, capStart: false, capEnd: false, arc: 0.7f, twoSided: true, innerColor: lining);
             mesh.AddLoft(new[]
             {
-                new LoftRing(0.62f, 0.005f, 0.005f, -0.105f), new LoftRing(0.65f, 0.03f, 0.018f, -0.108f), new LoftRing(0.7f, 0.055f, 0.03f, -0.112f),
-                new LoftRing(0.755f, 0.065f, 0.036f, -0.11f), new LoftRing(0.79f, 0.062f, 0.036f, -0.102f),
+                new LoftRing(0.62f, 0.005f, 0.004f, -0.098f), new LoftRing(0.65f, 0.03f, 0.012f, -0.1f), new LoftRing(0.7f, 0.055f, 0.02f, -0.103f),
+                new LoftRing(0.755f, 0.065f, 0.024f, -0.102f), new LoftRing(0.785f, 0.06f, 0.022f, -0.096f),
             }, Sides, hood, capStart: true, capEnd: false, twoSided: true, innerColor: lining);
             mesh.AddLoft(new[]
             {
