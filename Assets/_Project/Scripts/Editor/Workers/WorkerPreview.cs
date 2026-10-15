@@ -33,9 +33,6 @@ namespace Emberhold.Editor.Workers
         private WorkerCarry builtCarry = (WorkerCarry)(-1);
         private float time;
 
-        /// <summary>Шаг времени с прошлой отрисовки — для качания мешка; 0 после перемотки и в снимках.</summary>
-        private float stepSinceDraw;
-
         public WorkerPreview()
         {
             var shared = AssetDatabase.LoadAssetAtPath<Material>(WorkerMaterialPath);
@@ -86,7 +83,6 @@ namespace Emberhold.Editor.Workers
             set
             {
                 time = Mathf.Max(0f, value);
-                stepSinceDraw = 0f;
             }
         }
 
@@ -101,8 +97,9 @@ namespace Emberhold.Editor.Workers
         /// <summary>Рост, по которому построена текущая сетка.</summary>
         public float Height { get; private set; } = 1.9f;
 
-        public int VertexCount => figures.Count > 0 ? Sum(figures[0].Parts, m => m.vertexCount) : 0;
-        public int TriangleCount => figures.Count > 0 ? Sum(figures[0].Parts, m => m.triangles.Length / 3) : 0;
+        /// <summary>Сколько вершин и треугольников у одной фигуры; считается при сборке, а не на каждой перерисовке окна.</summary>
+        public int VertexCount { get; private set; }
+        public int TriangleCount { get; private set; }
 
         /// <summary>Середина ряда витрины по X, в блоках; для одной фигуры — 0.</summary>
         // Ряд слева направо в порядке ролей, если смотреть спереди (камера смотрит в −Z, поэтому +X — слева).
@@ -122,7 +119,6 @@ namespace Emberhold.Editor.Workers
         public void Advance(float deltaTime)
         {
             time += deltaTime;
-            stepSinceDraw += deltaTime;
             if (OneShotLength > 0f && time > OneShotLength)
                 time %= OneShotLength;
         }
@@ -149,6 +145,8 @@ namespace Emberhold.Editor.Workers
                 var x = Lineup ? LineupX(i, roles.Length) : 0f;
                 figures.Add(new Figure(look, parts, edges, skins, new Vector3(x, 0f, 0f), Lineup ? i * 0.137f % 1f : 0f));
             }
+            VertexCount = figures.Count > 0 ? Sum(figures[0].Parts, m => m.vertexCount) : 0;
+            TriangleCount = figures.Count > 0 ? Sum(figures[0].Parts, m => (int)(m.GetIndexCount(0) / 3)) : 0;
             grid = Hidden(Grid(Lineup ? Mathf.CeilToInt(roles.Length * LineupSpacing * 0.5f) + 1 : 2));
         }
 
@@ -227,13 +225,12 @@ namespace Emberhold.Editor.Workers
                 }
                 if (carryShape != null)
                 {
-                    // Сетка мешка одна на витрину: качание считаем по первой фигуре, остальные рисуют ту же форму.
+                    // Сетка ноши одна на витрину: лямки ставим по первой фигуре, остальные рисуют ту же форму.
                     if (figure == figures[0])
-                        carryShape.Apply(place * Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one), pose.LoadBend, stepSinceDraw);
+                        carryShape.Apply(pose.LoadOnBack);
                     preview.DrawMesh(carryShape.Mesh, place * Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one), workerMaterial, 0);
                 }
             }
-            stepSinceDraw = 0f;
             if (ShowGrid)
                 preview.DrawMesh(grid, Matrix4x4.identity, gridMaterial, 0);
             preview.Render(true);

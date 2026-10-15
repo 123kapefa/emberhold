@@ -12,7 +12,7 @@ namespace Emberhold.Gameplay.Workers
         Run,
         /// <summary>Присесть и поднять ресурс.</summary>
         PickUp,
-        /// <summary>Идти с ношей на плече; левая рука её придерживает.</summary>
+        /// <summary>Идти с ношей: бревно на левом плече (левая рука его придерживает) или корзина на спине (руки свободны).</summary>
         Carry,
         /// <summary>Поставить блок перед собой.</summary>
         Place,
@@ -56,12 +56,21 @@ namespace Emberhold.Gameplay.Workers
         public static bool IsOneShot(WorkerClip clip) => DefaultDuration(clip) > 0f;
 
         /// <summary>
-        /// Поза анимации clip в момент time (секунды для циклов, доля для разовых). seed разводит фазы у разных рабочих;
-        /// speed — скорость, блоков в секунду; rightBusy и leftBusy — в руке инструмент, она почти не качается.
+        /// Поза анимации clip в момент time (секунды для циклов, доля для разовых). Из motion: Seed разводит фазы у разных
+        /// рабочих, Speed — скорость (блоков в секунду), RightBusy и LeftBusy — в руке инструмент, она почти не качается,
+        /// Carry — что несёт.
         /// </summary>
         public static WorkerPose Sample(WorkerClip clip, float time, in WorkerMotion motion)
         {
             var pose = WorkerPose.Rest();
+            Sample(clip, time, motion, ref pose);
+            return pose;
+        }
+
+        /// <summary>То же, но в уже готовую позу pose: она перезаписывается, память не выделяется.</summary>
+        public static void Sample(WorkerClip clip, float time, in WorkerMotion motion, ref WorkerPose pose)
+        {
+            pose.Reset();
             Relaxed(ref pose);
             switch (clip)
             {
@@ -94,9 +103,11 @@ namespace Emberhold.Gameplay.Workers
                     break;
                 case WorkerClip.PickUp:
                     // Поднять — то же, что положить, в обратную сторону: присел, взял с земли, закинул на плечо.
-                    return PutDown(1f - time, motion);
+                    PutDown(1f - time, motion, ref pose);
+                    return;
                 case WorkerClip.Put:
-                    return PutDown(time, motion);
+                    PutDown(time, motion, ref pose);
+                    return;
                 case WorkerClip.Place:
                     Place(ref pose, time);
                     break;
@@ -111,28 +122,29 @@ namespace Emberhold.Gameplay.Workers
                     break;
             }
             SetLoad(ref pose, motion, holdWeight: clip == WorkerClip.Carry && WorkerCarryBuilder.HeldWhileCarried(motion.Carry) ? 1f : 0f);
-            return pose;
         }
 
         /// <summary>
         /// Ноша на плече или спине (по матрице корпуса в этой позе); holdWeight — насколько левая рука её придерживает.
-        /// Ношу считаем во всех позах, чтобы при смене анимации она плавно переходила.
+        /// Если ничего не несёт — считать нечего (скелет лишний раз не считается).
         /// </summary>
         private static void SetLoad(ref WorkerPose pose, in WorkerMotion motion, float holdWeight)
         {
-            var carry = motion.Carry == WorkerCarry.None ? WorkerCarry.Log : motion.Carry;
+            if (motion.Carry == WorkerCarry.None)
+                return;
+            var carry = motion.Carry;
             var load = WorkerSkeleton.Torso(pose, motion.Height) * WorkerCarryBuilder.ShoulderAnchor(carry, motion.Height);
             pose.LoadPosition = load.GetColumn(3);
             pose.LoadRotation = load.rotation;
-            pose.LoadBend = 1f;
-            if (holdWeight > 0f && motion.Carry != WorkerCarry.None)
+            pose.LoadOnBack = 1f;
+            if (holdWeight > 0f)
                 HoldLoad(ref pose, carry, load, motion.Height, holdWeight);
         }
 
         /// <summary>Левая рука держит ношу за точку хвата; локоть вниз и наружу.</summary>
         private static void HoldLoad(ref WorkerPose pose, WorkerCarry carry, Matrix4x4 load, float height, float weight)
         {
-            var grip = load.MultiplyPoint3x4(WorkerCarryBuilder.Grip(carry, height));
+            var grip = load.MultiplyPoint3x4(WorkerCarryBuilder.Grip(height));
             WorkerSkeleton.ReachArm(ref pose, -1f, grip, grip + WorkerCarryBuilder.ElbowHint(height), height, weight);
         }
 
@@ -140,15 +152,15 @@ namespace Emberhold.Gameplay.Workers
         /// Положить ношу (t от 0 до 1): снять с плеча и перехватить перед собой, присесть с ровными стопами и опустить
         /// на землю, отпустить, выпрямиться. Ноша остаётся лежать на земле до конца.
         /// </summary>
-        private static WorkerPose PutDown(float t, in WorkerMotion motion)
+        private static void PutDown(float t, in WorkerMotion motion, ref WorkerPose pose)
         {
-            var pose = WorkerPose.Rest();
-            Relaxed(ref pose);
-            var carry = motion.Carry == WorkerCarry.None ? WorkerCarry.Log : motion.Carry;
+            var carry = motion.Carry;
             var height = motion.Height;
-            // Присед: начинается, когда ноша сошла с плеча, глубже всего с 0,45 до 0,75.
+            // Присед: начинается, когда ноша сошла с плеча, глубже всего с 0,45 до 0,75. Без ноши — только присел.
             var crouch = Bump(Mathf.InverseLerp(0.2f, 1f, t), 0.32f, 0.3f);
             Crouch(ref pose, crouch);
+            if (carry == WorkerCarry.None)
+                return;
             if (WorkerCarryBuilder.HeldWhileCarried(carry))
                 pose.Add(WorkerPart.Torso, new Vector3(0f, 0f, -3f * (1f - crouch)));
 
@@ -160,13 +172,11 @@ namespace Emberhold.Gameplay.Workers
             var from = segment == 0 ? shoulder : path[segment - 1];
             var load = Blend(from, path[segment], Mathf.SmoothStep(0f, 1f, travel - segment));
             // Лямки корзины втягиваются в начале, пока она едва сдвинулась со спины.
-            pose.LoadBend = segment == 0 ? 1f - Mathf.SmoothStep(0f, 1f, travel * 2.5f) : 0f;
+            pose.LoadOnBack = segment == 0 ? 1f - Mathf.SmoothStep(0f, 1f, travel * 2.5f) : 0f;
             pose.LoadPosition = load.GetColumn(3);
             pose.LoadRotation = load.rotation;
-            // Рука держит ношу до 0,7, потом отпускает и уходит в покой. Без ноши — только присел.
+            // Рука держит ношу до 0,7, потом отпускает и уходит в покой.
             var hold = t < 0.65f ? 1f : 1f - Mathf.SmoothStep(0f, 1f, (t - 0.65f) / 0.15f);
-            if (motion.Carry == WorkerCarry.None)
-                hold = 0f;
             if (WorkerCarryBuilder.HeldWhileCarried(carry))
                 HoldLoad(ref pose, carry, load, height, hold);
             else
@@ -177,7 +187,6 @@ namespace Emberhold.Gameplay.Workers
                 var right = hold * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.42f, 0.5f, t));
                 HoldBasket(ref pose, load, height, left, right);
             }
-            return pose;
         }
 
         /// <summary>
@@ -189,13 +198,16 @@ namespace Emberhold.Gameplay.Workers
             var side = WorkerCarryBuilder.BasketSideGrip(height);
             Vector3 center = load.GetColumn(3);
             var aside = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(-0.05f * height, -0.2f * height, center.x));
-            foreach (var (hand, weight) in new[] { (-1f, left), (1f, right) })
+            var top = load.MultiplyPoint3x4(Vector3.up * side.y);
+            if (left > 0f)
             {
-                if (weight <= 0f)
-                    continue;
-                var x = hand < 0f ? Mathf.Lerp(-side.x, side.x, aside) : side.x;
-                var grip = load.MultiplyPoint3x4(Vector3.up * side.y) + new Vector3(x, 0f, 0f);
-                WorkerSkeleton.ReachArm(ref pose, hand, grip, grip + new Vector3(hand * 0.25f, -0.3f, 0f) * height, height, weight);
+                var grip = top + new Vector3(Mathf.Lerp(-side.x, side.x, aside), 0f, 0f);
+                WorkerSkeleton.ReachArm(ref pose, -1f, grip, grip + new Vector3(-0.25f, -0.3f, 0f) * height, height, left);
+            }
+            if (right > 0f)
+            {
+                var grip = top + new Vector3(side.x, 0f, 0f);
+                WorkerSkeleton.ReachArm(ref pose, 1f, grip, grip + new Vector3(0.25f, -0.3f, 0f) * height, height, right);
             }
         }
 
@@ -205,13 +217,20 @@ namespace Emberhold.Gameplay.Workers
         /// </summary>
         public static WorkerPose Blend(WorkerPose from, WorkerPose to, float t, float height)
         {
-            var pose = WorkerPose.Lerp(from, to, t);
+            var pose = WorkerPose.Rest();
+            Blend(from, to, t, height, ref pose);
+            return pose;
+        }
+
+        /// <summary>То же, но в уже готовую позу pose (не from и не to): память не выделяется.</summary>
+        public static void Blend(in WorkerPose from, in WorkerPose to, float t, float height, ref WorkerPose pose)
+        {
+            WorkerPose.Lerp(from, to, t, ref pose);
             var load = WorkerSkeleton.Torso(pose, height) * WorkerSkeleton.Torso(to, height).inverse *
                        Matrix4x4.TRS(to.LoadPosition, to.LoadRotation, Vector3.one);
             pose.LoadPosition = load.GetColumn(3);
             pose.LoadRotation = load.rotation;
-            pose.LoadBend = to.LoadBend;
-            return pose;
+            pose.LoadOnBack = to.LoadOnBack;
         }
 
         private static Matrix4x4 Blend(Matrix4x4 a, Matrix4x4 b, float t) =>
@@ -289,12 +308,12 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Присесть на корточки, стопы ровно на земле, корпус наклонён: глубина amount от 0 до 1.</summary>
         private static void Crouch(ref WorkerPose pose, float amount)
         {
-            foreach (var thigh in new[] { WorkerPart.ThighLeft, WorkerPart.ThighRight })
-                pose.Add(thigh, new Vector3(-78f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ThighLeft, new Vector3(-78f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ThighRight, new Vector3(-78f * amount, 0f, 0f));
             pose.Add(WorkerPart.ThighLeft, new Vector3(0f, 0f, -8f * amount));
             pose.Add(WorkerPart.ThighRight, new Vector3(0f, 0f, 8f * amount));
-            foreach (var shin in new[] { WorkerPart.ShinLeft, WorkerPart.ShinRight })
-                pose.Add(shin, new Vector3(118f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ShinLeft, new Vector3(118f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ShinRight, new Vector3(118f * amount, 0f, 0f));
             pose.Add(WorkerPart.Torso, new Vector3(34f * amount, 0f, 0f));
             pose.Add(WorkerPart.Head, new Vector3(-16f * amount, 0f, 0f));
             pose.Shift += new Vector2(0f, -0.05f * amount);
@@ -305,17 +324,17 @@ namespace Emberhold.Gameplay.Workers
             var amount = Bump(t, 0.35f, 0.3f);
             // На пике — короткий толчок вперёд: блок встал.
             var push = t > 0.35f && t < 0.7f ? Mathf.Sin(Mathf.PI * (t - 0.35f) / 0.35f) : 0f;
-            foreach (var thigh in new[] { WorkerPart.ThighLeft, WorkerPart.ThighRight })
-                pose.Add(thigh, new Vector3(-18f * amount, 0f, 0f));
-            foreach (var shin in new[] { WorkerPart.ShinLeft, WorkerPart.ShinRight })
-                pose.Add(shin, new Vector3(30f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ThighLeft, new Vector3(-18f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ThighRight, new Vector3(-18f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ShinLeft, new Vector3(30f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ShinRight, new Vector3(30f * amount, 0f, 0f));
             pose.Add(WorkerPart.Torso, new Vector3(24f * amount + 4f * push, 0f, 0f));
             pose.Add(WorkerPart.Head, new Vector3(-10f * amount, 0f, 0f));
             // Плечи вперёд не выше 45°, дальше тянется предплечье: так плечо не прорывает пелерину.
-            foreach (var arm in new[] { WorkerPart.UpperArmLeft, WorkerPart.UpperArmRight })
-                pose.Add(arm, new Vector3(-42f * amount - 6f * push, 0f, 0f));
-            foreach (var forearm in new[] { WorkerPart.ForearmLeft, WorkerPart.ForearmRight })
-                pose.Add(forearm, new Vector3(-38f * amount, 0f, 0f));
+            pose.Add(WorkerPart.UpperArmLeft, new Vector3(-42f * amount - 6f * push, 0f, 0f));
+            pose.Add(WorkerPart.UpperArmRight, new Vector3(-42f * amount - 6f * push, 0f, 0f));
+            pose.Add(WorkerPart.ForearmLeft, new Vector3(-38f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ForearmRight, new Vector3(-38f * amount, 0f, 0f));
         }
 
         private static void Startle(ref WorkerPose pose, float t)
@@ -327,10 +346,10 @@ namespace Emberhold.Gameplay.Workers
             pose.Add(WorkerPart.UpperArmRight, new Vector3(-32f * amount, 0f, 22f * amount));
             pose.Add(WorkerPart.ForearmLeft, new Vector3(-62f * amount, 0f, 0f));
             pose.Add(WorkerPart.ForearmRight, new Vector3(-62f * amount, 0f, 0f));
-            foreach (var shin in new[] { WorkerPart.ShinLeft, WorkerPart.ShinRight })
-                pose.Add(shin, new Vector3(16f * amount, 0f, 0f));
-            foreach (var thigh in new[] { WorkerPart.ThighLeft, WorkerPart.ThighRight })
-                pose.Add(thigh, new Vector3(-8f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ShinLeft, new Vector3(16f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ShinRight, new Vector3(16f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ThighLeft, new Vector3(-8f * amount, 0f, 0f));
+            pose.Add(WorkerPart.ThighRight, new Vector3(-8f * amount, 0f, 0f));
         }
 
         private static void Warm(ref WorkerPose pose, float time, in WorkerMotion motion)
@@ -362,10 +381,6 @@ namespace Emberhold.Gameplay.Workers
             pose[WorkerPart.ForearmLeft] = new Vector3(-38f, 0f, 0f);
             pose[WorkerPart.ForearmRight] = new Vector3(-38f, 0f, 0f);
         }
-
-        /// <summary>Углы в −180…180, чтобы смешивание поз шло коротким путём.</summary>
-        private static Vector3 Wrap(Vector3 euler) =>
-            new(Mathf.DeltaAngle(0f, euler.x), Mathf.DeltaAngle(0f, euler.y), Mathf.DeltaAngle(0f, euler.z));
 
         /// <summary>Плавно вверх за rise доли, держит, плавно вниз за fall доли (t — доля от 0 до 1).</summary>
         private static float Bump(float t, float rise, float fall)
@@ -418,7 +433,10 @@ namespace Emberhold.Gameplay.Workers
         private const float BlendSeconds = 0.25f;
         private const float SitBlendSeconds = 0.8f;
 
+        // Позы в своих буферах: каждый кадр они перезаписываются, память не выделяется.
         private WorkerPose from = WorkerPose.Rest();
+        private WorkerPose target = WorkerPose.Rest();
+        private WorkerPose pose = WorkerPose.Rest();
         private float blend = 1f;
         private float blendSeconds = BlendSeconds;
         private float duration;
@@ -428,7 +446,8 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Секунды с начала анимации.</summary>
         public float Time { get; set; }
 
-        public WorkerPose Pose { get; private set; } = WorkerPose.Rest();
+        /// <summary>Текущая поза; её массив перезаписывается следующим <see cref="Update"/>.</summary>
+        public WorkerPose Pose => pose;
 
         /// <summary>Сменить анимацию; та же анимация продолжается. duration — длительность разовой (0 — по умолчанию).</summary>
         public void Play(WorkerClip clip, float duration = 0f)
@@ -436,15 +455,18 @@ namespace Emberhold.Gameplay.Workers
             this.duration = duration > 0f ? duration : WorkerAnimation.DefaultDuration(clip);
             if (clip == Clip)
                 return;
-            from = Pose;
+            from.CopyFrom(pose);
             blend = 0f;
             blendSeconds = clip == WorkerClip.Sit || Clip == WorkerClip.Sit ? SitBlendSeconds : BlendSeconds;
             Clip = clip;
             Time = 0f;
         }
 
-        /// <summary>Начать ту же разовую анимацию заново (следующий удар, следующий блок).</summary>
-        public void Restart() => Time = 0f;
+        /// <summary>
+        /// Начать ту же разовую анимацию заново (следующий удар, следующий блок). Время, ушедшее за конец, переносится
+        /// в новый раз, чтобы удары не сбивались по фазе.
+        /// </summary>
+        public void Restart() => Time = duration > 0f ? Mathf.Repeat(Time, duration) : 0f;
 
         /// <summary>Доля разовой анимации от 0 до 1; у цикла — 0.</summary>
         public float Progress => WorkerAnimation.IsOneShot(Clip) && duration > 0f ? Mathf.Clamp01(Time / duration) : 0f;
@@ -454,9 +476,12 @@ namespace Emberhold.Gameplay.Workers
             Time += deltaTime;
             blend = Mathf.Min(1f, blend + deltaTime / blendSeconds);
             var time = WorkerAnimation.IsOneShot(Clip) ? Progress : Time;
-            var target = WorkerAnimation.Sample(Clip, time, motion);
-            Pose = blend >= 1f ? target : WorkerAnimation.Blend(from, target, Mathf.SmoothStep(0f, 1f, blend), motion.Height);
-            return Pose;
+            WorkerAnimation.Sample(Clip, time, motion, ref target);
+            if (blend >= 1f)
+                pose.CopyFrom(target);
+            else
+                WorkerAnimation.Blend(from, target, Mathf.SmoothStep(0f, 1f, blend), motion.Height, ref pose);
+            return pose;
         }
     }
 }

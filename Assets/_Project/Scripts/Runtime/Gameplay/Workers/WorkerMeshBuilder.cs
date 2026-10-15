@@ -36,7 +36,6 @@ namespace Emberhold.Gameplay.Workers
 
         internal static int Part(WorkerPart part) => (int)part;
 
-
         internal static WorkerPart Side(float side, WorkerPart left, WorkerPart right) => side < 0f ? left : right;
 
         private static FacetedMesh BuildFaceted(WorkerLook look, float height)

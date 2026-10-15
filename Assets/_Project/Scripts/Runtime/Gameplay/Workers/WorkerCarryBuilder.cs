@@ -108,6 +108,16 @@ namespace Emberhold.Gameplay.Workers
         /// </summary>
         public static Matrix4x4[] PathDown(WorkerCarry carry, float height)
         {
+            // Путь зависит только от ноши и роста: считаем один раз (анимация берёт его каждый кадр). Массив не менять.
+            if (Paths.TryGetValue((carry, height), out var cached))
+                return cached;
+            return Paths[(carry, height)] = BuildPath(carry, height);
+        }
+
+        private static readonly System.Collections.Generic.Dictionary<(WorkerCarry, float), Matrix4x4[]> Paths = new();
+
+        private static Matrix4x4[] BuildPath(WorkerCarry carry, float height)
+        {
             Matrix4x4 At(Vector3 position, Quaternion rotation) => Matrix4x4.TRS(position * height, rotation, Vector3.one);
             if (carry != WorkerCarry.Log)
             {
@@ -141,7 +151,7 @@ namespace Emberhold.Gameplay.Workers
         public static Vector2 BasketSideGrip(float height) => new Vector2(0.135f, 0.09f) * height;
 
         /// <summary>За что держит левая рука, в системе ноши: бревно — сбоку снаружи и чуть сверху, ближе к переднему концу.</summary>
-        public static Vector3 Grip(WorkerCarry carry, float height) => new Vector3(-LogRadius - 0.022f, 0.022f, 0.1f) * height;
+        public static Vector3 Grip(float height) => new Vector3(-LogRadius - 0.022f, 0.022f, 0.1f) * height;
 
         /// <summary>Куда отводить локоть, когда рука держит ношу: в системе рабочего, относительно точки хвата.</summary>
         public static Vector3 ElbowHint(float height) => new Vector3(-0.25f, -0.35f, -0.05f) * height;
@@ -273,7 +283,6 @@ namespace Emberhold.Gameplay.Workers
         {
             private readonly Mesh mesh;
             private readonly Vector3[] restVertices;
-            private readonly Vector3[] restNormals;
             private readonly Vector3[] vertices;
             private readonly bool straps;
 
@@ -293,7 +302,6 @@ namespace Emberhold.Gameplay.Workers
                     return;
                 mesh.MarkDynamic();
                 restVertices = mesh.vertices;
-                restNormals = mesh.normals;
                 vertices = new Vector3[restVertices.Length];
                 lines = new Vector3[4][];
                 var index = 0;
@@ -352,20 +360,23 @@ namespace Emberhold.Gameplay.Workers
             }
 
             /// <summary>
-            /// Обновить форму. loadToWorld — где ноша в мире (для единого вызова, лямкам не нужно); flatten — насколько
-            /// корзина на спине (1 — лямки на плечах, 0 — снята); deltaTime — шаг времени.
+            /// Обновить лямки. onBack — <see cref="WorkerPose.LoadOnBack"/>: 1 — корзина на спине, лямки на плечах;
+            /// 0 — снята, лямки втянуты. Пока onBack не меняется (корзину несут), сетка не трогается.
             /// </summary>
-            public void Apply(Matrix4x4 loadToWorld, float flatten, float deltaTime)
+            public void Apply(float onBack)
             {
-                if (!straps)
+                onBack = Mathf.Clamp01(onBack);
+                if (!straps || onBack == applied)
                     return;
-                var left = Mathf.Clamp01(flatten);
+                applied = onBack;
                 for (var v = 0; v < restVertices.Length; v++)
-                    vertices[v] = line[v] < 0 ? restVertices[v] : PointAlong(line[v], along[v] * left) + offset[v];
+                    vertices[v] = line[v] < 0 ? restVertices[v] : PointAlong(line[v], along[v] * onBack) + offset[v];
                 mesh.vertices = vertices;
-                mesh.normals = restNormals;
                 mesh.RecalculateBounds();
             }
+
+            /// <summary>С каким onBack сетка сейчас; NaN — ещё ни с каким.</summary>
+            private float applied = float.NaN;
         }
     }
 }

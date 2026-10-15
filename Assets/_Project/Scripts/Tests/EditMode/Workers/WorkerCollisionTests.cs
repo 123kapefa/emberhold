@@ -196,7 +196,7 @@ namespace Emberhold.Tests.EditMode.Workers
                 if (carry == WorkerCarry.None)
                     yield break;
                 var placed = Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one);
-                load.shape.Apply(placed, pose.LoadBend, 0f);
+                load.shape.Apply(pose.LoadOnBack);
                 var points = load.mesh.vertices.Distinct().Select(v => placed.MultiplyPoint3x4(v)).ToArray();
                 // Кулаки, которые держат ношу (бревно — левый, корзину — оба), обхватывают её — это не прорыв.
                 var fists = new Vector3[WorkerPose.PartCount];
