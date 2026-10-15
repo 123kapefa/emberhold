@@ -151,8 +151,6 @@ namespace Emberhold.Gameplay.Workers
             Crouch(ref pose, crouch);
             if (WorkerCarryBuilder.HeldWhileCarried(carry))
                 pose.Add(WorkerPart.Torso, new Vector3(0f, 0f, -3f * (1f - crouch)));
-            else
-                return PutBasketDown(t, pose, carry, height);
 
             // Ноша идёт по пути, который обходит тело: плечо → … → земля, за первые 0,6 анимации, каждый отрезок плавно.
             var shoulder = WorkerSkeleton.Torso(pose, height) * WorkerCarryBuilder.ShoulderAnchor(carry, height);
@@ -161,40 +159,44 @@ namespace Emberhold.Gameplay.Workers
             var segment = Mathf.Min(path.Length - 1, Mathf.FloorToInt(travel));
             var from = segment == 0 ? shoulder : path[segment - 1];
             var load = Blend(from, path[segment], Mathf.SmoothStep(0f, 1f, travel - segment));
-            // Мешок выпрямляется, пока его снимают с плеча.
-            pose.LoadBend = segment == 0 ? 1f - Mathf.SmoothStep(0f, 1f, travel) : 0f;
+            // Лямки корзины втягиваются в начале, пока она едва сдвинулась со спины.
+            pose.LoadBend = segment == 0 ? 1f - Mathf.SmoothStep(0f, 1f, travel * 2.5f) : 0f;
             pose.LoadPosition = load.GetColumn(3);
             pose.LoadRotation = load.rotation;
             // Рука держит ношу до 0,7, потом отпускает и уходит в покой. Без ноши — только присел.
             var hold = t < 0.65f ? 1f : 1f - Mathf.SmoothStep(0f, 1f, (t - 0.65f) / 0.15f);
             if (motion.Carry == WorkerCarry.None)
                 hold = 0f;
-            HoldLoad(ref pose, carry, load, height, hold);
+            if (WorkerCarryBuilder.HeldWhileCarried(carry))
+                HoldLoad(ref pose, carry, load, height, hold);
+            else
+            {
+                // Со спины корзину разворачивают на левой лямке; левая рука подхватывает её у левого бока,
+                // правая — когда она уже перед грудью.
+                var left = hold * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.08f, 0.17f, t));
+                var right = hold * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.42f, 0.5f, t));
+                HoldBasket(ref pose, load, height, left, right);
+            }
             return pose;
         }
 
         /// <summary>
-        /// Снять заплечную корзину без рук: присесть с корзиной на спине, пока её дно не опустится к земле, оставить её
-        /// стоять за спиной (лямки соскальзывают с плеч) и выпрямиться. pose — уже с приседом.
+        /// Руки держат корзину за бока у края: левая слева, правая справа (по сторонам рабочего); локти вниз и наружу.
+        /// Пока корзина сбоку слева, левая рука держит её за ближний к телу бок — иначе рука ложится поперёк корзины.
         /// </summary>
-        private static WorkerPose PutBasketDown(float t, WorkerPose pose, WorkerCarry carry, float height)
+        private static void HoldBasket(ref WorkerPose pose, Matrix4x4 load, float height, float left, float right)
         {
-            var anchor = WorkerCarryBuilder.ShoulderAnchor(carry, height);
-            var onBack = WorkerSkeleton.Torso(pose, height) * anchor;
-            // Где корзина окажется при полном приседе — там, чуть дальше за спиной (чтобы подол на неё не лёг), она и встаёт на землю.
-            var deep = WorkerPose.Rest();
-            Relaxed(ref deep);
-            Crouch(ref deep, 1f);
-            Vector3 low = (WorkerSkeleton.Torso(deep, height) * anchor).GetColumn(3);
-            var ground = WorkerCarryBuilder.Ground(carry, height);
-            var standing = Matrix4x4.TRS(new Vector3(low.x, ground.GetColumn(3).y, low.z - 0.14f * height), ground.rotation, Vector3.one);
-            var set = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.5f, 0.6f, t));
-            var load = Blend(onBack, standing, set);
-            pose.LoadPosition = load.GetColumn(3);
-            pose.LoadRotation = load.rotation;
-            // Сначала лямки соскальзывают с плеч (корзина ещё на спине), потом она встаёт на землю.
-            pose.LoadBend = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.38f, 0.5f, t));
-            return pose;
+            var side = WorkerCarryBuilder.BasketSideGrip(height);
+            Vector3 center = load.GetColumn(3);
+            var aside = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(-0.05f * height, -0.2f * height, center.x));
+            foreach (var (hand, weight) in new[] { (-1f, left), (1f, right) })
+            {
+                if (weight <= 0f)
+                    continue;
+                var x = hand < 0f ? Mathf.Lerp(-side.x, side.x, aside) : side.x;
+                var grip = load.MultiplyPoint3x4(Vector3.up * side.y) + new Vector3(x, 0f, 0f);
+                WorkerSkeleton.ReachArm(ref pose, hand, grip, grip + new Vector3(hand * 0.25f, -0.3f, 0f) * height, height, weight);
+            }
         }
 
         /// <summary>

@@ -21,8 +21,9 @@ namespace Emberhold.Gameplay.Workers
     /// на землю (<see cref="PathDown"/>, в системе рабочего), за что её держит левая рука (<see cref="Grip"/>, в системе ноши).
     /// Бревно лежит на левом плече вдоль хода, рука обхватывает его сбоку сверху. Корзина прижата к спине ниже капюшона
     /// и висит на двух лямках: от края корзины через плечи, по груди и под мышки, снизу короткие ремни от дна к бокам.
-    /// Руки при этом свободны; корзину снимают и надевают без рук — присев, ставят на землю за спиной
-    /// (<see cref="WorkerAnimation"/>). Носят только свободные рабочие (без роли). Единицы — блоки при росте height.
+    /// Руки при этом свободны. Снимают корзину через левое плечо: левая рука берёт её на спине, ведёт к левому боку
+    /// и вперёд к груди, правая подхватывает, и обеими руками корзину ставят на землю перед собой; поднимают в обратном
+    /// порядке. Носят только свободные рабочие (без роли). Единицы — блоки при росте height.
     /// </summary>
     public static class WorkerCarryBuilder
     {
@@ -101,15 +102,25 @@ namespace Emberhold.Gameplay.Workers
             : Matrix4x4.TRS((BasketOnBack - Vector3.up * Waist) * height, BasketTilt, Vector3.one);
 
         /// <summary>
-        /// Путь ноши с плеча на землю (без начальной точки): система рабочего, ноги в нуле. Бревно сначала уходит вперёд
-        /// и наружу с плеча, мимо поднятой руки, потом опускается вдоль левого бока. Последняя точка — на земле; у корзины
-        /// только она: где именно за спиной корзина встанет, решает присед. Поднять — тот же путь обратно.
+        /// Путь ноши с плеча или спины на землю (без начальной точки): система рабочего, ноги в нуле. Бревно сначала уходит
+        /// вперёд и наружу с плеча, мимо поднятой руки, потом опускается вдоль левого бока. Корзина — через левое плечо
+        /// к левому боку, вперёд к груди и вниз перед рабочим. Последняя точка — на земле. Поднять — тот же путь обратно.
         /// </summary>
         public static Matrix4x4[] PathDown(WorkerCarry carry, float height)
         {
             Matrix4x4 At(Vector3 position, Quaternion rotation) => Matrix4x4.TRS(position * height, rotation, Vector3.one);
             if (carry != WorkerCarry.Log)
-                return new[] { At(new Vector3(0f, BasketHalfHeight + 0.004f, -0.3f), Quaternion.identity) };
+            {
+                // Корзину снимают через левое плечо: она уходит к левому боку, оттуда вперёд к груди (лямками к рабочему)
+                // и опускается на землю перед ним.
+                return new[]
+                {
+                    At(new Vector3(-0.33f, 0.49f, -0.18f), Quaternion.Euler(0f, 90f, 0f)),
+                    At(new Vector3(-0.35f, 0.5f, 0.14f), Quaternion.Euler(0f, 135f, 0f)),
+                    At(new Vector3(0f, 0.45f, 0.33f), Quaternion.Euler(0f, 180f, 0f)),
+                    At(new Vector3(0f, BasketHalfHeight + 0.004f, 0.4f), Quaternion.Euler(0f, 180f, 0f)),
+                };
+            }
             var along = Quaternion.LookRotation(new Vector3(0.05f, 0.1f, 1f));
             var level = Quaternion.LookRotation(new Vector3(0.05f, 0f, 1f));
             return new[]
@@ -122,6 +133,12 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>Где ноша, положенная на землю перед рабочим: система рабочего, ноги в нуле.</summary>
         public static Matrix4x4 Ground(WorkerCarry carry, float height) => PathDown(carry, height)[^1];
+
+        /// <summary>
+        /// Где руки держат корзину: x — насколько в стороны от её середины (по сторонам рабочего), y — насколько выше
+        /// середины по её оси; блоки.
+        /// </summary>
+        public static Vector2 BasketSideGrip(float height) => new Vector2(0.135f, 0.09f) * height;
 
         /// <summary>За что держит левая рука, в системе ноши: бревно — сбоку снаружи и чуть сверху, ближе к переднему концу.</summary>
         public static Vector3 Grip(WorkerCarry carry, float height) => new Vector3(-LogRadius - 0.022f, 0.022f, 0.1f) * height;

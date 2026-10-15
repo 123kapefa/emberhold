@@ -198,13 +198,16 @@ namespace Emberhold.Tests.EditMode.Workers
                 var placed = Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one);
                 load.shape.Apply(placed, pose.LoadBend, 0f);
                 var points = load.mesh.vertices.Distinct().Select(v => placed.MultiplyPoint3x4(v)).ToArray();
-                // Кулак, который держит ношу, обхватывает её — это не прорыв.
-                const int hand = (int)WorkerPart.ForearmLeft;
-                var fist = matrices[hand].MultiplyPoint3x4(WorkerSkeleton.FistCenter(-1f, Height) - WorkerSkeleton.Pivot(WorkerPart.ForearmLeft, Height));
+                // Кулаки, которые держат ношу (бревно — левый, корзину — оба), обхватывают её — это не прорыв.
+                var fists = new Vector3[WorkerPose.PartCount];
+                foreach (var (part, side) in new[] { (WorkerPart.ForearmLeft, -1f), (WorkerPart.ForearmRight, 1f) })
+                    fists[(int)part] = matrices[(int)part].MultiplyPoint3x4(WorkerSkeleton.FistCenter(side, Height) - WorkerSkeleton.Pivot(part, Height));
+                bool Held(int part, Vector3 p) => (part == (int)WorkerPart.ForearmLeft || (part == (int)WorkerPart.ForearmRight && carry != WorkerCarry.Log)) &&
+                                                  Vector3.Distance(p, fists[part]) < 0.05f * Height;
                 foreach (var b in rigid)
                 {
                     var toB = matrices[b].inverse;
-                    var count = points.Count(p => grids[b].Deep(toB.MultiplyPoint3x4(p)) && !(b == hand && Vector3.Distance(p, fist) < 0.05f * Height));
+                    var count = points.Count(p => grids[b].Deep(toB.MultiplyPoint3x4(p)) && !Held(b, p));
                     if (count > 0)
                         yield return ($"{carry} в {(WorkerPart)b}", count);
                 }
