@@ -46,7 +46,7 @@ namespace Emberhold.Tests.EditMode.Workers
             try
             {
                 var body = new Body(parts, role);
-                foreach (var carry in Loads.Skip(1))
+                foreach (var carry in Loads.Skip(1).Append(WorkerCarry.Billet))
                 {
                     var mesh = WorkerCarryBuilder.Build(carry, Height);
                     loads[carry] = (mesh, new WorkerCarryBuilder.Shape(mesh, carry, Height));
@@ -62,8 +62,12 @@ namespace Emberhold.Tests.EditMode.Workers
                 }
 
                 var carried = role == WorkerRole.Free ? Loads : new[] { WorkerCarry.None };
+                // Рабочая анимация — только у своей роли: в руке нужный инструмент; у истопника в работе ещё полено.
+                bool Foreign(WorkerClip clip) => WorkerAnimation.RoleOf(clip) is { } owner && owner != role;
+                WorkerCarry[] LoadsIn(WorkerClip clip) => WorkerAnimation.RoleOf(clip) == null ? carried
+                    : new[] { clip == WorkerClip.Stoke ? WorkerCarry.Billet : WorkerCarry.None };
                 foreach (WorkerClip clip in Enum.GetValues(typeof(WorkerClip)))
-                foreach (var carry in carried)
+                foreach (var carry in Foreign(clip) ? new WorkerCarry[0] : LoadsIn(clip))
                 foreach (var speed in clip == WorkerClip.Carry ? new[] { 0f, 2.5f } : new[] { 2.5f })
                 {
                     // Ноша видна в любой анимации, пока рабочий что-то несёт.
@@ -71,11 +75,13 @@ namespace Emberhold.Tests.EditMode.Workers
                         continue;
                     var motion = WorkerMotion.For(look, Height, speed, 0.3f, carry);
                     var oneShot = WorkerAnimation.IsOneShot(clip);
-                    var count = clip == WorkerClip.Idle ? 29 : 11;
+                    var cycle = WorkerAnimation.WorkCycle(clip);
+                    var count = clip == WorkerClip.Idle ? 29 : cycle > 0f ? 25 : 11;
                     for (var k = 0; k < count; k++)
                     {
-                        // Стойка — 7 секунд, чтобы попали «живые» вставки: оглянуться, переступить.
-                        var time = oneShot ? k / 10f : clip == WorkerClip.Idle ? k * 0.25f : k * 0.13f;
+                        // Стойка — 7 секунд, чтобы попали «живые» вставки: оглянуться, переступить. Работа — весь цикл, чаще:
+                        // удары быстрые.
+                        var time = oneShot ? k / 10f : clip == WorkerClip.Idle ? k * 0.25f : cycle > 0f ? cycle * k / 24f : k * 0.13f;
                         Check($"{clip} {time:0.00}", WorkerAnimation.Sample(clip, time, motion), carry);
                     }
                 }
@@ -87,6 +93,11 @@ namespace Emberhold.Tests.EditMode.Workers
                 {
                     if (from == to || (to == WorkerClip.Sit && from != WorkerClip.Warm) ||
                         (from == WorkerClip.Sit && to is WorkerClip.PickUp or WorkerClip.Put or WorkerClip.Place))
+                        continue;
+                    // Работа роли — из стойки или ходьбы и обратно, без ноши (у истопника — с поленом).
+                    var work = WorkerAnimation.RoleOf(from) != null ? from : WorkerAnimation.RoleOf(to) != null ? to : (WorkerClip?)null;
+                    if (work is { } w && (Foreign(w) || (from == w ? to : from) is not (WorkerClip.Idle or WorkerClip.Walk) ||
+                                          carry != LoadsIn(w)[0] && carry != WorkerCarry.None))
                         continue;
                     var motion = WorkerMotion.For(look, Height, 2.5f, 0.3f, carry);
                     var a = WorkerAnimation.Sample(from, WorkerAnimation.IsOneShot(from) ? 1f : 0.4f, motion);

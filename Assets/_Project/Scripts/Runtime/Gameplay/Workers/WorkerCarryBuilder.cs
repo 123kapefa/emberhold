@@ -14,6 +14,8 @@ namespace Emberhold.Gameplay.Workers
         StoneBasket,
         /// <summary>Такая же корзина с травой и прочим сыпучим.</summary>
         GrassBasket,
+        /// <summary>Полено, которое истопник кладёт в огонь (<see cref="WorkerClip.Stoke"/>).</summary>
+        Billet,
     }
 
     /// <summary>
@@ -36,6 +38,10 @@ namespace Emberhold.Gameplay.Workers
 
         private const float LogRadius = 0.05f;
         private const float LogLength = 0.46f;
+
+        /// <summary>Полено истопника: радиус и длина, доли роста.</summary>
+        public const float BilletRadius = 0.028f;
+        private const float BilletLength = 0.2f;
 
         /// <summary>Пояс — точка вращения корпуса, доли роста: от неё считаются места ноши на плече.</summary>
         private const float Waist = 0.515f;
@@ -163,6 +169,9 @@ namespace Emberhold.Gameplay.Workers
                     Basket(mesh);
                     GrassHeap(mesh, scale);
                     break;
+                case WorkerCarry.Billet:
+                    Billet(mesh);
+                    break;
             }
             mesh.Transform = Matrix4x4.identity;
             return mesh.ToMesh(name);
@@ -184,6 +193,18 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>Верх насыпи в корзине: ниже края, чтобы изнутри была видна стенка и кромка, доли роста.</summary>
         private const float FillTop = 0.075f;
+
+        private static void Billet(FacetedMesh mesh)
+        {
+            // Полено вдоль +Z, светлые торцы.
+            var back = Vector3.back * (BilletLength * 0.5f);
+            var front = Vector3.forward * (BilletLength * 0.5f);
+            mesh.AddTube(new[] { back, front }, new[] { Vector2.one * BilletRadius, Vector2.one * (BilletRadius * 0.92f) }, 7, Paint(Bark));
+            mesh.AddTube(new[] { back + Vector3.back * 0.003f, back + Vector3.forward * 0.003f }, new[] { Vector2.one * (BilletRadius * 0.85f), Vector2.one * (BilletRadius * 0.85f) },
+                7, Paint(WoodLight));
+            mesh.AddTube(new[] { front + Vector3.back * 0.003f, front + Vector3.forward * 0.003f }, new[] { Vector2.one * (BilletRadius * 0.8f), Vector2.one * (BilletRadius * 0.8f) },
+                7, Paint(WoodLight));
+        }
 
         /// <summary>Пустая корзина: тонкие плетёные стенки (внутри темнее), полосы плетения, тонкий обод по краю, лямки.</summary>
         private static void Basket(FacetedMesh mesh)

@@ -209,7 +209,8 @@ namespace Emberhold.Editor.Workers
             foreach (var figure in figures)
             {
                 var motion = WorkerMotion.For(figure.Look, Height, MoveSpeed, figure.Seed, carry);
-                var pose = WorkerAnimation.Sample(Clip, oneShot ? sampleTime : time, motion);
+                var figureClip = ClipFor(Clip, figure.Look.Role);
+                var pose = WorkerAnimation.Sample(figureClip, oneShot ? sampleTime : time, motion);
                 WorkerSkeleton.Evaluate(pose, Height, matrices);
                 var place = Matrix4x4.Translate(figure.Offset);
                 for (var k = 0; k < figure.Parts.Length; k++)
@@ -225,7 +226,8 @@ namespace Emberhold.Editor.Workers
                     if (Wireframe && figure.Skins[k] == null)
                         preview.DrawMesh(figure.Edges[k], place * matrix * Matrix4x4.Scale(Vector3.one * 1.004f), wireMaterial, 0);
                 }
-                if (carryShape != null)
+                // Полено — только у истопника в его работе, у остальных в ряду его нет.
+                if (carryShape != null && figureClip == Clip)
                 {
                     // Сетка мешка одна на витрину: качание считаем по первой фигуре, остальные рисуют ту же форму.
                     if (figure == figures[0])
@@ -239,7 +241,17 @@ namespace Emberhold.Editor.Workers
             preview.Render(true);
         }
 
-        private WorkerCarry CarryShown() => Clip is WorkerClip.Carry or WorkerClip.PickUp or WorkerClip.Put ? Carry : WorkerCarry.None;
+        private WorkerCarry CarryShown() => Clip switch
+        {
+            WorkerClip.Carry or WorkerClip.PickUp or WorkerClip.Put => Carry,
+            // У истопника в работе — полено.
+            WorkerClip.Stoke => WorkerCarry.Billet,
+            _ => WorkerCarry.None,
+        };
+
+        /// <summary>Что играет фигура: рабочую анимацию — только своя роль (у неё нужный инструмент), остальные стоят.</summary>
+        private static WorkerClip ClipFor(WorkerClip clip, WorkerRole role) =>
+            WorkerAnimation.RoleOf(clip) is { } owner && owner != role ? WorkerClip.Idle : clip;
 
         private void DestroyMeshes()
         {

@@ -167,6 +167,37 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void RoleWork_LoopsAndSwingsTool()
+        {
+            // У каждой рабочей анимации своя роль и цикл; поза в конце цикла та же, что в начале, а правая рука
+            // за цикл поднимается (замах) заметно выше, чем опускается (удар).
+            var matrices = new Matrix4x4[WorkerPose.PartCount];
+            foreach (var (clip, role) in new[] { (WorkerClip.Chop, WorkerRole.Woodcutter), (WorkerClip.Dig, WorkerRole.Digger),
+                         (WorkerClip.Hammer, WorkerRole.Builder), (WorkerClip.Stoke, WorkerRole.Stoker) })
+            {
+                Assert.That(WorkerAnimation.RoleOf(clip), Is.EqualTo(role), $"{clip}: роль");
+                var cycle = WorkerAnimation.WorkCycle(clip);
+                Assert.That(cycle, Is.GreaterThan(1f), $"{clip}: цикл");
+                var motion = WorkerMotion.For(Look(role), Height, 0f, 0f);
+                var start = WorkerAnimation.Sample(clip, 0f, motion);
+                var end = WorkerAnimation.Sample(clip, cycle, motion);
+                for (var i = 0; i < WorkerPose.PartCount; i++)
+                    Assert.That(Vector3.Distance(start.Angles[i], end.Angles[i]), Is.LessThan(0.5f), $"{clip}: цикл замкнут ({(WorkerPart)i})");
+                var low = float.MaxValue;
+                var high = float.MinValue;
+                for (var k = 0; k < 40; k++)
+                {
+                    WorkerSkeleton.Evaluate(WorkerAnimation.Sample(clip, cycle * k / 40f, motion), Height, matrices);
+                    var fist = matrices[(int)WorkerPart.ForearmRight].MultiplyPoint3x4(
+                        WorkerSkeleton.FistCenter(1f, Height) - WorkerSkeleton.Pivot(WorkerPart.ForearmRight, Height));
+                    low = Mathf.Min(low, fist.y);
+                    high = Mathf.Max(high, fist.y);
+                }
+                Assert.That(high - low, Is.GreaterThan(0.12f * Height), $"{clip}: рука с инструментом ходит");
+            }
+        }
+
+        [Test]
         public void Animator_BlendsBetweenClips_AndOneShotsFinish()
         {
             var animator = new WorkerAnimator();

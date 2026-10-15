@@ -135,6 +135,9 @@ namespace Emberhold.Editor.Workers
                 {
                     clip = newClip;
                     preview.Time = 0f;
+                    // Рабочая анимация роли — сразу у этой роли: инструмент в руке только у неё.
+                    if (WorkerAnimation.RoleOf(clip) is { } owner)
+                        role = owner;
                 }
                 if (GUILayout.Button(playing ? "❚❚" : "▶", EditorStyles.toolbarButton, GUILayout.Width(26f)))
                     playing = !playing;
