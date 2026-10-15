@@ -24,8 +24,9 @@ namespace Emberhold.Tests.PlayMode.Building
             Assert.That(editor.enabled, Is.True);
             var view = Object.FindAnyObjectByType<VoxelWorldView>();
 
-            // Блок на поверхности в центре долины — тот, в который попадает луч сверху.
-            Assert.That(Physics.Raycast(new Vector3(0.5f, 200f, 0.5f), Vector3.down, out var raycast, 400f, Layers.GroundMask), Is.True);
+            // Блок на поверхности у центра долины — тот, в который попадает луч сверху на ровном месте.
+            var origin = FlatGroundNearCenter(view);
+            Assert.That(Physics.Raycast(origin, Vector3.down, out var raycast, 400f, Layers.GroundMask), Is.True);
             var local = view.transform.InverseTransformPoint(raycast.point);
             var normal = view.transform.InverseTransformDirection(raycast.normal);
             Assert.That(BlockPicking.TryPick(view.World, local, normal, out var hit), Is.True);
@@ -49,7 +50,7 @@ namespace Emberhold.Tests.PlayMode.Building
             Assert.That(view.World.DirtyCount, Is.Zero, "Меш перестроен в том же кадре");
 
             // Луч теперь попадает ниже: коллайдер чанка обновился.
-            Assert.That(Physics.Raycast(new Vector3(0.5f, 200f, 0.5f), Vector3.down, out var after, 400f, Layers.GroundMask), Is.True);
+            Assert.That(Physics.Raycast(origin, Vector3.down, out var after, 400f, Layers.GroundMask), Is.True);
             Assert.That(after.point.y, Is.LessThan(raycast.point.y));
 
             // У каждого чанка постоянный набор подмешей и материалов, сколько бы раз его ни перестраивали.
@@ -59,6 +60,31 @@ namespace Emberhold.Tests.PlayMode.Building
                 Assert.That(chunk.GetComponent<MeshRenderer>().sharedMaterials.Length, Is.EqualTo(subMeshes), chunk.name);
                 Assert.That(subMeshes, Is.EqualTo(Emberhold.World.Voxels.BlockMaterials.Count - 1), chunk.name);
             }
+        }
+
+        /// <summary>
+        /// Точка над ровной землёй не дальше 3 блоков от центра долины, в свете костра:
+        /// верхний блок столбца целый, луч попадает в его верхнюю грань.
+        /// </summary>
+        private static Vector3 FlatGroundNearCenter(VoxelWorldView view)
+        {
+            for (var r = 0; r <= 3; r++)
+            for (var dz = -r; dz <= r; dz++)
+            for (var dx = -r; dx <= r; dx++)
+            {
+                if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dz)) != r)
+                    continue;
+                var origin = new Vector3(dx + 0.5f, 200f, dz + 0.5f);
+                if (!Physics.Raycast(origin, Vector3.down, out var ground, 400f, Layers.GroundMask))
+                    continue;
+                var local = view.transform.InverseTransformPoint(ground.point);
+                var column = new Vector3Int(Mathf.FloorToInt(local.x), 0, Mathf.FloorToInt(local.z));
+                for (column.y = view.World.SizeInBlocks.y - 1; column.y > 0 && view.World.GetBlock(column).IsAir; column.y--) { }
+                if (view.World.GetBlock(column).Shape.IsFull && Mathf.Abs(local.y - (column.y + 1)) < 1e-3f)
+                    return origin;
+            }
+            Assert.Fail("Нет ровной земли у центра долины");
+            return default;
         }
 
         [UnityTest]

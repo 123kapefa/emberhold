@@ -228,7 +228,7 @@ namespace Emberhold.World.Trees
                 var surface = world.Surface;
                 if (surface != null && surface.IsNatural(x, z) && y <= surface.TopY(x, z) && surface.IsRocky(x, z))
                     material = BlockMaterials.Stone;
-                if (material != BlockMaterials.Grass && !(onStone && material == BlockMaterials.Stone))
+                if (material != BlockMaterials.Grass && !(onStone && (material == BlockMaterials.Stone || material == BlockMaterials.Cliff)))
                     return false;
                 cell = new Vector3Int(x, y + 1, z);
                 return true;

@@ -23,6 +23,9 @@ namespace Emberhold.World.Generation
 
         public readonly List<CampaignLocationShape> Locations = new();
         public readonly List<CampaignGorgeShape> Gorges = new();
+
+        /// <summary>Высокие горы над хребтом: отдельные пики и гребни выше <see cref="CampaignRidge.MaxHeight"/>.</summary>
+        public readonly List<CampaignPeakShape> Peaks = new();
     }
 
     /// <summary>Горный хребет вокруг локаций: высота гребней, граница травы и профиль (террасы, скалы, материалы, лес).</summary>
@@ -35,10 +38,23 @@ namespace Emberhold.World.Generation
         public float MaxHeight;
 
         /// <summary>
+        /// Высота вершин горной цепи в блоках. Если выше <see cref="MaxHeight"/>, хребет — горная цепь: острые гребни
+        /// с долинами между ними, у краёв карты (в полосе от края) и в горных массивах гребни встают до этой высоты,
+        /// в глубине — до MaxHeight. Иначе хребет — неровное плато от MinHeight до MaxHeight.
+        /// </summary>
+        public float PeakHeight;
+
+        /// <summary>
         /// Ниже этой высоты (в блоках) склоны хребта и ущелий покрыты травой, выше — материалами профиля
         /// хребта (камень). Граница гуляет по шуму на несколько блоков. 0 — трава не растёт.
         /// </summary>
         public float GrassLine;
+
+        /// <summary>
+        /// Горы хребта из скалы (<see cref="TerrainMaterials.Mountain"/>): под травой и землёй склонов — скала до дна,
+        /// каменные места — скала целиком. Скала не копается, поэтому хребет и стены котловин не прорыть.
+        /// </summary>
+        public bool Cliff;
 
         public TerrainProfileParameters Profile;
         public ForestMix Forest;
@@ -120,5 +136,30 @@ namespace Emberhold.World.Generation
 
         /// <summary>Насколько линия уходит в сторону между точками, в блоках.</summary>
         public float Wiggle;
+    }
+
+    /// <summary>
+    /// Высокая гора над хребтом: одна точка — острый пик, несколько — гребень по ломаной через них.
+    /// Склоны вогнутые, к вершине сходятся остро, по граням — скальные выступы. Гора поднимает только хребет:
+    /// котловины локаций и ущелья вырезаются из неё так же, как из хребта, и дно у них остаётся своим.
+    /// </summary>
+    public struct CampaignPeakShape
+    {
+        public string Name;
+
+        /// <summary>Вершина или линия гребня в блоках сетки мира.</summary>
+        public Vector2[] Points;
+
+        /// <summary>Высота вершины в блоках. Вдоль гребня она опускается в седловинах и между жандармами, тем глубже, чем больше <see cref="Teeth"/>.</summary>
+        public float Height;
+
+        /// <summary>Радиус подножия в блоках: на таком расстоянии от вершины гора сходит в хребет.</summary>
+        public float Radius;
+
+        /// <summary>
+        /// Неровность кромки гребня, 0..1: 0 — кромка почти ровная, без жандармов; больше — выше острые жандармы
+        /// со сколами (при 1 кромка между ними до 16 блоков ниже их вершин) и глубже седловины.
+        /// </summary>
+        public float Teeth;
     }
 }

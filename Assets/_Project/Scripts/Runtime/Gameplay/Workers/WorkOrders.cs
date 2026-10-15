@@ -176,7 +176,7 @@ namespace Emberhold.Gameplay.Workers
                 return false;
             var current = world.GetBlock(order.Cell);
             if (order.Kind == WorkKind.Dig)
-                return !current.IsAir;
+                return !current.IsAir && BlockMaterials.IsBreakable(current.Material);
             if (!order.FillsExisting)
                 return current.IsAir;
             return !current.IsAir && current.Material == order.Block.Material && !current.Shape.IsCatalog && !current.Shape.IsFull;

@@ -18,8 +18,12 @@ namespace Emberhold.World.Generation
         [SerializeField] private float ridgeMinHeight = 36f;
         [Tooltip("Самые высокие гребни, в блоках.")]
         [SerializeField] private float ridgeMaxHeight = 46f;
+        [Tooltip("Высота вершин горной цепи хребта у краёв карты и в горных массивах, в блоках. Не выше «самых высоких гребней» — хребет ровный, без цепи вершин.")]
+        [SerializeField] private float ridgePeakHeight;
         [Tooltip("Ниже этой высоты склоны хребта и ущелий травяные, выше — камень профиля хребта. 0 — без травы.")]
         [SerializeField] private float ridgeGrassLine = 30f;
+        [Tooltip("Горы хребта из скалы, которая не копается: под травой склонов скала до самого дна.")]
+        [SerializeField] private bool ridgeCliff = true;
         [Tooltip("Профиль хребта и склонов ущелий: террасы, скалы, материалы, лес. Пусто — как у долины по умолчанию.")]
         [SerializeField] private TerrainProfile ridgeProfile;
 
@@ -30,8 +34,23 @@ namespace Emberhold.World.Generation
         [SerializeField] private List<Location> locations = new();
         [SerializeField] private List<Gorge> gorges = new();
 
+        [Header("Высокие горы")]
+        [Tooltip("Пики и гребни выше хребта. Не помещаются в мир — срезаются по его высоте.")]
+        [SerializeField] private List<Peak> peaks = new();
+        [Tooltip("Выше этой высоты (в блоках) скала гор под снегом; граница гуляет по шуму, на крутых гранях снега нет.")]
+        [SerializeField] private float snowLine = 54f;
+        [Tooltip("Граница леса в блоках: выше неё деревья не растут; граница гуляет по шуму на несколько блоков.")]
+        [SerializeField] private float treeLine = 46f;
+
         public IReadOnlyList<Location> Locations => locations;
         public IReadOnlyList<Gorge> Gorges => gorges;
+        public IReadOnlyList<Peak> Peaks => peaks;
+
+        /// <summary>Снеговая линия в блоках: выше неё скала гор рисуется под снегом.</summary>
+        public float SnowLine => snowLine;
+
+        /// <summary>Граница леса в блоках: выше неё деревья не растут.</summary>
+        public float TreeLine => treeLine;
 
         /// <summary>
         /// Схема для генератора. Ущелье с неизвестной локацией на конце пропускается с предупреждением.
@@ -45,7 +64,9 @@ namespace Emberhold.World.Generation
                 {
                     MinHeight = ridgeMinHeight,
                     MaxHeight = Mathf.Max(ridgeMinHeight, ridgeMaxHeight),
+                    PeakHeight = ridgePeakHeight,
                     GrassLine = ridgeGrassLine,
+                    Cliff = ridgeCliff,
                     Profile = ridgeProfile != null ? ridgeProfile.Parameters : TerrainProfileParameters.Valley,
                     Forest = ridgeProfile != null ? ridgeProfile.Forest : null,
                     GrassTint = ridgeProfile != null ? ridgeProfile.GrassTint : Color.white,
@@ -67,7 +88,36 @@ namespace Emberhold.World.Generation
                 }
                 layout.Gorges.Add(gorge.ToShape(from, to));
             }
+            foreach (var peak in peaks)
+                if (peak.points != null && peak.points.Length > 0)
+                    layout.Peaks.Add(peak.ToShape());
             return layout;
+        }
+
+        [Serializable]
+        public sealed class Peak
+        {
+            [Tooltip("Название, как в дизайн-документе.")]
+            public string name;
+            [Tooltip("Вершина (одна точка) или линия гребня (несколько) в блоках сетки мира (X — восток, Y здесь — Z, север).")]
+            public Vector2[] points = Array.Empty<Vector2>();
+            [Tooltip("Высота вершины в блоках.")]
+            public float height = 64f;
+            [Tooltip("Радиус подножия в блоках: на таком расстоянии от вершины гора сходит в хребет.")]
+            [Min(1f)]
+            public float radius = 35f;
+            [Tooltip("Неровность кромки гребня: 0 — почти ровная, больше — выше острые жандармы со сколами и глубже седловины.")]
+            [Range(0f, 1f)]
+            public float teeth;
+
+            public CampaignPeakShape ToShape() => new()
+            {
+                Name = name,
+                Points = points,
+                Height = height,
+                Radius = Mathf.Max(radius, 1f),
+                Teeth = teeth,
+            };
         }
 
         [Serializable]

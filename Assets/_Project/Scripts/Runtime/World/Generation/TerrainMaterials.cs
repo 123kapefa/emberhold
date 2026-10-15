@@ -37,6 +37,21 @@ namespace Emberhold.World.Generation
             Bed = BlockMaterials.Dirt,
         };
 
+        /// <summary>
+        /// Те же материалы для гор хребта: глубже поверхности — скала до самого дна, камень везде становится скалой.
+        /// Трава и земля сверху (проплешины на склонах) остаются: их можно снять, а под ними скала.
+        /// </summary>
+        public TerrainMaterials Mountain() => new()
+        {
+            Surface = ToCliff(Surface),
+            Subsurface = ToCliff(Subsurface),
+            SubsurfaceDepth = SubsurfaceDepth,
+            Deep = BlockMaterials.Cliff,
+            Bed = ToCliff(Bed),
+        };
+
+        private static byte ToCliff(byte material) => material == BlockMaterials.Stone ? BlockMaterials.Cliff : material;
+
         /// <summary>Материал сплошного блока на глубине depth под поверхностью (1 — сразу под ней).</summary>
         public byte Below(int depth) => depth <= SubsurfaceDepth ? Subsurface : Deep;
 

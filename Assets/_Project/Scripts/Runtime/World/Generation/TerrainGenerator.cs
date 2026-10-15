@@ -137,6 +137,8 @@ namespace Emberhold.World.Generation
         {
             var size = world.SizeInBlocks;
             var heights = CampaignHeights.Build(layout, seed, size.x, size.z, size.y - 2);
+            if (layout.Ridge.Cliff)
+                MarkCliff(heights);
             world.GrassTint = new GroundTint(heights.GrassTints, heights.GrassKinds);
             var random = new System.Random(seed);
             var cliffOffset = new Vector2((float)random.NextDouble() * 10000f, (float)random.NextDouble() * 10000f);
@@ -185,17 +187,55 @@ namespace Emberhold.World.Generation
                 var p = profiles[owner];
                 materials[x, z] = p.Materials;
                 bedLevels[x, z] = Mathf.RoundToInt(p.WaterLevel * BlockShape.MaxHeight);
-                if (owner != CampaignHeights.Ridge || layout.Ridge.GrassLine <= 0f)
+                if (owner != CampaignHeights.Ridge)
                     continue;
-                var top = (corners[x, z] + corners[x + 1, z] + corners[x, z + 1] + corners[x + 1, z + 1]) * 0.25f / BlockShape.MaxHeight;
-                var line = layout.Ridge.GrassLine + (grassNoise.Fbm(x * 0.05f, z * 0.05f, 3) - 0.5f) * 8f;
-                if (top < line)
-                    materials[x, z] = grass;
+                if (layout.Ridge.GrassLine > 0f)
+                {
+                    var top = (corners[x, z] + corners[x + 1, z] + corners[x, z + 1] + corners[x + 1, z + 1]) * 0.25f / BlockShape.MaxHeight;
+                    var line = layout.Ridge.GrassLine + (grassNoise.Fbm(x * 0.05f, z * 0.05f, 3) - 0.5f) * 8f;
+                    if (top < line)
+                        materials[x, z] = grass;
+                }
+                if (layout.Ridge.Cliff)
+                    materials[x, z] = materials[x, z].Mountain();
             }
             CornerTerrain.Fill(world, corners, materials, bedLevels, profiles[0].CliffEdgeRounding,
                 profiles[0].CliffFootRounding);
             return heights;
         }
+
+        /// <summary>
+        /// Скала и снег в углах (альфа смеси видов травы, <see cref="GroundTint"/>): 0 у локаций, у хребта от 1 до 2.
+        /// Доля скалы — альфа до 1: по ней шейдер земли рисует гладкую землю хребта скалой, а не камнем.
+        /// Сверх 1 — вогнутость рельефа (<see cref="CliffSnowBias"/>): в кулуарах снег спускается ниже, на рёбрах
+        /// его выдувает и снеговая линия выше.
+        /// </summary>
+        private static void MarkCliff(CampaignHeights heights)
+        {
+            var h = heights.Heights;
+            var sizeX = h.GetLength(0);
+            var sizeZ = h.GetLength(1);
+            for (var z = 0; z < sizeZ; z++)
+            for (var x = 0; x < sizeX; x++)
+            {
+                if (heights.Owners[x, z] != CampaignHeights.Ridge)
+                {
+                    heights.GrassKinds[x, z].a = 0f;
+                    continue;
+                }
+                const int step = 3;
+                var around = (h[Math.Max(x - step, 0), z] + h[Math.Min(x + step, sizeX - 1), z]
+                              + h[x, Math.Max(z - step, 0)] + h[x, Math.Min(z + step, sizeZ - 1)]) * 0.25f;
+                heights.GrassKinds[x, z].a = CliffSnowBias(around - h[x, z]);
+            }
+        }
+
+        /// <summary>
+        /// Альфа смеси видов травы на хребте по вогнутости (средняя высота соседей минус своя, в блоках):
+        /// 1,5 на ровном склоне, к 2 в кулуаре, к 1 на ребре. Шейдер берёт долю скалы как saturate(a),
+        /// а сдвиг снеговой линии как (a − 1,5) · 2.
+        /// </summary>
+        public static float CliffSnowBias(float concavity) => 1.5f + 0.5f * Mathf.Clamp(concavity / 2f, -1f, 1f);
 
         /// <summary>
         /// Карта кампании с гладкой поверхностью (<see cref="TerrainSurface"/>): высоты идут в поверхность как есть,
@@ -266,6 +306,8 @@ namespace Emberhold.World.Generation
                     materials[x, z] = p.Materials.Surface == BlockMaterials.Stone ? p.Materials : rock;
                 else
                     materials[x, z] = p.Materials.Surface == BlockMaterials.Stone ? grass : p.Materials;
+                if (layout.Ridge.Cliff && heights.ColumnOwner(x, z) == CampaignHeights.Ridge)
+                    materials[x, z] = materials[x, z].Mountain();
             }
             CornerTerrain.FillSmooth(world, corners, materials, bedLevels).SetRock(rockWeights);
         }

@@ -54,7 +54,7 @@ namespace Emberhold.World.Editing
 
         /// <summary>
         /// Ударить блок на damage ХП. Возвращает true, если блок разрушен и убран из мира.
-        /// Удар по воздуху и блокам вне мира ничего не делает.
+        /// Удар по воздуху, блокам вне мира, скале и коренной породе ничего не делает.
         /// </summary>
         public bool Hit(VoxelWorld world, Vector3Int block, float damage)
         {
@@ -66,6 +66,8 @@ namespace Emberhold.World.Editing
                 Forget(block);
                 return false;
             }
+            if (!BlockMaterials.IsBreakable(current.Material))
+                return false;
 
             var value = Taken(block) + damage;
             Version++;

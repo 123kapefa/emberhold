@@ -25,7 +25,7 @@ namespace Emberhold.Tests.PlayMode.World
 
             var view = Object.FindAnyObjectByType<VoxelWorldView>();
             Assert.That(view.World, Is.Not.Null);
-            Assert.That(view.World.SizeInBlocks, Is.EqualTo(new Vector3Int(512, 48, 512)));
+            Assert.That(view.World.SizeInBlocks, Is.EqualTo(new Vector3Int(512, 80, 512)));
             Assert.That(view.World.DirtyCount, Is.Zero);
 
             // Берёзовая долина (центр 112, 102) — дно на 14 блоках, хребет рядом выше 30.

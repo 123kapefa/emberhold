@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.CampaignMap
   ridgeMinHeight: 36
   ridgeMaxHeight: 46
+  ridgePeakHeight: 68
   ridgeGrassLine: 30
   smoothSurface: 1
   ridgeProfile: {fileID: 11400000, guid: e1b4646b657448c9bfbd8144d1f15603, type: 2}
@@ -59,8 +60,8 @@ MonoBehaviour:
     grassKind: 0
   - id: plain
     name: Речная пойма
-    center: {x: 86, y: 300}
-    radius: {x: 60, y: 46}
+    center: {x: 98, y: 300}
+    radius: {x: 56, y: 46}
     profile: {fileID: 11400000, guid: 66133786c0e64bc68785d5e5f2a8cafb, type: 2}
     floorHeight: 7.5
     rise: 0
@@ -359,8 +360,8 @@ MonoBehaviour:
     to: cedar
     waypoints:
     - {x: 472, y: 140}
-    - {x: 490, y: 200}
-    - {x: 484, y: 268}
+    - {x: 476, y: 200}
+    - {x: 474, y: 268}
     - {x: 478, y: 316}
     widthStart: 10
     widthEnd: 10
@@ -368,3 +369,76 @@ MonoBehaviour:
     heightEnd: 25
     bump: 9
     wiggle: 18
+  peaks:
+  - name: Центральный пик
+    points:
+    - {x: 256, y: 256}
+    height: 70
+    radius: 36
+    teeth: 0
+  - name: Большой пик
+    points:
+    - {x: 311, y: 281}
+    height: 78
+    radius: 34
+    teeth: 0
+  - name: Зубчатый гребень
+    points:
+    - {x: 268, y: 261}
+    - {x: 284, y: 268}
+    - {x: 303, y: 277}
+    height: 72
+    radius: 22
+    teeth: 0.7
+  - name: Хребет у маяка
+    points:
+    - {x: 300, y: 482}
+    - {x: 482, y: 482}
+    - {x: 484, y: 400}
+    height: 70
+    radius: 26
+    teeth: 0.7
+  - name: Пик маяка
+    points:
+    - {x: 484, y: 484}
+    height: 76
+    radius: 32
+    teeth: 0
+  - name: Северный пик
+    points:
+    - {x: 372, y: 484}
+    height: 72
+    radius: 30
+    teeth: 0
+  - name: Западный пик
+    points:
+    - {x: 18, y: 160}
+    height: 72
+    radius: 30
+    teeth: 0
+  - name: Северо-западный пик
+    points:
+    - {x: 26, y: 486}
+    height: 74
+    radius: 30
+    teeth: 0
+  - name: Южный пик
+    points:
+    - {x: 250, y: 18}
+    height: 72
+    radius: 30
+    teeth: 0
+  - name: Юго-восточный пик
+    points:
+    - {x: 486, y: 24}
+    height: 74
+    radius: 30
+    teeth: 0
+  - name: Восточный пик
+    points:
+    - {x: 502, y: 205}
+    height: 72
+    radius: 26
+    teeth: 0
+  snowLine: 54
+  treeLine: 46
