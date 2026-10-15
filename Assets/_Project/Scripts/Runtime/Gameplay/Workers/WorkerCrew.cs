@@ -293,7 +293,7 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Задачи топлива: у огня, в котором помещается хотя бы одно полено, — задача принести до FuelPerTrip поленьев.
+        /// Задачи топлива: у огня, в котором помещается хотя бы одно полено, — задача принести одно полено (одна ходка).
         /// Ещё никем не взятая задача снимается, если огонь успели накормить. Задача огня, который погасили насовсем
         /// (выключен или удалён: тогда он и из зоны уходит) или сдвинули, снимается, даже если её уже несут: ноша остаётся на земле.
         /// </summary>
@@ -331,7 +331,7 @@ namespace Emberhold.Gameplay.Workers
                 }
                 target.Order = null;
                 if (space >= 1 && worldView.World.IsInsideBlocks(cell) && Orders.At(cell) == null)
-                    target.Order = Orders.AddFuel(cell, target, settings.FuelItemId, Mathf.Min(space, settings.FuelPerTrip));
+                    target.Order = Orders.AddFuel(cell, target, settings.FuelItemId, 1);
             }
         }
 

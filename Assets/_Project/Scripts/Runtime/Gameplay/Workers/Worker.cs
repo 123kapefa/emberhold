@@ -208,7 +208,8 @@ namespace Emberhold.Gameplay.Workers
 
         private void PickUp()
         {
-            if (!context.Items.Take(pile, Order.Needed - Order.Delivered, out var taken))
+            // За одну ходку — одна единица: одно бревно или одна полная корзина. Нужно больше — ещё ходки.
+            if (!context.Items.Take(pile, 1, out var taken))
             {
                 // Кучку забрал другой рабочий.
                 FetchItems();
