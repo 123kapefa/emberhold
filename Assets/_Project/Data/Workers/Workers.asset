@@ -18,10 +18,11 @@ MonoBehaviour:
   searchLimit: 4096
   reachUp: 3
   reachDown: 2
-  pickUpSeconds: 0.4
+  pickUpSeconds: 0.7
   buildSeconds: 1.5
   digHitSeconds: 1
   digHitDamage: 25
   fuelItemId: wood
   fuelPerTrip: 2
   idleSearchSeconds: 0.5
+  hoodColor: {r: 0.26, g: 0.36, b: 0.3, a: 1}
