@@ -165,7 +165,10 @@ namespace Emberhold.Gameplay.Workers
                 new[] { new Vector2(0.013f, 0.013f), new Vector2(0.006f, 0.006f) }, 5, Paint(Bark * 0.85f));
         }
 
-        /// <summary>Пустая корзина: плетёные стенки (внутри темнее), полосы плетения, толстый край, лямки.</summary>
+        /// <summary>Верх насыпи в корзине: ниже края, чтобы изнутри была видна стенка и кромка, доли роста.</summary>
+        private const float FillTop = 0.075f;
+
+        /// <summary>Пустая корзина: тонкие плетёные стенки (внутри темнее), полосы плетения, тонкий обод по краю, лямки.</summary>
         private static void Basket(FacetedMesh mesh)
         {
             var rings = new LoftRing[BasketWall.Length];
@@ -175,7 +178,12 @@ namespace Emberhold.Gameplay.Workers
             foreach (var (y, r) in new[] { (-0.085f, 0.093f), (-0.04f, 0.097f), (0.005f, 0.101f), (0.05f, 0.106f) })
                 mesh.AddLoft(new[] { new LoftRing(y, r + 0.004f, r * 0.77f + 0.004f), new LoftRing(y + 0.012f, r + 0.004f, r * 0.77f + 0.004f) }, 12,
                     Paint(Wicker * 0.78f), capStart: false, capEnd: false);
-            mesh.AddLoft(new[] { new LoftRing(0.112f, 0.122f, 0.095f), new LoftRing(0.132f, 0.122f, 0.095f) }, 12, Paint(Wicker * 0.85f));
+            // Обод по краю — тонкая полоса снаружи и изнутри, без крышки: корзина открыта сверху.
+            var top = BasketWall[^1];
+            mesh.AddLoft(new[] { new LoftRing(top.x - 0.014f, top.y + 0.004f, top.z + 0.004f), new LoftRing(top.x, top.y + 0.004f, top.z + 0.004f) }, 12,
+                Paint(Wicker * 0.85f), capStart: false, capEnd: false, twoSided: true, innerColor: Paint(Wicker * 0.5f));
+            mesh.AddLoft(new[] { new LoftRing(top.x - 0.014f, top.y - 0.005f, top.z - 0.005f), new LoftRing(top.x, top.y - 0.005f, top.z - 0.005f) }, 12,
+                Paint(Wicker * 0.5f), capStart: false, capEnd: false, twoSided: true, innerColor: Paint(Wicker * 0.8f));
             foreach (var side in new[] { -1f, 1f })
             {
                 Strap(mesh, StrapOver, side);
@@ -195,43 +203,45 @@ namespace Emberhold.Gameplay.Workers
             mesh.AddTube(path, radii, 6, Paint(Leather));
         }
 
-        /// <summary>Корзина полна до края: поверхность насыпи вровень с краем и сверху горка камней.</summary>
+        /// <summary>Корзина полна камней: насыпь чуть ниже края и сверху горка камней.</summary>
         private static void Stones(FacetedMesh mesh)
         {
             Fill(mesh, Stone * 0.7f);
             var stones = new[]
             {
-                new Vector3(-0.055f, 0.122f, 0.03f), new Vector3(0.055f, 0.124f, 0.025f), new Vector3(0f, 0.126f, -0.04f),
-                new Vector3(-0.05f, 0.124f, -0.035f), new Vector3(0.05f, 0.125f, -0.035f), new Vector3(0f, 0.122f, 0.045f),
-                new Vector3(0.005f, 0.15f, 0.003f),
+                new Vector3(-0.05f, 0.082f, 0.025f), new Vector3(0.05f, 0.084f, 0.02f), new Vector3(0f, 0.086f, -0.035f),
+                new Vector3(-0.045f, 0.084f, -0.03f), new Vector3(0.045f, 0.085f, -0.03f), new Vector3(0f, 0.082f, 0.04f),
+                new Vector3(0.004f, 0.11f, 0.003f),
             };
             for (var i = 0; i < stones.Length; i++)
                 mesh.AddBlob(stones[i], Vector3.one * (0.036f - 0.003f * (i % 3)), 0, 0.3f, new System.Random(i + 3), Paint(Stone * (0.82f + 0.05f * (i % 4))));
         }
 
-        /// <summary>Корзина полна травы: насыпь вровень с краем и пучки, торчащие вверх и наружу.</summary>
+        /// <summary>Корзина полна травы: насыпь чуть ниже края и пучки, торчащие вверх и наружу.</summary>
         private static void GrassHeap(FacetedMesh mesh, Matrix4x4 scale)
         {
             Fill(mesh, Grass * 0.75f);
-            mesh.AddBlob(new Vector3(0f, 0.125f, 0f), new Vector3(0.085f, 0.025f, 0.065f), 1, 0.15f, new System.Random(5), Paint(Grass * 0.85f));
-            for (var i = 0; i < 12; i++)
+            // Пучки: плоские листья кольцами, у края наклонены наружу, в середине стоят торчком.
+            var random = new System.Random(5);
+            for (var i = 0; i < 26; i++)
             {
-                var a = i * 0.524f;
-                var r = i % 2 == 0 ? 0.07f : 0.035f;
-                mesh.Transform = scale * Matrix4x4.TRS(new Vector3(Mathf.Cos(a) * r, 0.12f, Mathf.Sin(a) * r * 0.75f),
-                    Quaternion.Euler(Mathf.Sin(a) * 28f * r / 0.07f, 0f, -Mathf.Cos(a) * 28f * r / 0.07f), new Vector3(1f, 1f, 0.4f));
-                mesh.AddCone(4, Vector3.zero, 0.014f, 0.06f + 0.012f * (i % 3), 0f, null, Paint(Grass * (0.82f + 0.06f * (i % 3))));
+                var ring = i < 8 ? 0.02f : i < 16 ? 0.05f : 0.08f;
+                var a = i * 2.4f;
+                var tilt = 34f * ring / 0.08f;
+                mesh.Transform = scale * Matrix4x4.TRS(new Vector3(Mathf.Cos(a) * ring, FillTop - 0.005f, Mathf.Sin(a) * ring * 0.75f),
+                    Quaternion.Euler(Mathf.Sin(a) * tilt, (float)random.NextDouble() * 180f, -Mathf.Cos(a) * tilt), new Vector3(1f, 1f, 0.3f));
+                mesh.AddCone(3, Vector3.zero, 0.011f, 0.07f + 0.035f * (float)random.NextDouble(), 0f, null, Paint(Grass * (0.78f + 0.25f * (float)random.NextDouble())));
             }
             mesh.Transform = scale;
         }
 
-        /// <summary>Насыпь в корзине: сплошной слой от дна до края, сверху виден как поверхность содержимого.</summary>
+        /// <summary>Насыпь в корзине: сплошной слой от дна до <see cref="FillTop"/>, сверху виден как поверхность содержимого.</summary>
         private static void Fill(FacetedMesh mesh, Color color)
         {
             mesh.AddLoft(new[]
             {
                 new LoftRing(-BasketHalfHeight + 0.01f, BasketWall[0].y - 0.006f, BasketWall[0].z - 0.006f),
-                new LoftRing(0.11f, BasketWall[^1].y - 0.006f, BasketWall[^1].z - 0.006f),
+                new LoftRing(FillTop, 0.106f, 0.081f),
             }, 12, Paint(color));
         }
 
