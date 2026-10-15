@@ -98,7 +98,7 @@ namespace Emberhold.Tests.EditMode.Workers
         public void CarriedLoad_IsHeldByLeftHand_BasketHangsOnStraps_AndPutOnGround()
         {
             var matrices = new Matrix4x4[WorkerPose.PartCount];
-            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.GrassSack, WorkerCarry.StoneBasket })
+            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.GrassBasket, WorkerCarry.StoneBasket })
             {
                 var motion = new WorkerMotion(0f, 0f, Height, true, false, carry);
                 var pose = WorkerAnimation.Sample(WorkerClip.Carry, 0.3f, motion);
@@ -124,7 +124,7 @@ namespace Emberhold.Tests.EditMode.Workers
         public void PutAndPickUp_LoadGoesAroundBody()
         {
             // Точки ноши (середина и концы бревна, середина мешка и корзины) не заходят внутрь туловища ни в какой момент.
-            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.GrassSack, WorkerCarry.StoneBasket })
+            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.GrassBasket, WorkerCarry.StoneBasket })
             {
                 var motion = new WorkerMotion(0f, 0f, Height, true, false, carry);
                 foreach (var clip in new[] { WorkerClip.Put, WorkerClip.PickUp })
@@ -152,32 +152,18 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
-        public void Sack_HangsDownUnderGravity_WhateverItsTilt()
+        public void Basket_StrapsOnShoulders_SlideOffWhenTakenOff()
         {
-            var mesh = WorkerCarryBuilder.Build(WorkerCarry.GrassSack, Height);
+            // На спине лямки поднимаются до плеч; у снятой корзины они втянуты в узелки у края — выше всего камни.
+            var mesh = WorkerCarryBuilder.Build(WorkerCarry.StoneBasket, Height);
             created.Add(mesh);
-            var rest = mesh.vertices;
-            var shape = new WorkerCarryBuilder.Shape(mesh, WorkerCarry.GrassSack, Height);
-            foreach (var tilt in new[] { 0f, 50f, -40f })
-            {
-                // Верх мешка вверх и наклонён; тело мешка (низ сетки) всё равно висит под сборкой.
-                var world = Matrix4x4.Rotate(Quaternion.Euler(tilt, 0f, tilt * 0.5f));
-                shape.Apply(world, 0f, 0f);
-                // Середина тела мешка (всё, что в сетке ниже середины) висит под сборкой.
-                var neck = world.MultiplyPoint3x4(new Vector3(0f, 0.12f * Height, 0f));
-                var vertices = mesh.vertices;
-                var body = Vector3.zero;
-                var count = 0;
-                for (var i = 0; i < vertices.Length; i++)
-                {
-                    if (rest[i].y >= 0f)
-                        continue;
-                    body += world.MultiplyPoint3x4(vertices[i]);
-                    count++;
-                }
-                var hang = (body / count - neck).normalized;
-                Assert.That(Vector3.Dot(hang, Vector3.down), Is.GreaterThan(0.9f), $"Наклон {tilt}: мешок висит вниз");
-            }
+            var shape = new WorkerCarryBuilder.Shape(mesh, WorkerCarry.StoneBasket, Height);
+            shape.Apply(Matrix4x4.identity, 1f, 0f);
+            var onBack = mesh.bounds.max.y;
+            shape.Apply(Matrix4x4.identity, 0f, 0f);
+            var off = mesh.bounds.max.y;
+            Assert.That(onBack, Is.GreaterThan(0.28f * Height), "лямки на плечах");
+            Assert.That(off, Is.LessThan(0.2f * Height), "лямки втянуты");
         }
 
         [Test]
@@ -201,11 +187,11 @@ namespace Emberhold.Tests.EditMode.Workers
         {
             Assert.That(WorkerCarryBuilder.CarryFor("wood", WorkerRole.Free), Is.EqualTo(WorkerCarry.Log));
             Assert.That(WorkerCarryBuilder.CarryFor("stone", WorkerRole.Free), Is.EqualTo(WorkerCarry.StoneBasket));
-            Assert.That(WorkerCarryBuilder.CarryFor("grass", WorkerRole.Free), Is.EqualTo(WorkerCarry.GrassSack));
+            Assert.That(WorkerCarryBuilder.CarryFor("grass", WorkerRole.Free), Is.EqualTo(WorkerCarry.GrassBasket));
             Assert.That(WorkerCarryBuilder.CarryFor(null, WorkerRole.Free), Is.EqualTo(WorkerCarry.None));
             foreach (var role in new[] { WorkerRole.Digger, WorkerRole.Stoker, WorkerRole.Archer })
                 Assert.That(WorkerCarryBuilder.CarryFor("stone", role), Is.EqualTo(WorkerCarry.None), $"{role}: с ролью не носят");
-            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.StoneBasket, WorkerCarry.GrassSack })
+            foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.StoneBasket, WorkerCarry.GrassBasket })
                 Assert.That(Track(WorkerCarryBuilder.Build(carry, Height)).vertexCount, Is.GreaterThan(0), $"{carry}: есть сетка");
         }
 

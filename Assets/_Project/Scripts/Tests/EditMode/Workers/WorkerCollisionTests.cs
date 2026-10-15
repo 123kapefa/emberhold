@@ -26,7 +26,7 @@ namespace Emberhold.Tests.EditMode.Workers
         /// <summary>Столько вершин на одну пару частей в кадре ещё касание, а не прорыв.</summary>
         private const int Contact = 3;
 
-        private static readonly WorkerCarry[] Loads = { WorkerCarry.None, WorkerCarry.Log, WorkerCarry.StoneBasket, WorkerCarry.GrassSack };
+        private static readonly WorkerCarry[] Loads = { WorkerCarry.None, WorkerCarry.Log, WorkerCarry.StoneBasket, WorkerCarry.GrassBasket };
 
         [Test]
         public void EveryRoleClipAndLoad_NothingGoesThroughAnything()

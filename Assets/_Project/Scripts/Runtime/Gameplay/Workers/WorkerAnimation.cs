@@ -132,8 +132,8 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Левая рука держит ношу за точку хвата; локоть вниз и наружу.</summary>
         private static void HoldLoad(ref WorkerPose pose, WorkerCarry carry, Matrix4x4 load, float height, float weight)
         {
-            var grip = load.MultiplyPoint3x4(WorkerCarryBuilder.Grip(carry, height, pose.LoadBend));
-            WorkerSkeleton.ReachArm(ref pose, -1f, grip, grip + WorkerCarryBuilder.ElbowHint(carry, height, pose.LoadBend), height, weight);
+            var grip = load.MultiplyPoint3x4(WorkerCarryBuilder.Grip(carry, height));
+            WorkerSkeleton.ReachArm(ref pose, -1f, grip, grip + WorkerCarryBuilder.ElbowHint(height), height, weight);
         }
 
         /// <summary>
