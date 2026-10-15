@@ -10,10 +10,11 @@ namespace Emberhold.World.Editing
     /// </summary>
     public static class BlockEdits
     {
-        /// <summary>Убрать блок целиком. Возвращает true, если блок был.</summary>
+        /// <summary>Убрать блок целиком. Возвращает true, если блок был. Скалу и коренную породу не убрать.</summary>
         public static bool Remove(VoxelWorld world, Vector3Int block)
         {
-            if (!world.IsInsideBlocks(block) || world.GetBlock(block).IsAir)
+            if (!world.IsInsideBlocks(block) || world.GetBlock(block).IsAir
+                || !BlockMaterials.IsBreakable(world.GetBlock(block).Material))
                 return false;
             world.SetBlock(block, Block.Air);
             return true;

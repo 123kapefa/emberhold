@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Emberhold.World::Emberhold.World.Generation.TerrainProfile
   parameters:
     Shape: 1
-    BaseHeight: 8
+    BaseHeight: 12
     ShapeHeight: 18
     ShapeWidth: 0.2
     MeanderAmplitude: 0.12

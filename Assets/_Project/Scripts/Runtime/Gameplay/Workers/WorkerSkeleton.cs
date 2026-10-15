@@ -44,10 +44,36 @@ namespace Emberhold.Gameplay.Workers
 
         public Quaternion LoadRotation;
 
-        /// <summary>Изгиб мешка: 1 — загнут по спине на плече, 0 — ровный (<see cref="WorkerCarryBuilder.Shape"/>).</summary>
-        public float LoadBend;
+        /// <summary>
+        /// Насколько корзина на спине: 1 — на спине, лямки на плечах; 0 — снята, лямки втянуты (<see cref="WorkerCarryBuilder.Shape"/>).
+        /// </summary>
+        public float LoadOnBack;
 
         public static WorkerPose Rest() => new() { Angles = new Vector3[PartCount], LoadRotation = Quaternion.identity };
+
+        /// <summary>Сбросить в покой, не выделяя память (массив поворотов тот же).</summary>
+        public void Reset()
+        {
+            if (Angles == null)
+                Angles = new Vector3[PartCount];
+            else
+                System.Array.Clear(Angles, 0, PartCount);
+            Shift = Vector2.zero;
+            LoadPosition = Vector3.zero;
+            LoadRotation = Quaternion.identity;
+            LoadOnBack = 0f;
+        }
+
+        /// <summary>Скопировать позу other в эту, не выделяя память.</summary>
+        public void CopyFrom(in WorkerPose other)
+        {
+            Angles ??= new Vector3[PartCount];
+            System.Array.Copy(other.Angles, Angles, PartCount);
+            Shift = other.Shift;
+            LoadPosition = other.LoadPosition;
+            LoadRotation = other.LoadRotation;
+            LoadOnBack = other.LoadOnBack;
+        }
 
         public Vector3 this[WorkerPart part]
         {
@@ -61,6 +87,14 @@ namespace Emberhold.Gameplay.Workers
         public static WorkerPose Lerp(WorkerPose a, WorkerPose b, float t)
         {
             var result = Rest();
+            Lerp(a, b, t, ref result);
+            return result;
+        }
+
+        /// <summary>Смешать позы a и b в уже готовую позу result (без выделения памяти; result не должен быть a или b).</summary>
+        public static void Lerp(in WorkerPose a, in WorkerPose b, float t, ref WorkerPose result)
+        {
+            result.Angles ??= new Vector3[PartCount];
             for (var i = 0; i < PartCount; i++)
             {
                 result.Angles[i] = new Vector3(Mathf.LerpAngle(a.Angles[i].x, b.Angles[i].x, t), Mathf.LerpAngle(a.Angles[i].y, b.Angles[i].y, t),
@@ -69,8 +103,7 @@ namespace Emberhold.Gameplay.Workers
             result.Shift = Vector2.Lerp(a.Shift, b.Shift, t);
             result.LoadPosition = Vector3.Lerp(a.LoadPosition, b.LoadPosition, t);
             result.LoadRotation = Quaternion.Slerp(a.LoadRotation, b.LoadRotation, t);
-            result.LoadBend = Mathf.Lerp(a.LoadBend, b.LoadBend, t);
-            return result;
+            result.LoadOnBack = Mathf.Lerp(a.LoadOnBack, b.LoadOnBack, t);
         }
     }
 
@@ -143,10 +176,10 @@ namespace Emberhold.Gameplay.Workers
         public static float LowestSupport(Matrix4x4[] parts, float height)
         {
             var lowest = float.MaxValue;
-            foreach (var foot in new[] { WorkerPart.FootLeft, WorkerPart.FootRight })
+            foreach (var offset in SoleOffsets)
             {
-                foreach (var offset in SoleOffsets)
-                    lowest = Mathf.Min(lowest, parts[(int)foot].MultiplyPoint3x4(offset * height).y);
+                lowest = Mathf.Min(lowest, parts[(int)WorkerPart.FootLeft].MultiplyPoint3x4(offset * height).y);
+                lowest = Mathf.Min(lowest, parts[(int)WorkerPart.FootRight].MultiplyPoint3x4(offset * height).y);
             }
             return Mathf.Min(lowest, parts[(int)WorkerPart.Hips].MultiplyPoint3x4(SeatOffset * height).y);
         }

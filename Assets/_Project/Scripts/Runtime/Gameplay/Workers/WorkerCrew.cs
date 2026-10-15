@@ -107,9 +107,6 @@ namespace Emberhold.Gameplay.Workers
                     Destroy(visual.Body.gameObject);
                 foreach (var mesh in visual.Meshes)
                     Destroy(mesh);
-            }
-            foreach (var visual in visuals)
-            {
                 if (visual.CarryShape != null)
                     Destroy(visual.CarryShape.Mesh);
             }
@@ -232,15 +229,15 @@ namespace Emberhold.Gameplay.Workers
                 visual.CarryKind = carry;
                 if (visual.CarryShape != null)
                     Destroy(visual.CarryShape.Mesh);
-                // Сетка ноши у каждого своя: мешок гнётся по позе.
+                // Сетка ноши у каждого своя: лямки корзины меняются по позе.
                 visual.CarryShape = carry == WorkerCarry.None
                     ? null
                     : new WorkerCarryBuilder.Shape(WorkerCarryBuilder.Build(carry, settings.Height, "Carry " + carry), carry, settings.Height);
                 visual.Carry.sharedMesh = visual.CarryShape?.Mesh;
             }
             visual.Carry.transform.SetLocalPositionAndRotation(pose.LoadPosition, pose.LoadRotation);
-            // Мешок висит под тяжестью и качается: его форма зависит от того, как ноша движется в мире.
-            visual.CarryShape?.Apply(visual.Carry.transform.localToWorldMatrix, pose.LoadBend, deltaTime);
+            // Лямки корзины на плечах, пока она на спине, и втягиваются, когда её снимают.
+            visual.CarryShape?.Apply(pose.LoadOnBack);
         }
 
         /// <summary>Ближайший горящий огонь в WarmDistance блоках от точки (координаты мира блоков) или null.</summary>
@@ -279,7 +276,8 @@ namespace Emberhold.Gameplay.Workers
         {
             if (Orders.At(block) is { } existing)
                 return existing.Kind == WorkKind.Dig && Orders.Cancel(existing);
-            return !worldView.World.GetBlock(block).IsAir && Orders.AddDig(block) != null;
+            var current = worldView.World.GetBlock(block);
+            return !current.IsAir && BlockMaterials.IsBreakable(current.Material) && Orders.AddDig(block) != null;
         }
 
         /// <summary>Поручить срубить дерево или снять приказ. true — что-то изменилось.</summary>

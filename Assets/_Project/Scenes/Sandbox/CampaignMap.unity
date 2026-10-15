@@ -419,6 +419,8 @@ MonoBehaviour:
   - {fileID: 2100000, guid: dca6da02ef30040818e1cee2a135f7a6, type: 2}
   - {fileID: 2100000, guid: 273a4ded7a59b41aea0d0162bf49b3df, type: 2}
   - {fileID: 2100000, guid: 932ae790c9e7a4b1480d98f70518d09f, type: 2}
+  - {fileID: 2100000, guid: 5818a5059aea460f86cf10e79cdf8039, type: 2}
+  - {fileID: 2100000, guid: b34a0b7eb86847ddafdccbe85316cea5, type: 2}
   centerOnOrigin: 1
   smoothShading: 1
 --- !u!4 &520718231

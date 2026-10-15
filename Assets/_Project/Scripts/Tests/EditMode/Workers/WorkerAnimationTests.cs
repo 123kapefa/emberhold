@@ -105,8 +105,8 @@ namespace Emberhold.Tests.EditMode.Workers
                 WorkerSkeleton.Evaluate(pose, Height, matrices);
                 var fist = matrices[(int)WorkerPart.ForearmLeft].MultiplyPoint3x4(
                     WorkerSkeleton.FistCenter(-1f, Height) - WorkerSkeleton.Pivot(WorkerPart.ForearmLeft, Height));
-                var grip = Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one).MultiplyPoint3x4(WorkerCarryBuilder.Grip(carry, Height));
-                // Бревно и мешок рука держит, корзина висит на лямках — рука опущена.
+                var grip = Matrix4x4.TRS(pose.LoadPosition, pose.LoadRotation, Vector3.one).MultiplyPoint3x4(WorkerCarryBuilder.Grip(Height));
+                // Бревно рука держит, корзина висит на лямках — рука опущена.
                 if (WorkerCarryBuilder.HeldWhileCarried(carry))
                     Assert.That(Vector3.Distance(fist, grip), Is.LessThan(0.02f), $"{carry}: кисть на ноше");
                 else
@@ -123,7 +123,7 @@ namespace Emberhold.Tests.EditMode.Workers
         [Test]
         public void PutAndPickUp_LoadGoesAroundBody()
         {
-            // Точки ноши (середина и концы бревна, середина мешка и корзины) не заходят внутрь туловища ни в какой момент.
+            // Точки ноши (середина и концы бревна, середина корзины) не заходят внутрь туловища ни в какой момент.
             foreach (var carry in new[] { WorkerCarry.Log, WorkerCarry.GrassBasket, WorkerCarry.StoneBasket })
             {
                 var motion = new WorkerMotion(0f, 0f, Height, true, false, carry);
@@ -158,9 +158,9 @@ namespace Emberhold.Tests.EditMode.Workers
             var mesh = WorkerCarryBuilder.Build(WorkerCarry.StoneBasket, Height);
             created.Add(mesh);
             var shape = new WorkerCarryBuilder.Shape(mesh, WorkerCarry.StoneBasket, Height);
-            shape.Apply(Matrix4x4.identity, 1f, 0f);
+            shape.Apply(1f);
             var onBack = mesh.bounds.max.y;
-            shape.Apply(Matrix4x4.identity, 0f, 0f);
+            shape.Apply(0f);
             var off = mesh.bounds.max.y;
             Assert.That(onBack, Is.GreaterThan(0.28f * Height), "лямки на плечах");
             Assert.That(off, Is.LessThan(0.2f * Height), "лямки втянуты");
@@ -209,8 +209,9 @@ namespace Emberhold.Tests.EditMode.Workers
             for (var i = 0; i < 20; i++)
                 animator.Update(0.05f, motion);
             Assert.That(animator.Progress, Is.EqualTo(1f));
+            // Следующий раз начинается с того, что ушло за конец (1,05 с при длине 0,7 с), — удары не сбиваются по фазе.
             animator.Restart();
-            Assert.That(animator.Progress, Is.EqualTo(0f));
+            Assert.That(animator.Progress, Is.EqualTo(0.5f).Within(1e-3f));
         }
 
         [Test]

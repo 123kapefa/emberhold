@@ -396,7 +396,31 @@ namespace Emberhold.Tests.EditMode.World
         {
             var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>("Assets/_Project/Data/World/TerrainSettings.asset");
             Assert.That(settings, Is.Not.Null);
-            Assert.That(WorldHash(settings.Generate()), Is.EqualTo(DefaultValleyHash));
+            // Рельеф — долина по умолчанию, поднятая на 4 блока, чтобы коренная порода на дне не выходила
+            // на поверхность (#97); поверх неё на дне коренная порода.
+            var raised = TerrainProfileParameters.Valley;
+            raised.BaseHeight += 4f;
+            var valley = Full(raised);
+            settings.LayBedrock(valley);
+            Assert.That(WorldHash(settings.Generate()), Is.EqualTo(WorldHash(valley)));
+        }
+
+        [Test]
+        public void TerrainSettingsAsset_BedrockNeverOnTheSurface()
+        {
+            var settings = AssetDatabase.LoadAssetAtPath<TerrainSettings>("Assets/_Project/Data/World/TerrainSettings.asset");
+            var world = settings.Generate();
+            var size = world.SizeInBlocks;
+            for (var z = 0; z < size.z; z++)
+            for (var x = 0; x < size.x; x++)
+            for (var y = size.y - 1; y >= 0; y--)
+            {
+                var block = world.GetBlock(new Vector3Int(x, y, z));
+                if (block.IsAir)
+                    continue;
+                Assert.That(block.Material, Is.Not.EqualTo(BlockMaterials.Bedrock), $"Порода сверху столбца {x},{z}");
+                break;
+            }
         }
 
         private const string ProfilesFolder = "Assets/_Project/Data/World/TerrainProfiles";
@@ -507,7 +531,10 @@ namespace Emberhold.Tests.EditMode.World
         [Test]
         public void SampleValleyAsset_MatchesDefaultValley()
         {
-            Assert.That(WorldHash(Full(LoadProfile("Valley"))), Is.EqualTo(DefaultValleyHash));
+            // Образец — долина по умолчанию, поднятая на 4 блока над коренной породой (#97).
+            var raised = TerrainProfileParameters.Valley;
+            raised.BaseHeight += 4f;
+            Assert.That(WorldHash(Full(LoadProfile("Valley"))), Is.EqualTo(WorldHash(Full(raised))));
         }
     }
 }
