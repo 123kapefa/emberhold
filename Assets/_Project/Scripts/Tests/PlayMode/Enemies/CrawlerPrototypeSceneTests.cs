@@ -162,6 +162,31 @@ namespace Emberhold.Tests.PlayMode.Enemies
             yield return null;
         }
 
+        [UnityTest]
+        public IEnumerator Crawler_HasBestiaryModel_ThatLatchesOnFireAndFlinchesFromStrike()
+        {
+            ToNight();
+            var crawler = SpawnCrawler();
+            var look = crawler.GetComponent<CrawlerLook>();
+            Assert.That(look, Is.Not.Null, "У ползуна новый вид");
+            yield return null;
+            Assert.That(look.Rig, Is.Not.Null);
+            Assert.That(look.Rig.Root.parent, Is.EqualTo(crawler.transform), "Модель едет вместе с ползуном");
+            Assert.That(crawler.GetComponentsInChildren<MeshRenderer>().Length, Is.GreaterThan(10), "Гранёная модель с лапами");
+
+            for (var i = 0; i < 2000 && !crawler.AtFire; i++)
+                crawler.Step(StepSeconds);
+            Assert.That(crawler.AtFire, Is.True);
+            for (var i = 0; i < 60; i++)
+                yield return null;
+            Assert.That(look.Rig.Pose.Latch, Is.GreaterThan(0f), "У огня присосался");
+
+            crawler.Hit(1f);
+            yield return null;
+            yield return null;
+            Assert.That(look.Rig.Pose.Recoil, Is.GreaterThan(0f), "От удара отшатнулся");
+        }
+
         private Crawler SpawnCrawler()
         {
             Random.InitState(SpawnSeed);
