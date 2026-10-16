@@ -201,6 +201,36 @@ namespace Emberhold.World.Meshing
             AddLoft(rings, sides, color);
         }
 
+        /// <summary>
+        /// Тор вокруг оси Z в плоскости XY (кольцо, обруч, кандалы): radius — до середины трубки, tube — её радиус,
+        /// tubeSides граней вокруг трубки, ringSides — вдоль кольца.
+        /// </summary>
+        public void AddTorus(float radius, float tube, int tubeSides, int ringSides, System.Func<Vector3, Color> color)
+        {
+            Vector3 At(int u, int v)
+            {
+                var a = (float)u / ringSides * Mathf.PI * 2f;
+                var b = (float)v / tubeSides * Mathf.PI * 2f;
+                var r = radius + tube * Mathf.Cos(b);
+                return new Vector3(r * Mathf.Cos(a), r * Mathf.Sin(a), tube * Mathf.Sin(b));
+            }
+
+            for (var u = 0; u < ringSides; u++)
+            {
+                var middle = (u + 0.5f) / ringSides * Mathf.PI * 2f;
+                var inside = new Vector3(Mathf.Cos(middle), Mathf.Sin(middle), 0f) * radius;
+                for (var v = 0; v < tubeSides; v++)
+                {
+                    var a = At(u, v);
+                    var b = At(u + 1, v);
+                    var c = At(u + 1, v + 1);
+                    var d = At(u, v + 1);
+                    AddFace(a, b, c, inside, color, null);
+                    AddFace(a, c, d, inside, color, null);
+                }
+            }
+        }
+
         private void AddCap(Vector3[] ring, int start, int sides, Vector3 center, Vector3 inside, System.Func<Vector3, Color> color)
         {
             for (var i = 0; i < sides; i++)
