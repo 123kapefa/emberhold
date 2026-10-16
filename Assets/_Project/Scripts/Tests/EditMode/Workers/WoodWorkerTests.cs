@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Emberhold.Gameplay.Workers;
 using Emberhold.World.Editing;
 using Emberhold.World.Items;
@@ -89,45 +90,47 @@ namespace Emberhold.Tests.EditMode.Workers
         [Test]
         public void Worker_CarriesWoodToFire()
         {
+            // За ходку — одно полено, даже если задача просит больше и в кучке их много.
             var fire = new Fire(10f, 5f);
             items.Drop(world, new Vector3Int(5, Ground, 5), new ItemDrop("wood", 3));
-            orders.AddFuel(new Vector3Int(14, Ground, 14), fire, "wood", 2);
+            orders.AddFuel(new Vector3Int(14, Ground, 14), fire, "wood", 1);
             var worker = Spawn(new Vector2Int(9, 9));
 
-            var carried = false;
+            var most = 0;
             Run(30f, () =>
             {
-                carried |= worker.Carrying is { ItemId: "wood" };
+                if (worker.Carrying is { ItemId: "wood" } carried)
+                    most = Mathf.Max(most, carried.Count);
                 return orders.Orders.Count == 0;
             }, worker);
 
-            Assert.That(carried, Is.True, "Рабочий нёс поленья");
-            Assert.That(fire.Amount, Is.EqualTo(7f), "Два полена в огне");
+            Assert.That(most, Is.EqualTo(1), "Рабочий нёс одно полено");
+            Assert.That(fire.Amount, Is.EqualTo(6f), "Полено в огне");
             Assert.That(items.Items, Has.Count.EqualTo(1));
-            Assert.That(items.Items[0].Drop, Is.EqualTo(new ItemDrop("wood", 1)), "Третье осталось в кучке");
+            Assert.That(items.Items[0].Drop, Is.EqualTo(new ItemDrop("wood", 2)), "Остальные в кучке");
             Assert.That(worker.Carrying, Is.Null);
         }
 
         [Test]
         public void Worker_LeavesWoodThatDoesNotFitNextToFire()
         {
-            // Пока рабочий шёл, огонь успели накормить: место осталось под одно полено.
+            // Пока рабочий шёл, огонь успели накормить доверху: полено не помещается.
             var fire = new Fire(10f, 5f);
             items.Drop(world, new Vector3Int(5, Ground, 5), new ItemDrop("wood", 2));
-            orders.AddFuel(new Vector3Int(14, Ground, 14), fire, "wood", 2);
+            orders.AddFuel(new Vector3Int(14, Ground, 14), fire, "wood", 1);
             var worker = Spawn(new Vector2Int(9, 9));
             Run(30f, () =>
             {
                 if (worker.Carrying != null)
-                    fire.Amount = 9f;
+                    fire.Amount = 10f;
                 return orders.Orders.Count == 0;
             }, worker);
 
             Assert.That(fire.Amount, Is.EqualTo(10f));
-            Assert.That(items.Items, Has.Count.EqualTo(1), "Лишнее полено лежит у огня");
-            Assert.That(items.Items[0].Drop, Is.EqualTo(new ItemDrop("wood", 1)));
-            Assert.That(Vector2.Distance(new Vector2(items.Items[0].Cell.x, items.Items[0].Cell.z), new Vector2(14f, 14f)),
-                Is.LessThan(2f));
+            Assert.That(items.Items, Has.Count.EqualTo(2), "Принесённое полено лежит у огня, второе — в кучке");
+            var atFire = items.Items.FirstOrDefault(item => Vector2.Distance(new Vector2(item.Cell.x, item.Cell.z), new Vector2(14f, 14f)) < 2f);
+            Assert.That(atFire, Is.Not.Null);
+            Assert.That(atFire.Drop, Is.EqualTo(new ItemDrop("wood", 1)));
         }
 
         [Test]
@@ -137,7 +140,7 @@ namespace Emberhold.Tests.EditMode.Workers
             items.Drop(world, new Vector3Int(20, Ground, 20), new ItemDrop("wood", 2));
             // Бесплатный чертёж прямо рядом, огонь — дальше.
             var blueprint = orders.AddBuild(new Vector3Int(10, Ground, 9), Block.Full(BlockMaterials.Dirt), false, null);
-            orders.AddFuel(new Vector3Int(25, Ground, 25), fire, "wood", 2);
+            orders.AddFuel(new Vector3Int(25, Ground, 25), fire, "wood", 1);
             var worker = Spawn(new Vector2Int(9, 9));
 
             Run(1f, () => false, worker);
@@ -145,7 +148,7 @@ namespace Emberhold.Tests.EditMode.Workers
             Assert.That(worker.Order.Kind, Is.EqualTo(WorkKind.Fuel), "Огонь важнее стройки");
 
             Run(60f, () => orders.Orders.Count == 0, worker);
-            Assert.That(fire.Amount, Is.EqualTo(2f));
+            Assert.That(fire.Amount, Is.EqualTo(1f), "Одно полено за ходку");
             Assert.That(orders.Contains(blueprint), Is.False, "Потом достроил чертёж");
         }
 

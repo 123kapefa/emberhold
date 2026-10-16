@@ -26,6 +26,14 @@ namespace Emberhold.Gameplay.Workers
         Warm,
         /// <summary>Сидеть у огня.</summary>
         Sit,
+        /// <summary>Лесоруб рубит: косой удар топором из-за правого плеча, цикл <see cref="WorkerAnimation.WorkCycle"/>.</summary>
+        Chop,
+        /// <summary>Копатель бьёт киркой: замах над головой, удар вниз перед собой.</summary>
+        Dig,
+        /// <summary>Строитель: три коротких удара молотком перед грудью.</summary>
+        Hammer,
+        /// <summary>Истопник: берёт полено из вязанки, кладёт в огонь перед собой и шевелит угли кочергой.</summary>
+        Stoke,
     }
 
     /// <summary>
@@ -54,6 +62,26 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>Разовая анимация: время — доля от 0 до 1.</summary>
         public static bool IsOneShot(WorkerClip clip) => DefaultDuration(clip) > 0f;
+
+        /// <summary>Длина цикла рабочей анимации роли, секунды; у остальных — 0.</summary>
+        public static float WorkCycle(WorkerClip clip) => clip switch
+        {
+            WorkerClip.Chop => 1.2f,
+            WorkerClip.Dig => 1.3f,
+            WorkerClip.Hammer => 1.5f,
+            WorkerClip.Stoke => 3f,
+            _ => 0f,
+        };
+
+        /// <summary>Чья это рабочая анимация (у неё в руке нужный инструмент); null — общая, для всех.</summary>
+        public static WorkerRole? RoleOf(WorkerClip clip) => clip switch
+        {
+            WorkerClip.Chop => WorkerRole.Woodcutter,
+            WorkerClip.Dig => WorkerRole.Digger,
+            WorkerClip.Hammer => WorkerRole.Builder,
+            WorkerClip.Stoke => WorkerRole.Stoker,
+            _ => null,
+        };
 
         /// <summary>
         /// Поза анимации clip в момент time (секунды для циклов, доля для разовых). Из motion: Seed разводит фазы у разных
@@ -120,6 +148,14 @@ namespace Emberhold.Gameplay.Workers
                 case WorkerClip.Sit:
                     Sit(ref pose, time, motion);
                     break;
+                case WorkerClip.Chop:
+                case WorkerClip.Dig:
+                case WorkerClip.Hammer:
+                    Work(ref pose, clip, Mathf.Repeat(time / WorkCycle(clip), 1f));
+                    break;
+                case WorkerClip.Stoke:
+                    Stoke(Mathf.Repeat(time / WorkCycle(clip), 1f), motion, ref pose);
+                    return;
             }
             SetLoad(ref pose, motion, holdWeight: clip == WorkerClip.Carry && WorkerCarryBuilder.HeldWhileCarried(motion.Carry) ? 1f : 0f);
         }
@@ -380,6 +416,162 @@ namespace Emberhold.Gameplay.Workers
             pose[WorkerPart.UpperArmRight] = new Vector3(-42f, 0f, 8f);
             pose[WorkerPart.ForearmLeft] = new Vector3(-38f, 0f, 0f);
             pose[WorkerPart.ForearmRight] = new Vector3(-38f, 0f, 0f);
+        }
+
+        // ── Рабочие анимации ролей ──────────────────────────────────────────────────────
+
+        /// <summary>Ключевая поза: в доле цикла at — повороты частей (Torso, Head, плечо и предплечье правой и левой руки, бёдра, голени).</summary>
+        private readonly struct Key
+        {
+            public readonly float At;
+            public readonly Vector3 Torso, Head, UpperRight, ForeRight, UpperLeft, ForeLeft, Thighs, Shins;
+
+            public Key(float at, Vector3 torso, Vector3 head, Vector3 upperRight, Vector3 foreRight, Vector3 upperLeft, Vector3 foreLeft,
+                Vector3 thighs = default, Vector3 shins = default)
+            {
+                At = at;
+                Torso = torso;
+                Head = head;
+                UpperRight = upperRight;
+                ForeRight = foreRight;
+                UpperLeft = upperLeft;
+                ForeLeft = foreLeft;
+                Thighs = thighs;
+                Shins = shins;
+            }
+        }
+
+        // Лесоруб: стойка → замах (корпус повёрнут вправо, топор за правым плечом) → быстрый косой удар перед собой
+        // на уровне пояса → отвод обратно.
+        private static readonly Key[] ChopKeys =
+        {
+            new(0f, new Vector3(6f, 0f, 0f), Vector3.zero, new Vector3(-35f, 0f, 12f), new Vector3(-55f, 0f, 0f), new Vector3(-18f, 0f, -6f),
+                new Vector3(-30f, 0f, 0f), new Vector3(-8f, 0f, 0f), new Vector3(14f, 0f, 0f)),
+            new(0.45f, new Vector3(-4f, 18f, 0f), new Vector3(0f, -14f, 0f), new Vector3(-104f, 0f, 24f), new Vector3(-100f, 0f, 0f),
+                new Vector3(-30f, 0f, -8f), new Vector3(-40f, 0f, 0f), new Vector3(-6f, 0f, 0f), new Vector3(10f, 0f, 0f)),
+            new(0.6f, new Vector3(20f, -16f, 0f), new Vector3(-10f, 12f, 0f), new Vector3(-58f, 0f, -6f), new Vector3(-14f, 0f, 0f),
+                new Vector3(-12f, 0f, -10f), new Vector3(-25f, 0f, 0f), new Vector3(-14f, 0f, 0f), new Vector3(22f, 0f, 0f)),
+            new(0.72f, new Vector3(20f, -14f, 0f), new Vector3(-10f, 10f, 0f), new Vector3(-56f, 0f, -4f), new Vector3(-16f, 0f, 0f),
+                new Vector3(-12f, 0f, -10f), new Vector3(-25f, 0f, 0f), new Vector3(-14f, 0f, 0f), new Vector3(22f, 0f, 0f)),
+            new(1f, new Vector3(6f, 0f, 0f), Vector3.zero, new Vector3(-35f, 0f, 12f), new Vector3(-55f, 0f, 0f), new Vector3(-18f, 0f, -6f),
+                new Vector3(-30f, 0f, 0f), new Vector3(-8f, 0f, 0f), new Vector3(14f, 0f, 0f)),
+        };
+
+        // Копатель: стойка → кирка над головой (корпус чуть назад) → удар вниз перед собой с наклоном и согнутыми коленями.
+        private static readonly Key[] DigKeys =
+        {
+            new(0f, new Vector3(10f, 0f, 0f), Vector3.zero, new Vector3(-40f, 0f, 10f), new Vector3(-60f, 0f, 0f), new Vector3(-20f, 0f, -6f),
+                new Vector3(-35f, 0f, 0f), new Vector3(-8f, 0f, 0f), new Vector3(14f, 0f, 0f)),
+            new(0.45f, new Vector3(-6f, 6f, 0f), new Vector3(-10f, 0f, 0f), new Vector3(-150f, 0f, 14f), new Vector3(-75f, 0f, 0f),
+                new Vector3(-30f, 0f, -8f), new Vector3(-45f, 0f, 0f), new Vector3(-4f, 0f, 0f), new Vector3(8f, 0f, 0f)),
+            new(0.6f, new Vector3(26f, 0f, 0f), new Vector3(-12f, 0f, 0f), new Vector3(-60f, 0f, 3f), new Vector3(-10f, 0f, 0f),
+                new Vector3(-14f, 0f, -10f), new Vector3(-30f, 0f, 0f), new Vector3(-18f, 0f, 0f), new Vector3(30f, 0f, 0f)),
+            new(0.74f, new Vector3(25f, 0f, 0f), new Vector3(-11f, 0f, 0f), new Vector3(-58f, 0f, 3f), new Vector3(-12f, 0f, 0f),
+                new Vector3(-14f, 0f, -10f), new Vector3(-30f, 0f, 0f), new Vector3(-18f, 0f, 0f), new Vector3(30f, 0f, 0f)),
+            new(1f, new Vector3(10f, 0f, 0f), Vector3.zero, new Vector3(-40f, 0f, 10f), new Vector3(-60f, 0f, 0f), new Vector3(-20f, 0f, -6f),
+                new Vector3(-35f, 0f, 0f), new Vector3(-8f, 0f, 0f), new Vector3(14f, 0f, 0f)),
+        };
+
+        // Строитель: наклонился, левая рука придерживает перед собой, правая — один удар молотком (замах и удар);
+        // за цикл таких ударов три.
+        private static readonly Key[] HammerKeys =
+        {
+            new(0f, new Vector3(18f, 0f, 0f), new Vector3(4f, 0f, 0f), new Vector3(-48f, 0f, 6f), new Vector3(-45f, 0f, 0f),
+                new Vector3(-50f, 0f, -12f), new Vector3(-40f, 0f, 0f), new Vector3(-12f, 0f, 0f), new Vector3(20f, 0f, 0f)),
+            new(0.55f, new Vector3(16f, 0f, 0f), new Vector3(2f, 0f, 0f), new Vector3(-72f, 0f, 14f), new Vector3(-112f, 0f, 0f),
+                new Vector3(-50f, 0f, -12f), new Vector3(-40f, 0f, 0f), new Vector3(-12f, 0f, 0f), new Vector3(20f, 0f, 0f)),
+            new(0.75f, new Vector3(19f, 0f, 0f), new Vector3(4f, 0f, 0f), new Vector3(-46f, 0f, 4f), new Vector3(-40f, 0f, 0f),
+                new Vector3(-50f, 0f, -12f), new Vector3(-40f, 0f, 0f), new Vector3(-12f, 0f, 0f), new Vector3(20f, 0f, 0f)),
+            new(1f, new Vector3(18f, 0f, 0f), new Vector3(4f, 0f, 0f), new Vector3(-48f, 0f, 6f), new Vector3(-45f, 0f, 0f),
+                new Vector3(-50f, 0f, -12f), new Vector3(-40f, 0f, 0f), new Vector3(-12f, 0f, 0f), new Vector3(20f, 0f, 0f)),
+        };
+
+        /// <summary>Рубить, копать, строить: поза по ключам цикла (phase от 0 до 1); у строителя в цикле три удара.</summary>
+        private static void Work(ref WorkerPose pose, WorkerClip clip, float phase)
+        {
+            var keys = clip switch
+            {
+                WorkerClip.Chop => ChopKeys,
+                WorkerClip.Dig => DigKeys,
+                _ => HammerKeys,
+            };
+            if (clip == WorkerClip.Hammer)
+                phase = Mathf.Repeat(phase * 3f, 1f);
+            ApplyKeys(ref pose, keys, phase);
+            // Стойка чуть шире: левая нога впереди.
+            pose.Add(WorkerPart.ThighLeft, new Vector3(-6f, 0f, -3f));
+            pose.Add(WorkerPart.ThighRight, new Vector3(4f, 0f, 3f));
+        }
+
+        /// <summary>Добавить к позе ключевую позу из keys в доле phase; между ключами — плавно.</summary>
+        private static void ApplyKeys(ref WorkerPose pose, Key[] keys, float phase)
+        {
+            var i = 1;
+            while (i < keys.Length - 1 && phase > keys[i].At)
+                i++;
+            var a = keys[i - 1];
+            var b = keys[i];
+            var t = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(a.At, b.At, phase));
+            pose.Add(WorkerPart.Torso, Vector3.Lerp(a.Torso, b.Torso, t));
+            pose.Add(WorkerPart.Head, Vector3.Lerp(a.Head, b.Head, t));
+            // Руки задаются целиком: в стойке они чуть отведены (Relaxed), здесь — своя поза.
+            pose[WorkerPart.UpperArmRight] = Vector3.Lerp(a.UpperRight, b.UpperRight, t);
+            pose[WorkerPart.ForearmRight] = Vector3.Lerp(a.ForeRight, b.ForeRight, t);
+            pose[WorkerPart.UpperArmLeft] = Vector3.Lerp(a.UpperLeft, b.UpperLeft, t);
+            pose[WorkerPart.ForearmLeft] = Vector3.Lerp(a.ForeLeft, b.ForeLeft, t);
+            var thighs = Vector3.Lerp(a.Thighs, b.Thighs, t);
+            var shins = Vector3.Lerp(a.Shins, b.Shins, t);
+            pose.Add(WorkerPart.ThighLeft, thighs);
+            pose.Add(WorkerPart.ThighRight, thighs);
+            pose.Add(WorkerPart.ShinLeft, shins);
+            pose.Add(WorkerPart.ShinRight, shins);
+        }
+
+        /// <summary>Откуда истопник берёт полено: торец вязанки на спине слева, у бедра; система рабочего, доли роста.</summary>
+        private static readonly Vector3 BilletAtBundle = new(-0.25f, 0.53f, -0.1f);
+
+        /// <summary>Куда кладёт: в огонь перед собой на земле.</summary>
+        private static readonly Vector3 BilletInFire = new(0.02f, 0.03f, 0.44f);
+
+        /// <summary>
+        /// Истопник у огня (phase от 0 до 1): тянется левой рукой к вязанке за поленом, приседает и кладёт полено в огонь
+        /// перед собой, потом дважды шевелит угли кочергой в правой руке и выпрямляется. Полено — ноша
+        /// <see cref="WorkerCarry.Billet"/>: в руке, потом лежит в огне.
+        /// </summary>
+        private static void Stoke(float phase, in WorkerMotion motion, ref WorkerPose pose)
+        {
+            var height = motion.Height;
+            // Присед: от полена в руке до конца кочерги, потом выпрямиться.
+            var crouch = Bump(Mathf.InverseLerp(0.14f, 0.95f, phase), 0.25f, 0.12f) * 0.42f;
+            Crouch(ref pose, crouch);
+            // Сначала повернулся к вязанке влево, потом к огню.
+            var turn = Bump(Mathf.InverseLerp(0f, 0.25f, phase), 0.4f, 0.4f);
+            pose.Add(WorkerPart.Torso, new Vector3(0f, -22f * turn, 0f));
+            pose.Add(WorkerPart.Head, new Vector3(0f, -18f * turn, 0f));
+
+            // Левая рука: к вязанке, с поленом к огню, отпустить.
+            var carry = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.12f, 0.38f, phase));
+            var reach = Bump(Mathf.InverseLerp(0.02f, 0.5f, phase), 0.2f, 0.18f);
+            var billet = Vector3.Lerp(BilletAtBundle, BilletInFire, carry) * height;
+            // По дуге: выше и в сторону от бедра, чтобы не задеть ногу и подол.
+            billet.y = Mathf.Lerp(BilletAtBundle.y, BilletInFire.y, carry) * height + Mathf.Sin(Mathf.PI * carry) * 0.16f * height;
+            billet.x -= Mathf.Sin(Mathf.PI * carry) * 0.08f * height;
+            // Полено в руке с той доли, когда рука дотянулась до вязанки, до той, когда положила его в огонь.
+            var holding = phase > 0.12f && phase < 0.4f;
+            var hand = billet + Vector3.up * (0.035f * height);
+            WorkerSkeleton.ReachArm(ref pose, -1f, hand, hand + new Vector3(-0.25f, -0.2f, -0.05f) * height, height, reach);
+
+            // Правая рука с кочергой: после того как полено легло — два тычка в угли.
+            var poke = Bump(Mathf.InverseLerp(0.42f, 0.92f, phase), 0.15f, 0.15f);
+            var jab = Mathf.Max(0f, Mathf.Sin(Mathf.PI * 2f * Mathf.InverseLerp(0.5f, 0.86f, phase)));
+            pose[WorkerPart.UpperArmRight] = Vector3.Lerp(pose[WorkerPart.UpperArmRight], new Vector3(-72f - 14f * jab, 0f, 6f), poke);
+            pose[WorkerPart.ForearmRight] = Vector3.Lerp(pose[WorkerPart.ForearmRight], new Vector3(-8f + 8f * jab, 0f, 0f), poke);
+
+            // Полено: в руке — вдоль ладони поперёк хода, в огне — лежит.
+            var lying = Quaternion.LookRotation(Vector3.right);
+            pose.LoadPosition = holding ? billet : new Vector3(BilletInFire.x, WorkerCarryBuilder.BilletRadius, BilletInFire.z) * height;
+            pose.LoadRotation = lying;
+            pose.LoadOnBack = 1f;
         }
 
         /// <summary>Плавно вверх за rise доли, держит, плавно вниз за fall доли (t — доля от 0 до 1).</summary>

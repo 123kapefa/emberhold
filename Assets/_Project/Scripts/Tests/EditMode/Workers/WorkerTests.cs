@@ -128,6 +128,36 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Worker_CarriesOneStonePerTrip()
+        {
+            // Чертежу нужно два камня: рабочий носит по одному — две ходки, в кучке остаётся лишний.
+            items.Drop(world, new Vector3Int(4, Ground, 4), new ItemDrop("stone", 3));
+            var cell = new Vector3Int(10, Ground, 10);
+            orders.AddBuild(cell, Block.Full(BlockMaterials.Stone), false, new ItemDrop("stone", 2));
+            var worker = Spawn(new Vector2Int(8, 8));
+
+            var most = 0;
+            var trips = 0;
+            var wasCarrying = false;
+            Run(40f, () =>
+            {
+                var carrying = worker.Carrying is { ItemId: "stone" };
+                if (carrying)
+                    most = Mathf.Max(most, worker.Carrying.Value.Count);
+                if (carrying && !wasCarrying)
+                    trips++;
+                wasCarrying = carrying;
+                return orders.Orders.Count == 0;
+            }, worker);
+
+            Assert.That(most, Is.EqualTo(1), "За ходку один камень");
+            Assert.That(trips, Is.EqualTo(2), "Две ходки");
+            Assert.That(world.GetBlock(cell).Material, Is.EqualTo(BlockMaterials.Stone));
+            Assert.That(items.Items, Has.Count.EqualTo(1));
+            Assert.That(items.Items[0].Drop, Is.EqualTo(new ItemDrop("stone", 1)));
+        }
+
+        [Test]
         public void Worker_BuildsFreeBlueprintWithoutItems()
         {
             var cell = new Vector3Int(12, Ground, 12);
