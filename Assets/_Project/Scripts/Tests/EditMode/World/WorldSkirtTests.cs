@@ -62,6 +62,7 @@ namespace Emberhold.Tests.EditMode.World
             var tris = data.Triangles[BlockMaterials.Grass];
             Assert.That(tris.Count, Is.GreaterThan(0));
             Assert.That(data.TriangleBlocks[BlockMaterials.Grass].Count, Is.EqualTo(tris.Count / 3));
+            Assert.That(data.Vertices.Count, Is.EqualTo(tris.Count), "у каждого треугольника свои вершины: камень гранями, как в мире");
 
             var area = 0.0;
             for (var t = 0; t < tris.Count; t += 3)
@@ -77,7 +78,8 @@ namespace Emberhold.Tests.EditMode.World
             Assert.That(area, Is.EqualTo(outer * outer - Size * Size).Within(1.0), "кольцо целиком, без дыр и наложений");
 
             // Каждый угол края мира — вершина гор на высоте земли.
-            var onEdge = 0;
+            // Вершины у треугольников свои (грани камня), поэтому углы считаем без повторов.
+            var onEdge = new System.Collections.Generic.HashSet<Vector2Int>();
             foreach (var v in data.Vertices)
             {
                 int x = Mathf.RoundToInt(v.x), z = Mathf.RoundToInt(v.z);
@@ -85,9 +87,9 @@ namespace Emberhold.Tests.EditMode.World
                     continue;
                 Assert.That(x == 0 || z == 0 || x == Size || z == Size, Is.True, "внутрь мира горы не заходят");
                 Assert.That(v.y, Is.EqualTo(surface.Corner(x, z) / (float)H).Within(1e-4f));
-                onEdge++;
+                onEdge.Add(new Vector2Int(x, z));
             }
-            Assert.That(onEdge, Is.EqualTo(4 * Size));
+            Assert.That(onEdge.Count, Is.EqualTo(4 * Size));
 
             foreach (var blend in data.Blends)
                 Assert.That(blend.y, Is.EqualTo(ChunkMeshData.GrassVertex), "рисуется как трава гладкой земли");

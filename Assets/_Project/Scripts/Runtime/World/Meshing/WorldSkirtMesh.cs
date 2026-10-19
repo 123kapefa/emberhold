@@ -38,24 +38,43 @@ namespace Emberhold.World.Meshing
         public static void Build(WorldSkirtShape shape, TerrainSurface surface, GroundTint tint, ChunkMeshData data)
         {
             data.Clear();
-            List<(int Index, float T)> inner = null;
+            List<(Point P, float T)> inner = null;
             foreach (var (distance, step) in Rows())
             {
-                var row = AddRow(shape, surface, tint, data, distance, step);
+                var row = Row(shape, surface, tint, distance, step);
                 if (inner != null)
                     Stitch(data, inner, row);
                 inner = row;
             }
         }
 
+        /// <summary>Точка рельефа: место, мягкая нормаль, каменность, оттенок и вид травы.</summary>
+        private readonly struct Point
+        {
+            public readonly Vector3 Position;
+            public readonly Vector3 Normal;
+            public readonly float Rock;
+            public readonly Color Tint;
+            public readonly Vector4 Kinds;
+
+            public Point(Vector3 position, Vector3 normal, float rock, Color tint, Vector4 kinds)
+            {
+                Position = position;
+                Normal = normal;
+                Rock = rock;
+                Tint = tint;
+                Kinds = kinds;
+            }
+        }
+
         /// <summary>
         /// Ряд-рамка на расстоянии distance от края, против часовой стрелки от угла (0, 0), если смотреть сверху.
-        /// T — положение вдоль рамки: номер стороны плюс доля стороны; последняя вершина повторяет первую с T = 4.
+        /// T — положение вдоль рамки: номер стороны плюс доля стороны; последняя точка повторяет первую с T = 4.
         /// </summary>
-        private static List<(int Index, float T)> AddRow(WorldSkirtShape shape, TerrainSurface surface, GroundTint tint,
-            ChunkMeshData data, float distance, float step)
+        private static List<(Point P, float T)> Row(WorldSkirtShape shape, TerrainSurface surface, GroundTint tint,
+            float distance, float step)
         {
-            var row = new List<(int Index, float T)>();
+            var row = new List<(Point P, float T)>();
             float min = -distance, maxX = shape.SizeX + distance, maxZ = shape.SizeZ + distance;
             for (var side = 0; side < 4; side++)
             {
@@ -72,14 +91,14 @@ namespace Emberhold.World.Meshing
                         2 => (maxX + min - along, maxZ),
                         _ => (min, maxZ + min - along),
                     };
-                    row.Add((AddVertex(shape, surface, tint, data, x, z, distance), side + f));
+                    row.Add((PointAt(shape, surface, tint, x, z, distance), side + f));
                 }
             }
-            row.Add((row[0].Index, 4f));
+            row.Add((row[0].P, 4f));
             return row;
         }
 
-        private static int AddVertex(WorldSkirtShape shape, TerrainSurface surface, GroundTint tint, ChunkMeshData data,
+        private static Point PointAt(WorldSkirtShape shape, TerrainSurface surface, GroundTint tint,
             float x, float z, float distance)
         {
             float height, rock;
@@ -103,44 +122,59 @@ namespace Emberhold.World.Meshing
                 rock = Mathf.Lerp(surface.Rock(cx, cz), mountainRock, shape.Spread(distance));
             }
 
-            var index = data.Vertices.Count;
-            data.Vertices.Add(new Vector3(x, height, z));
-            data.Normals.Add(normal);
-            data.Uvs.Add(new Vector2(x, z));
-            data.Blends.Add(new Vector4(rock, ChunkMeshData.GrassVertex, 0f, 0f));
             // Оттенок и вид травы за краем — как у ближайшей точки края, дальше вид сменяется горным.
-            data.Colors.Add(tint != null ? tint.Sample(x, z) : Color.white);
             var kinds = tint != null ? (Vector4)tint.SampleKinds(x, z) : Vector4.zero;
-            data.Kinds.Add(Vector4.Lerp(kinds, MountainKinds, shape.Spread(distance)));
-            return index;
+            return new Point(new Vector3(x, height, z), normal, rock, tint != null ? tint.Sample(x, z) : Color.white,
+                Vector4.Lerp(kinds, MountainKinds, shape.Spread(distance)));
         }
 
-        /// <summary>Сшивает два соседних ряда в ленту: всегда шагаем по тому ряду, чья следующая вершина ближе вдоль рамки.</summary>
-        private static void Stitch(ChunkMeshData data, List<(int Index, float T)> inner, List<(int Index, float T)> outer)
+        /// <summary>Сшивает два соседних ряда в ленту: всегда шагаем по тому ряду, чья следующая точка ближе вдоль рамки.</summary>
+        private static void Stitch(ChunkMeshData data, List<(Point P, float T)> inner, List<(Point P, float T)> outer)
         {
-            var tris = data.Triangles[BlockMaterials.Grass];
-            var blocks = data.TriangleBlocks[BlockMaterials.Grass];
             int i = 0, j = 0;
             while (i < inner.Count - 1 || j < outer.Count - 1)
             {
                 var advanceInner = j >= outer.Count - 1
                                    || (i < inner.Count - 1 && inner[i + 1].T <= outer[j + 1].T);
                 // По часовой стрелке, если смотреть сверху: лицевая сторона смотрит вверх.
-                tris.Add(inner[i].Index);
                 if (advanceInner)
                 {
-                    tris.Add(inner[i + 1].Index);
-                    tris.Add(outer[j].Index);
+                    AddTriangle(data, inner[i].P, inner[i + 1].P, outer[j].P);
                     i++;
                 }
                 else
                 {
-                    tris.Add(outer[j + 1].Index);
-                    tris.Add(outer[j].Index);
+                    AddTriangle(data, inner[i].P, outer[j + 1].P, outer[j].P);
                     j++;
                 }
-                blocks.Add(-1);
             }
+        }
+
+        /// <summary>
+        /// Треугольник со своими вершинами, как у гладкой земли мира (ChunkMesher): трава освещается мягко,
+        /// камень — гранями: чем каменнее вершина, тем ближе её нормаль к нормали треугольника.
+        /// </summary>
+        private static void AddTriangle(ChunkMeshData data, in Point a, in Point b, in Point c)
+        {
+            var face = Vector3.Cross(b.Position - a.Position, c.Position - a.Position).normalized;
+            var start = data.Vertices.Count;
+            data.AddTriangle(BlockMaterials.Grass, -1, a.Position, b.Position, c.Position,
+                Vector3.Lerp(a.Normal, face, a.Rock).normalized,
+                Vector3.Lerp(b.Normal, face, b.Rock).normalized,
+                Vector3.Lerp(c.Normal, face, c.Rock).normalized,
+                new Vector2(a.Position.x, a.Position.z), new Vector2(b.Position.x, b.Position.z),
+                new Vector2(c.Position.x, c.Position.z),
+                a.Rock, b.Rock, c.Rock);
+            SetGround(data, start, a);
+            SetGround(data, start + 1, b);
+            SetGround(data, start + 2, c);
+        }
+
+        private static void SetGround(ChunkMeshData data, int index, in Point point)
+        {
+            data.Blends[index] = new Vector4(point.Rock, ChunkMeshData.GrassVertex, 0f, 0f);
+            data.Colors[index] = point.Tint;
+            data.Kinds[index] = point.Kinds;
         }
     }
 }
