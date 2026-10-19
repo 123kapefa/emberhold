@@ -5,7 +5,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
     /// <summary>Цвета существ тумана (sRGB, как в прототипе бестиария) и оттенки уровней.</summary>
     public static class CreaturePalette
     {
-        public const uint Fog = 0x2b333f;
+        public const uint FogBody = 0x2b333f;
         public const uint FogDark = 0x1d232c;
         public const uint FogBelly = 0x46515f;
         public const uint Frost = 0xb3cde3;

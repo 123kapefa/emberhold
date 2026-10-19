@@ -62,8 +62,8 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
             });
 
             // Новые лапы: бедро, колено, голень, шип колена, два когтя.
-            var femurMesh = new[] { SegmentMesh(0.035f, 0.026f, 5, Fog), SegmentMesh(0.035f, 0.026f, 5, FogDark) };
-            var tibiaMesh = new[] { SegmentMesh(0.026f, 0.012f, 5, Fog), SegmentMesh(0.026f, 0.012f, 5, FogDark) };
+            var femurMesh = new[] { SegmentMesh(0.035f, 0.026f, 5, FogBody), SegmentMesh(0.035f, 0.026f, 5, FogDark) };
+            var tibiaMesh = new[] { SegmentMesh(0.026f, 0.012f, 5, FogBody), SegmentMesh(0.026f, 0.012f, 5, FogDark) };
             var kneeMesh = BallMesh(0.034f, 0x3e4856);
             var spikeMesh = ConeMesh(0.012f, 0.06f, 4, 0x6c7682);
             var clawMesh = ConeMesh(0.01f, 0.045f, 4, Claw);

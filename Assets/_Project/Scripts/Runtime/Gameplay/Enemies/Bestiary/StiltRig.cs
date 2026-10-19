@@ -66,8 +66,8 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
                 return p.z > 0.15f && p.y < 2.9f && p.y > 2.4f ? head : body;
             });
 
-            var femurMesh = new[] { SegmentMesh(0.05f, 0.035f, 6, Fog), SegmentMesh(0.05f, 0.035f, 6, 0x262d38) };
-            var tibiaMesh = new[] { SegmentMesh(0.035f, 0.012f, 6, Fog), SegmentMesh(0.035f, 0.012f, 6, 0x262d38) };
+            var femurMesh = new[] { SegmentMesh(0.05f, 0.035f, 6, FogBody), SegmentMesh(0.05f, 0.035f, 6, 0x262d38) };
+            var tibiaMesh = new[] { SegmentMesh(0.035f, 0.012f, 6, FogBody), SegmentMesh(0.035f, 0.012f, 6, 0x262d38) };
             var kneeMesh = BallMesh(0.06f, 0x6c7480);
             var middleMesh = BallMesh(0.032f, 0x6c7480);
             var spikeMesh = ConeMesh(0.025f, 0.16f, 4, Bone);

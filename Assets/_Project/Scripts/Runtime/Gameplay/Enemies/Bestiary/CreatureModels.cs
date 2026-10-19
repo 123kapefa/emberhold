@@ -101,7 +101,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
             for (var i = 0; i < segments.Length; i++)
             {
                 var (z, rx, ry) = (segments[i].x, segments[i].y, segments[i].z);
-                b.E(V(0f, 0.3f + i * 0.005f, z), V(rx, ry, 0.09f), i % 2 == 1 ? shell : Fog);
+                b.E(V(0f, 0.3f + i * 0.005f, z), V(rx, ry, 0.09f), i % 2 == 1 ? shell : FogBody);
                 b.E(V(0f, 0.3f + ry * 0.85f, z - 0.01f), V(rx * 0.85f, 0.04f, 0.08f), plate, V(0.25f, 0f, 0f), 0);
                 b.K(V(0f, 0.3f + ry * 0.95f, z - 0.02f), V(0f, 1f, -0.5f), 0.022f, 0.07f - i * 0.01f, spike, 4);
                 foreach (var s in Sides)
@@ -111,7 +111,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
             b.Chain(new[] { V(0f, 0.3f, -0.48f), V(0f, 0.36f, -0.58f), V(0f, 0.46f, -0.6f), V(0f, 0.52f, -0.55f) }, 0.045f, 0.015f, shell);
             b.K(V(0f, 0.52f, -0.55f), V(0f, 0.2f, 1f), 0.018f, 0.07f, Bone, 4);
             // Грудь с пластиной.
-            b.E(V(0f, 0.32f, 0.1f), V(0.17f, 0.13f, 0.14f), Fog);
+            b.E(V(0f, 0.32f, 0.1f), V(0.17f, 0.13f, 0.14f), FogBody);
             b.E(V(0f, 0.42f, 0.1f), V(0.14f, 0.04f, 0.12f), plate, V(0.1f, 0f, 0f), 0);
             foreach (var s in Sides)
                 b.K(V(s * 0.06f, 0.44f, 0.1f), V(s * 0.3f, 1f, -0.3f), 0.016f, 0.05f, spike, 4);
@@ -137,7 +137,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
                 for (var i = 0; i < 3; i++)
                 {
                     float z = 0.14f - i * 0.14f, sp = (i - 1) * 0.12f;
-                    var col = i == 1 ? FogDark : Fog;
+                    var col = i == 1 ? FogDark : FogBody;
                     var p = new[]
                     {
                         V(s * 0.12f, 0.3f, z), V(s * 0.3f, 0.44f, z + sp * 0.4f), V(s * 0.42f, 0.47f, z + sp * 0.7f),
@@ -163,7 +163,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
         {
             var l = b.Level;
             const uint hide = 0x353e4b, plateA = StoneDark, plateB = 0x6e7378, gum = 0x5c2c34, rope = Bark;
-            b.E(V(0f, 1.38f, -0.05f), V(0.78f, 0.6f, 0.58f), Fog, V(0.3f, 0f, 0f));
+            b.E(V(0f, 1.38f, -0.05f), V(0.78f, 0.6f, 0.58f), FogBody, V(0.3f, 0f, 0f));
             b.E(V(0f, 1.0f, 0.05f), V(0.58f, 0.42f, 0.44f), FogBelly);
             for (var i = 0; i < 3; i++)
                 b.E(V(0f, 1.1f - i * 0.14f, 0.43f - i * 0.01f), V(0.36f - i * 0.05f, 0.06f, 0.1f), i % 2 == 1 ? FogDark : hide, V(-0.1f, 0f, 0f), 0); // полосы брюха
@@ -182,14 +182,14 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
             b.E(V(-0.2f, 1.66f, -0.68f), V(0.1f, 0.04f, 0.08f), Moss, V(0.6f, 0f, 0f), 0);
             Tuft(b, V(0f, 1.84f, 0.1f), V(0f, 1f, 0.3f), 7, 0.04f, 0.16f, FogDark, 21);
             // Голова.
-            b.E(V(0f, 1.42f, 0.58f), V(0.27f, 0.22f, 0.24f), Fog);
+            b.E(V(0f, 1.42f, 0.58f), V(0.27f, 0.22f, 0.24f), FogBody);
             b.E(V(0f, 1.57f, 0.72f), V(0.25f, 0.07f, 0.09f), FogDark, V(0.2f, 0f, 0f), 0);                  // надбровье
             foreach (var s in Sides)
                 b.E(V(s * 0.1f, 1.5f, 0.76f), 0.055f, 0x0a0d12, default, 0);                                // глазницы
             b.E(V(0f, 1.43f, 0.8f), V(0.08f, 0.07f, 0.07f), hide);                                           // нос
             foreach (var s in Sides)
                 b.E(V(s * 0.035f, 1.41f, 0.865f), 0.017f, 0x05070a, default, 0);                           // ноздри
-            b.E(V(0f, 1.37f, 0.76f), V(0.2f, 0.06f, 0.1f), Fog);                                             // морда
+            b.E(V(0f, 1.37f, 0.76f), V(0.2f, 0.06f, 0.1f), FogBody);                                             // морда
             b.E(V(0f, 1.28f, 0.7f), V(0.22f, 0.1f, 0.14f), FogDark);                                         // челюсть
             b.E(V(0f, 1.33f, 0.8f), V(0.17f, 0.025f, 0.05f), gum);                                           // дёсны
             b.Teeth(V(0f, 1.36f, 0.82f), 0.18f, 6, 0.05f, V(0f, -1f, 0.1f), 0xd9d2bf, 0.015f);               // верхний ряд
@@ -209,7 +209,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
                 b.K(V(s * 0.39f, 1.79f, 0.62f), V(-s * 0.1f, 0.5f, 1f), 0.03f, 0.14f, 0xe0d8c4, 4);
                 b.K(V(s * 0.26f, 1.29f, 0.8f), V(s * 0.2f, 1f, 0.25f), 0.035f, 0.17f, Bone, 4);                   // большие клыки
                 // Плечо с каменным наплечником.
-                b.E(V(s * 0.8f, 1.66f, 0.08f), V(0.33f, 0.29f, 0.31f), Fog);
+                b.E(V(s * 0.8f, 1.66f, 0.08f), V(0.33f, 0.29f, 0.31f), FogBody);
                 for (var i = 0; i < 3; i++)
                     b.E(V(s * (0.78f + i * 0.1f), 1.88f - i * 0.13f, 0.08f), V(0.3f - i * 0.04f, 0.08f, 0.3f - i * 0.03f), new[] { plateA, plateB, plateA }[i],
                         V(0f, 0f, s * (-0.35f - i * 0.25f)), 0, 0.25f);
@@ -217,8 +217,8 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
                 b.K(V(s * 0.72f, 1.92f, -0.05f), V(s * 0.2f, 1f, -0.3f), 0.04f, 0.16f, 0xb8ae96, 4);
                 Tuft(b, V(s * 0.62f, 1.76f, 0.25f), V(s * 0.3f, 0.6f, 0.6f), 4, 0.035f, 0.12f, FogDark, s < 0 ? 29 : 31);
                 // Рука: плечо, бицепс, наручи, кандалы, кулак-валун.
-                b.Chain(new[] { V(s * 0.9f, 1.6f, 0.15f), V(s * 1.08f, 0.95f, 0.45f), V(s * 1.02f, 0.36f, 0.58f) }, 0.24f, 0.27f, Fog);
-                b.E(V(s * 1.06f, 1.25f, 0.3f), V(0.2f, 0.26f, 0.2f), Fog, V(0.4f, 0f, s * 0.2f));
+                b.Chain(new[] { V(s * 0.9f, 1.6f, 0.15f), V(s * 1.08f, 0.95f, 0.45f), V(s * 1.02f, 0.36f, 0.58f) }, 0.24f, 0.27f, FogBody);
+                b.E(V(s * 1.06f, 1.25f, 0.3f), V(0.2f, 0.26f, 0.2f), FogBody, V(0.4f, 0f, s * 0.2f));
                 b.K(V(s * 1.13f, 0.98f, 0.28f), V(s * 0.3f, -0.2f, -1f), 0.07f, 0.2f, Stone, 4);                  // шип локтя
                 b.E(V(s * 1.2f, 0.75f, 0.5f), V(0.13f, 0.17f, 0.19f), plateA, V(0.2f, 0f, 0f), 0, 0.3f);
                 b.E(V(s * 1.2f, 0.52f, 0.56f), V(0.12f, 0.14f, 0.18f), plateB, V(0.1f, 0f, 0f), 0, 0.3f);
@@ -230,10 +230,10 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
                     b.E(V(x, 0.3f, 0.88f), 0.075f, k % 2 == 1 ? 0x6a6f75u : hide, default, 0, 0.2f);          // костяшки
                     b.K(V(x, 0.3f, 0.93f), V(0f, -0.5f, 1f), 0.03f, 0.1f, Claw, 4);
                 }
-                b.Chain(new[] { V(s * 0.78f, 0.3f, 0.58f), V(s * 0.74f, 0.25f, 0.8f) }, 0.08f, 0.06f, Fog);      // большой палец
+                b.Chain(new[] { V(s * 0.78f, 0.3f, 0.58f), V(s * 0.74f, 0.25f, 0.8f) }, 0.08f, 0.06f, FogBody);      // большой палец
                 b.K(V(s * 0.74f, 0.25f, 0.84f), V(-s * 0.2f, -0.3f, 1f), 0.025f, 0.08f, Claw, 4);
                 // Нога.
-                b.Chain(new[] { V(s * 0.35f, 0.85f, -0.2f), V(s * 0.42f, 0.45f, -0.05f), V(s * 0.44f, 0.12f, -0.15f) }, 0.2f, 0.17f, Fog);
+                b.Chain(new[] { V(s * 0.35f, 0.85f, -0.2f), V(s * 0.42f, 0.45f, -0.05f), V(s * 0.44f, 0.12f, -0.15f) }, 0.2f, 0.17f, FogBody);
                 b.E(V(s * 0.43f, 0.47f, 0.12f), V(0.13f, 0.13f, 0.08f), plateA, default, 0, 0.3f);              // наколенник
                 b.E(V(s * 0.44f, 0.07f, -0.08f), V(0.17f, 0.08f, 0.22f), FogDark, default, 0);
                 for (var k = 0; k < 3; k++)
@@ -364,11 +364,11 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
                 var scale = 0.9f + Next() * 0.3f;
                 var at = V((Next() - 0.5f) * 1.4f, 1.1f + Next() * 1.1f, (Next() - 0.5f) * 1.2f);
                 b.BeginGroup(Matrix4x4.TRS(at, Quaternion.AngleAxis(Next() * 6f * Mathf.Rad2Deg, Vector3.up), Vector3.one * scale));
-                b.E(V(0f, 0f, 0.05f), V(0.075f, 0.065f, 0.085f), Fog);                                                       // грудь
+                b.E(V(0f, 0f, 0.05f), V(0.075f, 0.065f, 0.085f), FogBody);                                                       // грудь
                 for (var k = 0; k < 4; k++)                                                                                 // брюшко сегментами
                     b.E(V(0f, -0.005f - k * 0.006f, -0.04f - k * 0.065f), V(0.06f - k * 0.011f, 0.052f - k * 0.009f, 0.045f), k % 2 == 1 ? 0x5a6573u : FogBelly, default, 0);
                 b.K(V(0f, -0.03f, -0.27f), V(0f, -0.2f, -1f), 0.015f, 0.05f, FogDark, 4);
-                b.E(V(0f, 0.01f, 0.15f), 0.055f, Fog);                                                                       // голова
+                b.E(V(0f, 0.01f, 0.15f), 0.055f, FogBody);                                                                       // голова
                 Tuft(b, V(0f, 0.04f, 0.1f), V(0f, 1f, 0.4f), 6, 0.015f, 0.06f, 0x9aa3ad, 60 + i);                           // меховой воротник
                 b.Chain(new[] { V(0f, -0.02f, 0.19f), V(0f, -0.06f, 0.22f), V(0f, -0.07f, 0.19f) }, 0.006f, 0.004f, Bone);    // хоботок
                 foreach (var side in Sides)
@@ -407,7 +407,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
         {
             var l = b.Level;
             const uint hide = 0x353e4b, rib = 0x26303c, shawl = 0x3a4250;
-            b.E(V(0f, 1.05f, -0.15f), V(0.45f, 0.5f, 0.4f), Fog);                                                       // тело
+            b.E(V(0f, 1.05f, -0.15f), V(0.45f, 0.5f, 0.4f), FogBody);                                                       // тело
             for (var i = 0; i < 3; i++)                                                                                 // пластины груди
                 b.E(V(0f, 1.12f - i * 0.15f, 0.2f - i * 0.02f), V(0.3f - i * 0.04f, 0.07f, 0.1f), i % 2 == 1 ? FogDark : hide, V(-0.2f, 0f, 0f), 0);
             for (var i = 0; i < 3; i++)                                                                                 // брюшные кольца
@@ -452,7 +452,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
             b.E(V(0f, 1.35f, 0.25f), V(0.2f, 0.22f, 0.2f), FogDark);
             b.E(V(0f, 1.47f, 0.37f), V(0.17f, 0.05f, 0.07f), hide, V(0.3f, 0f, 0f), 0);                                // надбровье
             for (var i = 0; i < 3; i++)                                                                                 // морщины лба
-                b.E(V(0f, 1.53f + i * 0.04f, 0.3f - i * 0.05f), V(0.14f - i * 0.02f, 0.025f, 0.06f), i % 2 == 1 ? Fog : hide, default, 0);
+                b.E(V(0f, 1.53f + i * 0.04f, 0.3f - i * 0.05f), V(0.14f - i * 0.02f, 0.025f, 0.06f), i % 2 == 1 ? FogBody : hide, default, 0);
             foreach (var s in Sides)
             {
                 b.K(V(s * 0.17f, 1.42f, 0.2f), V(s, -0.6f, -0.4f), 0.05f, 0.16f, FogDark, 4);                           // висячие уши
@@ -463,7 +463,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
             var trunk = new[] { V(0f, 1.28f, 0.4f), V(0f, 1.12f, 0.5f), V(0f, 0.97f, 0.55f), V(0f, 0.85f, 0.52f) };
             b.Chain(trunk, 0.075f, 0.04f, FogDark);
             for (var i = 0; i < 3; i++)
-                b.Ring(trunk[i + 1], 0.065f - i * 0.008f, 0.016f, i % 2 == 1 ? hide : Fog, V(Mathf.PI / 2f - 0.5f + i * 0.3f, 0f, 0f));
+                b.Ring(trunk[i + 1], 0.065f - i * 0.008f, 0.016f, i % 2 == 1 ? hide : FogBody, V(Mathf.PI / 2f - 0.5f + i * 0.3f, 0f, 0f));
             b.K(V(0f, 0.8f, 0.5f), V(0f, 1f, 0.15f), 0.065f, 0.1f, hide, 6);                                            // раструб
             foreach (var s in Sides)
                 b.E(V(s * 0.02f, 0.78f, 0.5f), 0.012f, 0x05070a, default, 0);                                           // ноздри
@@ -476,7 +476,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
                 for (var k = 0; k < 2; k++)
                 {
                     var p = legs[k];
-                    Limb(b, p, 0.065f, 0.03f, new[] { FogDark, Fog, FogDark }, hide);
+                    Limb(b, p, 0.065f, 0.03f, new[] { FogDark, FogBody, FogDark }, hide);
                     b.K(p[1], V(s * 0.5f, 0.6f, k == 1 ? -0.4f : 0.3f), 0.02f, 0.08f, Bone, 4);
                     b.K(p[3], V(s * 0.2f, -0.5f, 0.8f), 0.015f, 0.06f, Claw, 4);
                     b.K(p[3], V(s * 0.6f, -0.5f, 0.2f), 0.015f, 0.06f, Claw, 4);
@@ -510,7 +510,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
         {
             var l = b.Level;
             const uint plate = 0x3a4452, joint = 0x6c7480, dark = 0x262d38;
-            b.E(V(0f, 2.9f, 0f), V(0.32f, 0.2f, 0.36f), Fog);
+            b.E(V(0f, 2.9f, 0f), V(0.32f, 0.2f, 0.36f), FogBody);
             b.E(V(0f, 2.8f, 0f), V(0.25f, 0.12f, 0.28f), FogBelly);
             for (var i = 0; i < 3; i++)                                                                                 // брюшные кольца
                 b.E(V(0f, 2.73f - i * 0.015f, 0.1f - i * 0.12f), V(0.2f - i * 0.03f, 0.05f, 0.07f), i % 2 == 1 ? FogBelly : 0x56616fu, default, 0);
@@ -542,7 +542,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
                 float ca = Mathf.Cos(a), sa = Mathf.Sin(a);
                 Vector3 P(float k, float y) => V(ca * k, y, sa * k);
                 var points = new[] { P(0.2f, 2.85f), P(0.55f, 3.2f), P(0.85f, 3.36f), P(1.15f, 2.5f), P(1.36f, 1.5f), P(1.47f, 0.62f), P(1.5f, 0.08f) };
-                Limb(b, points, 0.05f, 0.014f, i % 2 == 1 ? new[] { FogDark, Fog } : new[] { Fog, dark }, joint);
+                Limb(b, points, 0.05f, 0.014f, i % 2 == 1 ? new[] { FogDark, FogBody } : new[] { FogBody, dark }, joint);
                 b.K(points[2], V(ca * 0.4f, 1f, sa * 0.4f), 0.025f, 0.14f, Bone, 4);                                    // шип колена
                 b.K(points[4], V(ca, 0.2f, sa), 0.015f, 0.08f, joint, 4);
                 b.E(P(1.0f, 2.95f), 0.045f, plate, default, 0);                                                          // утолщение бедра
