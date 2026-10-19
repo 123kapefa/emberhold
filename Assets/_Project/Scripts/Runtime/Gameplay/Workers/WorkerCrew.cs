@@ -19,7 +19,7 @@ namespace Emberhold.Gameplay.Workers
     /// и рабочих, рисует рабочих (гранёный человек из частей WorkerMeshBuilder, анимация по состоянию из WorkerAnimation,
     /// ноша на плече из WorkerCarryBuilder), рамки чертежей и приказов копать и рубить.
     /// Чертежи и приказы ставит игрок инструментами BlockEditController (4 и 5). Топливо для огней отряд заводит сам:
-    /// у каждого огня, в котором есть место хотя бы под одно полено, висит задача принести поленья.
+    /// у каждого огня, в котором есть место хотя бы под одно полено, висит задача принести полено.
     /// Урон блоков и устойчивость общие с BlockEditController, ресурсы на земле — из DroppedItemsView.
     /// </summary>
     public sealed class WorkerCrew : MonoBehaviour
@@ -158,7 +158,7 @@ namespace Emberhold.Gameplay.Workers
             var fire = NearestFire(worker.Position);
             var warming = worker.State == WorkerState.Idle && night && fire.HasValue && visual.Speed < 0.3f;
             Vector3? look = null;
-            if (worker.State == WorkerState.Working && worker.Order != null)
+            if (worker.State is WorkerState.Working or WorkerState.Putting && worker.Order != null)
                 look = worker.Order.Cell + new Vector3(0.5f, 0f, 0.5f) - worker.Position;
             else if (move.sqrMagnitude > 1e-6f)
                 look = move;
@@ -182,8 +182,8 @@ namespace Emberhold.Gameplay.Workers
                 case WorkerState.PickingUp:
                     animator.Play(WorkerClip.PickUp, settings.PickUpSeconds);
                     break;
-                case WorkerState.Working when worker.Order != null && worker.Order.Kind == WorkKind.Fuel:
-                    animator.Play(WorkerClip.Put);
+                case WorkerState.Putting:
+                    animator.Play(WorkerClip.Put, settings.PutSeconds);
                     break;
                 case WorkerState.Working when worker.Order != null && worker.Order.Kind == WorkKind.Build:
                     animator.Play(WorkerClip.Place, settings.BuildSeconds);
