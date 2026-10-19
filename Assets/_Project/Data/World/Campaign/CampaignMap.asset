@@ -17,7 +17,6 @@ MonoBehaviour:
   ridgePeakHeight: 68
   ridgeGrassLine: 30
   smoothSurface: 1
-  outerSlope: 1
   ridgeProfile: {fileID: 11400000, guid: e1b4646b657448c9bfbd8144d1f15603, type: 2}
   locations:
   - id: pass
@@ -360,16 +359,16 @@ MonoBehaviour:
     from: mount
     to: cedar
     waypoints:
-    - {x: 466, y: 140}
-    - {x: 468, y: 200}
-    - {x: 466, y: 268}
-    - {x: 472, y: 316}
+    - {x: 472, y: 140}
+    - {x: 476, y: 200}
+    - {x: 474, y: 268}
+    - {x: 478, y: 316}
     widthStart: 10
     widthEnd: 10
     heightStart: 24
     heightEnd: 25
     bump: 9
-    wiggle: 10
+    wiggle: 18
   peaks:
   - name: Центральный пик
     points:
@@ -413,7 +412,7 @@ MonoBehaviour:
     teeth: 0
   - name: Западный пик
     points:
-    - {x: 26, y: 160}
+    - {x: 18, y: 160}
     height: 72
     radius: 30
     teeth: 0
@@ -425,7 +424,7 @@ MonoBehaviour:
     teeth: 0
   - name: Южный пик
     points:
-    - {x: 250, y: 26}
+    - {x: 250, y: 18}
     height: 72
     radius: 30
     teeth: 0
