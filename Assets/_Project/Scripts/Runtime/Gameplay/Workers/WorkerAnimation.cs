@@ -563,7 +563,7 @@ namespace Emberhold.Gameplay.Workers
 
             // Правая рука с кочергой: после того как полено легло — два тычка в угли.
             var poke = Bump(Mathf.InverseLerp(0.42f, 0.92f, phase), 0.15f, 0.15f);
-            var jab = Mathf.Max(0f, Mathf.Sin(Mathf.PI * 2f * Mathf.InverseLerp(0.5f, 0.86f, phase)));
+            var jab = Mathf.Max(0f, Mathf.Sin(Mathf.PI * 4f * Mathf.InverseLerp(0.5f, 0.86f, phase)));
             pose[WorkerPart.UpperArmRight] = Vector3.Lerp(pose[WorkerPart.UpperArmRight], new Vector3(-72f - 14f * jab, 0f, 6f), poke);
             pose[WorkerPart.ForearmRight] = Vector3.Lerp(pose[WorkerPart.ForearmRight], new Vector3(-8f + 8f * jab, 0f, 0f), poke);
 

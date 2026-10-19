@@ -93,7 +93,7 @@ namespace Emberhold.Tests.EditMode.Workers
             // За ходку — одно полено, даже если задача просит больше и в кучке их много.
             var fire = new Fire(10f, 5f);
             items.Drop(world, new Vector3Int(5, Ground, 5), new ItemDrop("wood", 3));
-            orders.AddFuel(new Vector3Int(14, Ground, 14), fire, "wood", 1);
+            orders.AddFuel(new Vector3Int(14, Ground, 14), fire, "wood", 2);
             var worker = Spawn(new Vector2Int(9, 9));
 
             var most = 0;
@@ -131,6 +131,28 @@ namespace Emberhold.Tests.EditMode.Workers
             var atFire = items.Items.FirstOrDefault(item => Vector2.Distance(new Vector2(item.Cell.x, item.Cell.z), new Vector2(14f, 14f)) < 2f);
             Assert.That(atFire, Is.Not.Null);
             Assert.That(atFire.Drop, Is.EqualTo(new ItemDrop("wood", 1)));
+            var inPile = items.Items.FirstOrDefault(item => item.Cell.x == 5 && item.Cell.z == 5);
+            Assert.That(inPile, Is.Not.Null, "Второе полено осталось в кучке");
+            Assert.That(inPile.Drop, Is.EqualTo(new ItemDrop("wood", 1)));
+        }
+
+        [Test]
+        public void Worker_PutsWoodIntoFireAtEndOfPutAnimation()
+        {
+            // Пришёл к огню — кладёт полено; в огне оно оказывается только в конце, через PutSeconds.
+            var fire = new Fire(10f, 5f);
+            items.Drop(world, new Vector3Int(5, Ground, 5), new ItemDrop("wood", 1));
+            orders.AddFuel(new Vector3Int(14, Ground, 14), fire, "wood", 1);
+            var worker = Spawn(new Vector2Int(9, 9));
+
+            Run(30f, () => worker.State == WorkerState.Putting, worker);
+            Assert.That(worker.State, Is.EqualTo(WorkerState.Putting), "Дошёл и кладёт");
+            Assert.That(worker.Carrying, Is.Not.Null);
+            Run(settings.PutSeconds * 0.8f, () => false, worker);
+            Assert.That(fire.Amount, Is.EqualTo(5f), "Пока кладёт, полено ещё не в огне");
+            Run(settings.PutSeconds, () => orders.Orders.Count == 0, worker);
+            Assert.That(fire.Amount, Is.EqualTo(6f), "Положил — полено в огне");
+            Assert.That(worker.Carrying, Is.Null);
         }
 
         [Test]

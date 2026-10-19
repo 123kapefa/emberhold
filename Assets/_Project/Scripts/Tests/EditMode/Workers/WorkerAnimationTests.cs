@@ -179,10 +179,11 @@ namespace Emberhold.Tests.EditMode.Workers
                 var cycle = WorkerAnimation.WorkCycle(clip);
                 Assert.That(cycle, Is.GreaterThan(1f), $"{clip}: цикл");
                 var motion = WorkerMotion.For(Look(role), Height, 0f, 0f);
+                // Самое начало цикла и миг перед его концом — разные моменты, но поза почти та же: цикл замкнут.
                 var start = WorkerAnimation.Sample(clip, 0f, motion);
-                var end = WorkerAnimation.Sample(clip, cycle, motion);
+                var end = WorkerAnimation.Sample(clip, cycle - 1e-3f, motion);
                 for (var i = 0; i < WorkerPose.PartCount; i++)
-                    Assert.That(Vector3.Distance(start.Angles[i], end.Angles[i]), Is.LessThan(0.5f), $"{clip}: цикл замкнут ({(WorkerPart)i})");
+                    Assert.That(Vector3.Distance(start.Angles[i], end.Angles[i]), Is.LessThan(1f), $"{clip}: цикл замкнут ({(WorkerPart)i})");
                 var low = float.MaxValue;
                 var high = float.MinValue;
                 for (var k = 0; k < 40; k++)
