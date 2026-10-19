@@ -23,7 +23,7 @@ namespace Emberhold.Gameplay.Items
     {
         private static readonly Color Bark = new(0.36f, 0.24f, 0.15f);
         private static readonly Color WoodLight = new(0.72f, 0.56f, 0.36f);
-        private static readonly Color Stone = new(0.55f, 0.55f, 0.53f);
+        private static readonly Color StoneGrey = new(0.55f, 0.55f, 0.53f);
 
         /// <summary>Сколько разных камней и осколков.</summary>
         public const int Variants = 3;
@@ -63,7 +63,7 @@ namespace Emberhold.Gameplay.Items
             var random = new System.Random(17 + variant * 31);
             var radius = ItemPileLayout.StoneRadius;
             var radii = new Vector3(radius * (1.05f + 0.1f * variant), radius * 0.78f, radius * (0.95f - 0.05f * variant));
-            mesh.AddBlob(Vector3.zero, radii, 1, 0.22f, random, FacetShade(Stone, 0.86f, 1.04f, 0f, variant));
+            mesh.AddBlob(Vector3.zero, radii, 1, 0.22f, random, FacetShade(StoneGrey, 0.86f, 1.04f, 0f, variant));
             return Stones[variant] = Keep(mesh.ToMesh($"Stone {variant}"));
         }
 
