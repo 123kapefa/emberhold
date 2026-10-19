@@ -153,34 +153,19 @@ def grass():
 # ---------- камень ----------
 
 def rock():
-    rng = np.random.default_rng(7502)
-    # Сине-серые плиты с тёмными трещинами и светлым краем: холодный камень под туман.
-    tones = [(76, 82, 94), (96, 103, 115), (118, 125, 136), (142, 148, 156)]
-    f1, f2, idx, pts = worley(rng, 16, stretch=2.2)
-    cell_tone = rng.integers(0, 3, len(pts))
-    base = cell_tone[idx] / 3.0
-    # Внутри плиты — пара крупных пятен, тоже ступенями.
-    blot = bands(normalize(fbm(rng, 4, 2, 0.5, warp_field(rng, 4, 160))) * 0.999, 3)
-    t = np.clip(base + (blot - 0.5) * 0.35, 0, 1)
-    # Свет сверху-слева: сторона плиты к свету светлее, к тени темнее (рисованный объём).
-    yy, xx = np.mgrid[0:SIZE, 0:SIZE].astype(np.float32)
-    cx, cy = pts[idx, 0], pts[idx, 1]
-    ddx = (xx - cx + SIZE / 2) % SIZE - SIZE / 2
-    ddy = (yy - cy + SIZE / 2) % SIZE - SIZE / 2
-    edge = np.clip(1 - (f2 - f1) / 18, 0, 1)
-    lit = (-ddx - ddy) / np.maximum(np.hypot(ddx, ddy), 1)
-    t = np.clip(t + edge * lit * 0.45, 0, 1)
-    rgb = palette(bands(t * 0.999, 4), tones)
-    # Трещины по границам плит.
-    crack = (f2 - f1) < 3.6
-    rgb[crack] = (52, 56, 68)
-    rgb = soften(rgb, 0.7)
-
-    # Деталь вблизи: мелкие сколы и зерно.
-    f1d, f2d, _, _ = worley(rng, 220)
-    grain = np.clip((f2d - f1d) / 6, 0, 1)
-    detail = 0.42 + grain * 0.16 + (fbm(rng, 48, 2) - 0.5) * 0.3
-    save("GroundRock.png", rgb, np.clip(detail, 0, 1))
+    rng = np.random.default_rng(6)
+    # Копаемый камень без плит: нейтральные серые пятна, крапины и тонкие трещинки. У рисунка нет крупных
+    # чётких краёв, поэтому грани блоков его не режут, а без синевы камень не путается с ледниковой скалой.
+    tones = [(84, 84, 86), (104, 104, 106), (126, 126, 126), (150, 149, 147)]
+    t = bands(normalize(fbm(rng, 12, 3, 0.5, warp_field(rng, 12, 50))) * 0.999, 4)
+    rgb = palette(t, tones)
+    stones(rng, rgb, 1100, (1.2, 2.2), 0.5, (68, 68, 70), None)
+    stones(rng, rgb, 500, (1.0, 1.8), 0.5, (172, 171, 169), None)
+    # Трещинки: куски границ ячеек Вороного, только там, где их пропускает шум.
+    f1, f2, _, _ = worley(rng, 70)
+    rgb[((f2 - f1) < 1.4) & (fbm(rng, 10, 2) > 0.58)] = (60, 60, 61)
+    rgb = soften(rgb, 0.6)
+    save("GroundRock.png", rgb, chip_detail(rng, 220, 0.16))
 
 
 # ---------- земля ----------
