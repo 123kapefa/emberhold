@@ -25,6 +25,9 @@ namespace Emberhold.World.Editing
         /// <summary>Блок разрушен ударом: координата и каким он был до разрушения (для выпадения ресурсов).</summary>
         public event Action<Vector3Int, Block> Destroyed;
 
+        /// <summary>Блок ударили, но он устоял: координата, сам блок и доля разрушения после удара (для крошек).</summary>
+        public event Action<Vector3Int, Block, float> Damaged;
+
         /// <summary>Сколько блоков сейчас повреждено.</summary>
         public int Count => taken.Count;
 
@@ -81,6 +84,7 @@ namespace Emberhold.World.Editing
             }
 
             taken[block] = value;
+            Damaged?.Invoke(block, current, Mathf.Clamp01(value / MaxHitPoints(current)));
             return false;
         }
 

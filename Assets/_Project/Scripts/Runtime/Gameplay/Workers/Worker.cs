@@ -54,6 +54,14 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Задача, которую рабочий держит за собой, или null.</summary>
         public WorkOrder Order { get; private set; }
 
+        /// <summary>
+        /// Доля замаха до следующего удара (рубит или копает): 0 — сразу после удара, 1 — удар. По ней анимация
+        /// бьёт в тот же миг, когда снимаются ХП. Вне ударов — 0.
+        /// </summary>
+        public float SwingProgress => State == WorkerState.Working && Order is { Kind: WorkKind.Chop or WorkKind.Dig }
+            ? Mathf.Clamp01(1f - timer / context.Settings.DigHitSeconds)
+            : 0f;
+
         /// <summary>Что рабочий несёт, или null.</summary>
         public ItemDrop? Carrying { get; private set; }
 
@@ -277,7 +285,7 @@ namespace Emberhold.Gameplay.Workers
             {
                 // Урон копится на дереве, даже если рабочий уйдёт; срубленное дерево само кладёт поленья.
                 timer += context.Settings.DigHitSeconds;
-                if (context.Forest.Hit(context.World, Order.Tree, context.Settings.DigHitDamage))
+                if (context.Forest.Hit(context.World, Order.Tree, context.Settings.DigHitDamage, new Vector2(Position.x, Position.z)))
                     Finish();
                 return;
             }

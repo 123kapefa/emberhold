@@ -44,17 +44,49 @@ namespace Emberhold.World.Trees
 
         /// <summary>Дерево ещё стоит (не срублено и не упало).</summary>
         public bool IsStanding { get; internal set; } = true;
+
+        /// <summary>
+        /// Куда дерево упадёт (по X и Z, длина 1): от того, кто ударил последним. Нулевой — никто не бил,
+        /// направление выбирает вид.
+        /// </summary>
+        public Vector2 FallDirection { get; internal set; }
+
+        /// <summary>Дерево срублено (а не упало, потеряв опору): после него остался пень.</summary>
+        public bool Chopped { get; internal set; }
     }
 
     /// <summary>
-    /// Деревья на карте. Срубленное дерево целиком падает кучкой поленьев у основания (в <see cref="DroppedItems"/>).
-    /// Если под деревом выкопали землю или в его клетку поставили блок, дерево падает так же (<see cref="Settle"/>).
+    /// Пень срубленного дерева: стоит в клетке дерева, пока под ним есть земля и клетка пуста. Только вид:
+    /// на работу и строительство не влияет — поставленный в клетку блок или выкопанная земля его убирают.
+    /// </summary>
+    public sealed class TreeStump
+    {
+        internal TreeStump(TreeStand tree)
+        {
+            Species = tree.Species;
+            Cell = tree.Cell;
+            Offset = tree.Offset;
+        }
+
+        public TreeSpecies Species { get; }
+        public Vector3Int Cell { get; }
+        public Vector2 Offset { get; }
+
+        /// <summary>Точка пня на карте по X и Z: там же, где стоял ствол.</summary>
+        public Vector2 Position => new(Cell.x + 0.5f + Offset.x, Cell.z + 0.5f + Offset.y);
+    }
+
+    /// <summary>
+    /// Деревья на карте. Срубленное дерево целиком падает кучкой поленьев у основания (в <see cref="DroppedItems"/>)
+    /// и оставляет пень (<see cref="Stumps"/>). Если под деревом выкопали землю или в его клетку поставили блок,
+    /// дерево падает так же, но без пня (<see cref="Settle"/>).
     /// Деревья не отрастают. Чистая логика без Unity-объектов: показывает её ForestView, рубят рабочие.
     /// Координаты — мира блоков.
     /// </summary>
     public sealed class Forest
     {
         private readonly List<TreeStand> trees = new();
+        private readonly List<TreeStump> stumps = new();
         private readonly List<Grove> groves = new();
         private readonly Dictionary<Vector2Int, TreeStand> byColumn = new();
         private readonly DroppedItems items;
@@ -66,14 +98,20 @@ namespace Emberhold.World.Trees
 
         public IReadOnlyList<TreeStand> Trees => trees;
 
+        /// <summary>Пни срубленных деревьев.</summary>
+        public IReadOnlyList<TreeStump> Stumps => stumps;
+
         /// <summary>Рощи леса, в том числе уже вырубленные.</summary>
         public IReadOnlyList<Grove> Groves => groves;
 
-        /// <summary>Номер изменения: растёт, когда дерево посадили или оно упало.</summary>
+        /// <summary>Номер изменения: растёт, когда дерево посадили или оно упало, когда пень появился или исчез.</summary>
         public int Version { get; private set; }
 
         /// <summary>Дерево упало (срублено или потеряло опору); поленья уже лежат на земле.</summary>
         public event Action<TreeStand> Felled;
+
+        /// <summary>Дерево ударили, но оно устояло (для вида: крона дрожит, летят щепки).</summary>
+        public event Action<TreeStand> Struck;
 
         public TreeStand At(Vector2Int column) => byColumn.TryGetValue(column, out var tree) ? tree : null;
 
@@ -117,14 +155,27 @@ namespace Emberhold.World.Trees
             return tree;
         }
 
-        /// <summary>Ударить дерево на damage ХП. true — дерево срублено и поленья упали.</summary>
-        public bool Hit(VoxelWorld world, TreeStand tree, float damage)
+        /// <summary>
+        /// Ударить дерево на damage ХП. from — откуда бьют (X и Z): срубленное дерево падает от него.
+        /// true — дерево срублено, поленья упали, остался пень.
+        /// </summary>
+        public bool Hit(VoxelWorld world, TreeStand tree, float damage, Vector2? from = null)
         {
             if (tree == null || !tree.IsStanding || damage <= 0f)
                 return false;
+            if (from is { } source)
+            {
+                var away = tree.Position - source;
+                if (away.sqrMagnitude > 1e-6f)
+                    tree.FallDirection = away.normalized;
+            }
             tree.Damage += damage;
             if (tree.Health > 0f)
+            {
+                Struck?.Invoke(tree);
                 return false;
+            }
+            tree.Chopped = true;
             Fell(world, tree);
             return true;
         }
@@ -139,14 +190,21 @@ namespace Emberhold.World.Trees
             byColumn.Remove(tree.Column);
             tree.Grove?.trees.Remove(tree);
             Version++;
+            if (tree.Chopped && HasGround(world, tree.Cell))
+                stumps.Add(new TreeStump(tree));
             if (items != null && world.IsInsideBlocks(tree.Cell))
                 items.Drop(world, tree.Cell, new ItemDrop(tree.Species.ItemId, tree.Species.WoodYield));
             Felled?.Invoke(tree);
         }
 
-        /// <summary>Уронить деревья, под которыми выкопали землю или в чью клетку поставили блок. Возвращает, сколько упало.</summary>
+        /// <summary>
+        /// Уронить деревья, под которыми выкопали землю или в чью клетку поставили блок, и убрать такие же пни.
+        /// Возвращает, сколько деревьев упало.
+        /// </summary>
         public int Settle(VoxelWorld world)
         {
+            if (stumps.RemoveAll(stump => !HasGround(world, stump.Cell)) > 0)
+                Version++;
             var fallen = 0;
             for (var i = trees.Count - 1; i >= 0; i--)
             {
@@ -161,6 +219,9 @@ namespace Emberhold.World.Trees
 
         /// <summary>Высота основания дерева: земля в точке ствола (<see cref="GroundHeight"/>), а не в центре клетки.</summary>
         public static float BaseHeight(VoxelWorld world, TreeStand tree) => GroundHeight(world, tree.Cell, tree.Position);
+
+        /// <summary>Высота основания пня, как у дерева.</summary>
+        public static float BaseHeight(VoxelWorld world, TreeStump stump) => GroundHeight(world, stump.Cell, stump.Position);
 
         /// <summary>
         /// Высота земли под точкой point (X, Z) в клетке cell над землёй: на нетронутой земле — гладкая поверхность

@@ -162,6 +162,24 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void Hit_ReportsDamageUntilTheBlockBreaks()
+        {
+            // Устоявший блок сообщает долю разрушения (для крошек), разбитый — только Destroyed.
+            var world = new VoxelWorld(Vector3Int.one);
+            world.SetBlock(Cell, Block.Full(BlockMaterials.Stone));
+            var damage = NewDamage();
+            var damaged = new List<float>();
+            var destroyed = 0;
+            damage.Damaged += (_, _, fraction) => damaged.Add(fraction);
+            damage.Destroyed += (_, _) => destroyed++;
+
+            while (!damage.Hit(world, Cell, 25f)) { }
+
+            Assert.That(damaged, Is.EqualTo(new[] { 0.25f, 0.5f, 0.75f }).Within(1e-4f));
+            Assert.That(destroyed, Is.EqualTo(1));
+        }
+
+        [Test]
         public void Hit_UsesDurabilityOfBlockMaterial()
         {
             var table = ScriptableObject.CreateInstance<BlockDurabilityTable>();

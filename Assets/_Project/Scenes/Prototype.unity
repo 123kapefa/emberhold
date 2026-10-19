@@ -899,12 +899,8 @@ MonoBehaviour:
   editor: {fileID: 1836935974}
   worldView: {fileID: 520718230}
   drops: {fileID: 11400000, guid: 6f07bd270b3d480bbf8f9fe41843bbcc, type: 2}
-  itemMaterial: {fileID: 2100000, guid: 273a4ded7a59b41aea0d0162bf49b3df, type: 2}
-  itemLooks:
-  - itemId: wood
-    material: {fileID: 2100000, guid: 932ae790c9e7a4b1480d98f70518d09f, type: 2}
-  itemSize: 0.35
-  maxStack: 5
+  pieceMaterial: {fileID: 2100000, guid: 8b62bdf6948e4af1bdd8edce22358654, type: 2}
+  maxStack: 12
   blockFalls: {fileID: 1836935976}
 --- !u!4 &1950212303
 Transform:

@@ -188,12 +188,16 @@ namespace Emberhold.Gameplay.Workers
                 case WorkerState.Working when worker.Order != null && worker.Order.Kind == WorkKind.Build:
                     animator.Play(WorkerClip.Place, settings.BuildSeconds);
                     break;
-                case WorkerState.Working:
-                    // Удары ролей (рубить, копать) — отдельной задачей; пока каждый удар — наклон «поставить».
-                    animator.Play(WorkerClip.Place, settings.DigHitSeconds);
-                    if (animator.Progress >= 1f)
-                        animator.Restart();
+                case WorkerState.Working when worker.Order != null:
+                {
+                    // Рубит или копает: цикл анимации идёт по замаху рабочего, чтобы топор или кирка попадали
+                    // в тот же миг, когда снимаются ХП (удар в цикле — на SwingImpact).
+                    var clip = worker.Order.Kind == WorkKind.Chop ? WorkerClip.Chop : WorkerClip.Dig;
+                    animator.Play(clip);
+                    animator.Time = Mathf.Repeat(worker.SwingProgress + WorkerAnimation.SwingImpact - 1f, 1f)
+                                    * WorkerAnimation.WorkCycle(clip);
                     break;
+                }
                 default:
                     if (visual.Speed > 0.3f)
                         animator.Play(worker.Carrying != null ? WorkerClip.Carry : WorkerClip.Walk);
