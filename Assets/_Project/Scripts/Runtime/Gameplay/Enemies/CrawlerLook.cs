@@ -36,6 +36,11 @@ namespace Emberhold.Gameplay.Enemies
         private void Start()
         {
             crawler = GetComponent<Crawler>();
+            if (materials == null || materials.Opaque == null || materials.Transparent == null)
+            {
+                Debug.LogError("[Crawlers] У CrawlerLook не назначены материалы врагов: ползун останется без модели.", this);
+                return;
+            }
             var cycle = FindAnyObjectByType<DayNightCycle>();
             rig = CreatureRig.Create(CreatureKind.Crawler, LevelForNight(cycle != null ? cycle.DayNumber : 1), materials) as CrawlerRig;
             rig.Root.SetParent(transform, false);

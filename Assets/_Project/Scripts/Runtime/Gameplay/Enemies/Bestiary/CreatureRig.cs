@@ -46,7 +46,7 @@ namespace Emberhold.Gameplay.Enemies.Bestiary
         private readonly List<Vector3> rests = new();
         private readonly Dictionary<Transform, int> partIndex = new();
         private readonly Dictionary<CreatureLayer, RigMaterial> materials = new();
-        private readonly List<Mesh> meshes = new();
+        private readonly HashSet<Mesh> meshes = new();
         private readonly Transform orbit;
 
         protected CreatureRig(CreatureKind kind, int level, CreatureMaterials templates)
