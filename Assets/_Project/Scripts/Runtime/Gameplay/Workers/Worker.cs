@@ -19,12 +19,17 @@ namespace Emberhold.Gameplay.Workers
         Working,
         /// <summary>Оказался в темноте и уходит к ближайшему свету.</summary>
         Fleeing,
+        /// <summary>
+        /// Пришёл с ношей к огню или чертежу и кладёт её: ресурс засчитывается в конце (через PutSeconds).
+        /// Если задачу отменили раньше, ноша падает у ног.
+        /// </summary>
+        Putting,
     }
 
     /// <summary>
     /// Рабочий: сам берёт свободную задачу из <see cref="WorkOrders"/> — сначала самую важную (топливо для огня),
     /// среди равных ближайшую. Для чертежа приносит ресурс из ближайшей кучки и ставит блок, для топлива приносит
-    /// поленья и кладёт в огонь, для приказа копать бьёт блок через <see cref="Emberhold.World.Editing.BlockDamage"/>,
+    /// полено и кладёт в огонь (за ходку — одна единица ресурса, положить её — PutSeconds), для приказа копать бьёт блок через <see cref="Emberhold.World.Editing.BlockDamage"/>,
     /// для приказа рубить бьёт дерево; один удар за анимацию копки. Ходит и работает только на освещённых столбцах; если свет ушёл
     /// из-под ног, бросает задачу и ношу и уходит к ближайшему свету.
     /// Чистая логика: положение — в координатах мира блоков, вид рисует <see cref="WorkerCrew"/>.
@@ -109,6 +114,12 @@ namespace Emberhold.Gameplay.Workers
                     timer -= deltaTime;
                     if (timer <= 0f)
                         PickUp();
+                    break;
+                case WorkerState.Putting:
+                    SnapToGround();
+                    timer -= deltaTime;
+                    if (timer <= 0f)
+                        PutDown();
                     break;
                 case WorkerState.Working:
                     SnapToGround();
@@ -242,29 +253,51 @@ namespace Emberhold.Gameplay.Workers
                         timer = context.Settings.DigHitSeconds;
                         break;
                     }
-                    if (Order.Kind == WorkKind.Fuel)
-                    {
-                        FeedFire();
-                        break;
-                    }
+                    // С ношей — сначала положить её (анимация «положить»), ресурс засчитается в конце.
                     if (Carrying is { } carried && carried.ItemId == Order.ItemId)
                     {
-                        Order.Delivered += carried.Count;
-                        Carrying = null;
-                    }
-                    if (Order.NeedsItems)
-                    {
-                        FetchItems();
+                        State = WorkerState.Putting;
+                        timer = context.Settings.PutSeconds;
                         break;
                     }
-                    State = WorkerState.Working;
-                    timer = context.Settings.BuildSeconds;
+                    AfterDelivery();
                     break;
                 default:
                     State = WorkerState.Idle;
                     timer = 0f;
                     break;
             }
+        }
+
+        /// <summary>Ноша положена: в огонь или на чертёж; дальше — как после доставки.</summary>
+        private void PutDown()
+        {
+            if (Order.Kind != WorkKind.Fuel && Carrying is { } carried && carried.ItemId == Order.ItemId)
+            {
+                Order.Delivered += carried.Count;
+                Carrying = null;
+            }
+            AfterDelivery();
+        }
+
+        /// <summary>
+        /// Что делать у задачи, когда ноши уже нет: огонь — подкормить и закончить; чертёж — сходить ещё за ресурсом
+        /// или ставить блок.
+        /// </summary>
+        private void AfterDelivery()
+        {
+            if (Order.Kind == WorkKind.Fuel)
+            {
+                FeedFire();
+                return;
+            }
+            if (Order.NeedsItems)
+            {
+                FetchItems();
+                return;
+            }
+            State = WorkerState.Working;
+            timer = context.Settings.BuildSeconds;
         }
 
         private void Work(float deltaTime)
@@ -308,7 +341,7 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Положить принесённые поленья в огонь. Что не поместилось (огонь успели подкормить), остаётся лежать у ног.
+        /// Положить принесённое полено в огонь. Если оно не поместилось (огонь успели подкормить), остаётся лежать у ног.
         /// Задача на одну ходку: если место ещё есть, отряд заведёт новую.
         /// </summary>
         private void FeedFire()

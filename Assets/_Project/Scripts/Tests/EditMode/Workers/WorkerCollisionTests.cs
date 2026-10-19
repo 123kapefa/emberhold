@@ -87,7 +87,8 @@ namespace Emberhold.Tests.EditMode.Workers
                 }
 
                 // Переходы между анимациями, какие бывают в WorkerCrew: садятся только греясь, сидя ношу не берут и не строят.
-                foreach (var carry in carried)
+                // У истопника переход в работу — ещё и с поленом в руке.
+                foreach (var carry in role == WorkerRole.Stoker ? carried.Append(WorkerCarry.Billet) : carried)
                 foreach (WorkerClip from in Enum.GetValues(typeof(WorkerClip)))
                 foreach (WorkerClip to in Enum.GetValues(typeof(WorkerClip)))
                 {
@@ -96,6 +97,9 @@ namespace Emberhold.Tests.EditMode.Workers
                         continue;
                     // Работа роли — из стойки или ходьбы и обратно, без ноши (у истопника — с поленом).
                     var work = WorkerAnimation.RoleOf(from) != null ? from : WorkerAnimation.RoleOf(to) != null ? to : (WorkerClip?)null;
+                    // С поленом — только в работу истопника: из неё полено остаётся в огне, в стойку его не несут.
+                    if (carry == WorkerCarry.Billet && to != WorkerClip.Stoke)
+                        continue;
                     if (work is { } w && (Foreign(w) || (from == w ? to : from) is not (WorkerClip.Idle or WorkerClip.Walk) ||
                                           carry != LoadsIn(w)[0] && carry != WorkerCarry.None))
                         continue;

@@ -34,6 +34,9 @@ namespace Emberhold.Gameplay.Workers
         [Tooltip("Сколько секунд рабочий поднимает ресурс с земли.")]
         [Range(0f, 5f)]
         [SerializeField] private float pickUpSeconds = 0.7f;
+        [Tooltip("Сколько секунд рабочий кладёт ношу в огонь или на чертёж (анимация «положить»).")]
+        [Range(0f, 5f)]
+        [SerializeField] private float putSeconds = 1.2f;
         [Tooltip("Сколько секунд рабочий ставит блок, когда всё принесено.")]
         [Range(0f, 10f)]
         [SerializeField] private float buildSeconds = 1.5f;
@@ -87,6 +90,7 @@ namespace Emberhold.Gameplay.Workers
         public int ReachUp => reachUp;
         public int ReachDown => reachDown;
         public float PickUpSeconds => pickUpSeconds;
+        public float PutSeconds => putSeconds;
         public float BuildSeconds => buildSeconds;
         public float DigHitSeconds => digHitSeconds;
         public float DigHitDamage => digHitDamage;

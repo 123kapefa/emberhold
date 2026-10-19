@@ -271,6 +271,46 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Worker_DeliversStoneToBlueprintAtEndOfPutAnimation()
+        {
+            // Пришёл к чертежу — кладёт камень; засчитан он только в конце, через PutSeconds.
+            items.Drop(world, new Vector3Int(4, Ground, 4), new ItemDrop("stone", 1));
+            var blueprint = orders.AddBuild(new Vector3Int(12, Ground, 12), Block.Full(BlockMaterials.Stone), false, new ItemDrop("stone", 1));
+            var worker = Spawn(new Vector2Int(9, 9));
+            Run(20f, () => worker.State == WorkerState.Putting, worker);
+            Assert.That(worker.State, Is.EqualTo(WorkerState.Putting), "Дошёл и кладёт");
+
+            Run(settings.PutSeconds * 0.8f, () => false, worker);
+            Assert.That(blueprint.Delivered, Is.Zero, "Пока кладёт, камень не засчитан");
+            Assert.That(worker.Carrying, Is.Not.Null);
+            Run(settings.PutSeconds, () => worker.State != WorkerState.Putting, worker);
+            Assert.That(blueprint.Delivered, Is.EqualTo(1), "Положил — засчитан");
+            Assert.That(worker.Carrying, Is.Null);
+            Assert.That(worker.State, Is.EqualTo(WorkerState.Working), "Дальше ставит блок");
+        }
+
+        [Test]
+        public void Worker_DropsStoneNearbyWhenBlueprintCancelledWhilePutting()
+        {
+            items.Drop(world, new Vector3Int(4, Ground, 4), new ItemDrop("stone", 1));
+            var cell = new Vector3Int(12, Ground, 12);
+            var blueprint = orders.AddBuild(cell, Block.Full(BlockMaterials.Stone), false, new ItemDrop("stone", 1));
+            var worker = Spawn(new Vector2Int(9, 9));
+            Run(20f, () => worker.State == WorkerState.Putting, worker);
+            Assert.That(worker.State, Is.EqualTo(WorkerState.Putting));
+
+            orders.Cancel(blueprint);
+            worker.Tick(Step);
+
+            Assert.That(worker.Carrying, Is.Null);
+            Assert.That(worker.Order, Is.Null);
+            Assert.That(blueprint.Delivered, Is.Zero, "Камень не засчитан");
+            Assert.That(items.Items, Has.Count.EqualTo(1), "Камень лежит на земле");
+            var dropped = items.Items[0].Cell;
+            Assert.That(Vector2.Distance(new Vector2(dropped.x, dropped.z), new Vector2(cell.x, cell.z)), Is.LessThan(3f), "У чертежа, где его клали");
+        }
+
+        [Test]
         public void Worker_LightShrinksWhileDigging_DropsOrderAndGoesBackToLight()
         {
             var litLimit = 32;
