@@ -76,6 +76,24 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Worker_UprootsStumpAndItGivesOneLog()
+        {
+            var tree = forest.Plant(new Vector3Int(14, Ground, 12), birch);
+            while (!forest.Hit(world, tree, 25f)) { }
+            var stump = forest.Stumps[0];
+            Assert.That(orders.AddUproot(stump), Is.Not.Null);
+            Assert.That(orders.AddUproot(stump), Is.Null, "Один пень — один приказ");
+            var worker = Spawn(new Vector2Int(9, 9));
+
+            Run(30f, () => orders.Orders.Count == 0, worker);
+
+            Assert.That(stump.IsPresent, Is.False, "Пень выкорчеван");
+            Assert.That(forest.Stumps, Is.Empty);
+            Assert.That(items.Items[0].Drop, Is.EqualTo(new ItemDrop("wood", 4)), "3 полена с дерева и 1 с пня");
+            Assert.That(worker.State, Is.EqualTo(WorkerState.Idle));
+        }
+
+        [Test]
         public void ChopOrder_CancelledWhenTreeFallsOtherwise()
         {
             var tree = forest.Plant(new Vector3Int(14, Ground, 12), birch);

@@ -73,6 +73,9 @@ namespace Emberhold.Gameplay.Workers
             _ => 0f,
         };
 
+        /// <summary>Доля цикла «рубить» и «копать», на которой инструмент бьёт (ключ удара в ChopKeys и DigKeys).</summary>
+        public const float SwingImpact = 0.6f;
+
         /// <summary>Чья это рабочая анимация (у неё в руке нужный инструмент); null — общая, для всех.</summary>
         public static WorkerRole? RoleOf(WorkerClip clip) => clip switch
         {

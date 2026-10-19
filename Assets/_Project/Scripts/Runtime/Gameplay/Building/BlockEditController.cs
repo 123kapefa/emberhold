@@ -97,6 +97,7 @@ namespace Emberhold.Gameplay.Building
         private string blockedMessage = OutOfLightMessage;
         private const string OutOfLightMessage = "Вне света костра: строить и копать нельзя";
         private const string UnbreakableMessage = "Скала и коренная порода не копаются";
+        private const string StumpMessage = "Мешает пень: сначала выкорчуй его (инструмент 5)";
 
         private BlockGhost ghost;
         private Vector2 rotatePressPosition;
@@ -110,6 +111,9 @@ namespace Emberhold.Gameplay.Building
 
         /// <summary>Дерево под курсором при инструменте 5, если оно ближе блока.</summary>
         public TreeStand HoveredTree { get; private set; }
+
+        /// <summary>Пень под курсором при инструменте 5, если он ближе блока и дерева.</summary>
+        public TreeStump HoveredStump { get; private set; }
 
         /// <summary>Что ставит инструмент «Строить».</summary>
         public BuildSelection Selection { get; } = new();
@@ -225,17 +229,25 @@ namespace Emberhold.Gameplay.Building
                 ReadBuildInput();
 
             HoveredTree = PickTree(point.ReadValue<Vector2>());
-            Hovered = HoveredTree == null ? Pick(point.ReadValue<Vector2>()) : null;
+            HoveredStump = HoveredTree == null ? PickStump(point.ReadValue<Vector2>()) : null;
+            Hovered = HoveredTree == null && HoveredStump == null ? Pick(point.ReadValue<Vector2>()) : null;
             UpdatePlan();
             if (HoveredTree is { } tree && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
                 if (!ApplyToTree(tree))
                     ShowBlockedMessage(OutOfLightMessage);
             }
+            else if (HoveredStump is { } stump && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
+            {
+                if (!ApplyToStump(stump))
+                    ShowBlockedMessage(OutOfLightMessage);
+            }
             else if (Hovered is { } hit && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
                 if (IsUnbreakable(hit))
                     ShowBlockedMessage(UnbreakableMessage);
+                else if (IsHeldByStump(hit))
+                    ShowBlockedMessage(StumpMessage);
                 else if (!CanApply(hit))
                     ShowBlockedMessage(OutOfLightMessage);
                 Apply(hit);
@@ -302,7 +314,7 @@ namespace Emberhold.Gameplay.Building
         public bool Apply(BlockHit hit)
         {
             falls.Clear();
-            if (IsUnbreakable(hit) || !CanApply(hit))
+            if (IsUnbreakable(hit) || IsHeldByStump(hit) || !CanApply(hit))
                 return false;
 
             Vector3Int changed;
@@ -353,6 +365,17 @@ namespace Emberhold.Gameplay.Building
             return workers.ToggleChop(tree);
         }
 
+        /// <summary>Инструмент 5 по пню: поручить выкорчевать или снять приказ. Поручить можно только в свете, снять — везде.</summary>
+        public bool ApplyToStump(TreeStump stump)
+        {
+            if (workers == null || stump == null || Tool != BlockTool.DigOrder)
+                return false;
+            var order = workers.Orders.At(stump.Cell);
+            if (!CanEdit(stump.Cell) && order is not { Kind: WorkKind.Chop })
+                return false;
+            return workers.ToggleUproot(stump);
+        }
+
         /// <summary>
         /// Блок в клетке поставили или убрали (игрок или рабочий): сообщить виду, уронить блоки без опоры
         /// вместе с их уроном и показать падение. Результат — в <see cref="LastFalls"/>.
@@ -379,6 +402,10 @@ namespace Emberhold.Gameplay.Building
         private bool IsUnbreakable(BlockHit hit) =>
             Tool is BlockTool.Dig or BlockTool.Remove or BlockTool.DigOrder
             && !BlockMaterials.IsBreakable(worldView.World.GetBlock(hit.Block).Material);
+
+        /// <summary>Клетку, которую меняет инструмент, держит пень: в ней пень (не поставить) или он на ней (не выкопать).</summary>
+        private bool IsHeldByStump(BlockHit hit) =>
+            forest != null && forest.Forest is { } trees && trees.BlocksEdit(TargetCell(hit));
 
         /// <summary>Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, иначе — блок под курсором.</summary>
         private Vector3Int TargetCell(BlockHit hit) =>
@@ -414,6 +441,21 @@ namespace Emberhold.Gameplay.Building
                 && ground.distance < distance)
                 return null;
             return tree;
+        }
+
+        /// <summary>Пень под курсором при инструменте 5, если луч попадает в него раньше, чем в землю.</summary>
+        private TreeStump PickStump(Vector2 screenPosition)
+        {
+            if (forest == null || workers == null || Tool != BlockTool.DigOrder)
+                return null;
+            var ray = targetCamera.ScreenPointToRay(screenPosition);
+            if (!forest.RaycastStump(ray, settings.MaxRayDistance, out var stump, out var distance))
+                return null;
+            // Коробка пня выше самого пня, поэтому землю впереди пропускаем с запасом.
+            if (Physics.Raycast(ray, out var ground, settings.MaxRayDistance, settings.GroundMask, QueryTriggerInteraction.Ignore)
+                && ground.distance + 0.6f < distance)
+                return null;
+            return stump;
         }
 
         /// <summary>Блок под точкой экрана: по треугольнику меша, с поправкой на скос над ним (<see cref="BlockPicking.PreferSlopeAbove"/>).</summary>
@@ -464,7 +506,14 @@ namespace Emberhold.Gameplay.Building
         {
             if (HoveredTree is { } tree)
             {
-                ShowTreeOutline(tree);
+                var (treeMin, treeMax) = forest.LocalBounds(tree);
+                ShowOrderOutline(tree.Cell, treeMin, treeMax);
+                return;
+            }
+            if (HoveredStump is { } stump)
+            {
+                var (stumpMin, stumpMax) = forest.LocalBounds(stump);
+                ShowOrderOutline(stump.Cell, stumpMin, stumpMax);
                 return;
             }
             if (Hovered is not { } hit || PlacesBlocks && plan == null)
@@ -490,7 +539,7 @@ namespace Emberhold.Gameplay.Building
             }
 
             PlaceInWorld(outline.transform, cell);
-            var color = !CanEdit(cell) || IsUnbreakable(hit) ? settings.BlockedColor : Tool switch
+            var color = !CanEdit(cell) || IsUnbreakable(hit) || IsHeldByStump(hit) ? settings.BlockedColor : Tool switch
             {
                 BlockTool.Dig => settings.DigColor,
                 BlockTool.Build => settings.BuildColor,
@@ -503,10 +552,9 @@ namespace Emberhold.Gameplay.Building
             outline.SetActive(true);
         }
 
-        /// <summary>Рамка вокруг дерева под курсором: цвет приказа, вне света — запрета.</summary>
-        private void ShowTreeOutline(TreeStand tree)
+        /// <summary>Рамка вокруг дерева или пня под курсором (min..max в долях клетки cell): цвет приказа, вне света — запрета.</summary>
+        private void ShowOrderOutline(Vector3Int cell, Vector3 min, Vector3 max)
         {
-            var (min, max) = forest.LocalBounds(tree);
             // Рамку дерева строим каждый кадр: деревьев под курсором немного, а форма блока потом перестроится заново.
             outlineShape = null;
             BlockOutlineMesh.Build(min, max, Vector3Int.zero, settings.OutlinePadding, outlineVertices, outlineIndices);
@@ -514,8 +562,8 @@ namespace Emberhold.Gameplay.Building
             outlineMesh.SetVertices(outlineVertices);
             outlineMesh.SetIndices(outlineIndices, MeshTopology.Lines, 0);
             outlineMesh.RecalculateBounds();
-            PlaceInWorld(outline.transform, tree.Cell);
-            outlineProperties.SetColor(BaseColorId, CanEdit(tree.Cell) ? settings.DigOrderColor : settings.BlockedColor);
+            PlaceInWorld(outline.transform, cell);
+            outlineProperties.SetColor(BaseColorId, CanEdit(cell) ? settings.DigOrderColor : settings.BlockedColor);
             outlineRenderer.SetPropertyBlock(outlineProperties);
             outline.SetActive(true);
         }

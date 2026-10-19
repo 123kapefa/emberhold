@@ -26,6 +26,13 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void DropsAsset_WoodBlockDropsOneLog()
+        {
+            Assert.That(table.TryGetDrop(BlockMaterials.Wood, out var drop), Is.True);
+            Assert.That(drop, Is.EqualTo(new ItemDrop("wood", 1)));
+        }
+
+        [Test]
         public void DropsAsset_GrassAndDirtDropNothing()
         {
             Assert.That(table.TryGetDrop(BlockMaterials.Grass, out _), Is.False);

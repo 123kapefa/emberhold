@@ -188,12 +188,16 @@ namespace Emberhold.Gameplay.Workers
                 case WorkerState.Working when worker.Order != null && worker.Order.Kind == WorkKind.Build:
                     animator.Play(WorkerClip.Place, settings.BuildSeconds);
                     break;
-                case WorkerState.Working:
-                    // Удары ролей (рубить, копать) — отдельной задачей; пока каждый удар — наклон «поставить».
-                    animator.Play(WorkerClip.Place, settings.DigHitSeconds);
-                    if (animator.Progress >= 1f)
-                        animator.Restart();
+                case WorkerState.Working when worker.Order != null:
+                {
+                    // Рубит или копает: цикл анимации идёт по замаху рабочего, чтобы топор или кирка попадали
+                    // в тот же миг, когда снимаются ХП (удар в цикле — на SwingImpact).
+                    var clip = worker.Order.Kind == WorkKind.Chop ? WorkerClip.Chop : WorkerClip.Dig;
+                    animator.Play(clip);
+                    animator.Time = Mathf.Repeat(worker.SwingProgress + WorkerAnimation.SwingImpact - 1f, 1f)
+                                    * WorkerAnimation.WorkCycle(clip);
                     break;
+                }
                 default:
                     if (visual.Speed > 0.3f)
                         animator.Play(worker.Carrying != null ? WorkerClip.Carry : WorkerClip.Walk);
@@ -288,6 +292,16 @@ namespace Emberhold.Gameplay.Workers
             if (Orders.At(tree.Cell) is { } existing)
                 return existing.Kind == WorkKind.Chop && Orders.Cancel(existing);
             return Orders.AddChop(tree) != null;
+        }
+
+        /// <summary>Поручить выкорчевать пень или снять приказ. true — что-то изменилось.</summary>
+        public bool ToggleUproot(TreeStump stump)
+        {
+            if (stump == null)
+                return false;
+            if (Orders.At(stump.Cell) is { } existing)
+                return existing.Kind == WorkKind.Chop && Orders.Cancel(existing);
+            return Orders.AddUproot(stump) != null;
         }
 
         /// <summary>
@@ -461,10 +475,10 @@ namespace Emberhold.Gameplay.Workers
             lineIndices.Clear();
             foreach (var order in Orders.Orders)
             {
-                // Приказы рубить рисуются вместе с приказами копать, рамкой вокруг дерева.
+                // Приказы рубить и корчевать рисуются вместе с приказами копать, рамкой вокруг дерева или пня.
                 if (kind == WorkKind.Dig && order.Kind == WorkKind.Chop && forest != null)
                 {
-                    var (min, max) = forest.LocalBounds(order.Tree);
+                    var (min, max) = order.Stump != null ? forest.LocalBounds(order.Stump) : forest.LocalBounds(order.Tree);
                     BlockOutlineMesh.AppendBox(order.Cell + min, order.Cell + max, outlinePadding, lineVertices, lineIndices);
                     continue;
                 }
