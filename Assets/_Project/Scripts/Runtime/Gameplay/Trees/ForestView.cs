@@ -5,6 +5,7 @@ using Emberhold.Gameplay.Workers;
 using Emberhold.World;
 using Emberhold.World.Meshing;
 using Emberhold.World.Trees;
+using Emberhold.World.Voxels;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -53,7 +54,6 @@ namespace Emberhold.Gameplay.Trees
         private const float BounceSeconds = 0.28f;
         private const float ShakeSeconds = 0.45f;
         private const float ShakeAngle = 2.2f;
-        private const float StumpHeight = 0.26f;
 
         private readonly Dictionary<TreeStand, TreeVisual> visuals = new();
         private readonly List<Falling> falls = new();
@@ -95,6 +95,8 @@ namespace Emberhold.Gameplay.Trees
             {
                 forest.Felled -= OnFelled;
                 forest.Struck -= OnStruck;
+                forest.StumpStruck -= OnStumpStruck;
+                forest.Uprooted -= OnUprooted;
             }
             foreach (var visual in visuals.Values)
             {
@@ -150,6 +152,25 @@ namespace Emberhold.Gameplay.Trees
                 space.InverseTransformDirection(ray.direction), maxDistance, out tree, out distance);
         }
 
+        /// <summary>Пень, в который попадает луч из сцены, ближе maxDistance; distance — в единицах сцены.</summary>
+        public bool RaycastStump(Ray ray, float maxDistance, out TreeStump stump, out float distance)
+        {
+            stump = null;
+            distance = maxDistance;
+            if (Forest == null)
+                return false;
+            var space = worldView.transform;
+            return forest.RaycastStump(worldView.World, space.InverseTransformPoint(ray.origin),
+                space.InverseTransformDirection(ray.direction), maxDistance, out stump, out distance);
+        }
+
+        /// <summary>Коробка пня для рамки, в долях клетки пня.</summary>
+        public (Vector3 min, Vector3 max) LocalBounds(TreeStump stump)
+        {
+            var (min, max) = Forest.StumpBounds(worldView.World, stump);
+            return (min - stump.Cell, max - stump.Cell);
+        }
+
         /// <summary>Коробка дерева для рамки: от основания до макушки, шириной с крону; в долях клетки дерева.</summary>
         public (Vector3 min, Vector3 max) LocalBounds(TreeStand tree)
         {
@@ -164,6 +185,8 @@ namespace Emberhold.Gameplay.Trees
             forest = new Forest(droppedItems.Items);
             forest.Felled += OnFelled;
             forest.Struck += OnStruck;
+            forest.StumpStruck += OnStumpStruck;
+            forest.Uprooted += OnUprooted;
             var terrain = worldView.Terrain;
             if (terrain == null)
                 return;
@@ -209,6 +232,31 @@ namespace Emberhold.Gameplay.Trees
                 -new Vector3(away.x, 0f, away.y) * 1.5f);
             debris.Burst(CrownCenter(tree), CrownHalf(tree), 3, DebrisShape.Leaf, visual.Crown, LeafSize(tree), 0.3f, 0.2f, 2.6f);
         }
+
+        /// <summary>Удар по пню: летят щепки и комья земли.</summary>
+        private void OnStumpStruck(TreeStump stump)
+        {
+            var top = StumpTop(stump);
+            var debris = droppedItems.Debris;
+            debris.Burst(top, Vector3.one * 0.08f, 4, DebrisShape.Chip, DebrisColors.WoodChip, 0.06f, 1.2f, 2.4f, 1.2f);
+            debris.Burst(top + Vector3.down * TreeStump.Height, new Vector3(0.25f, 0.02f, 0.25f), 3, DebrisShape.Chip,
+                DebrisColors.Of(BlockMaterials.Dirt, 0), 0.07f, 1f, 2.2f, 1.2f);
+        }
+
+        /// <summary>Пень выкорчеван: брызги земли и щепок, полено вылетает из ямки.</summary>
+        private void OnUprooted(TreeStump stump)
+        {
+            var top = StumpTop(stump);
+            var ground = top + Vector3.down * TreeStump.Height;
+            var debris = droppedItems.Debris;
+            debris.Burst(ground, new Vector3(0.3f, 0.05f, 0.3f), 10, DebrisShape.Chip, DebrisColors.Of(BlockMaterials.Dirt, 0),
+                0.09f, 1.6f, 3f, 1.6f);
+            debris.Burst(top, Vector3.one * 0.12f, 5, DebrisShape.Shard, stump.Species.TrunkColor, 0.12f, 1.4f, 2.8f, 1.6f);
+            droppedItems.ExpectArrivals(stump.Cell, stump.Species.ItemId, new[] { top }, 0f);
+        }
+
+        private Vector3 StumpTop(TreeStump stump) =>
+            new(stump.Position.x, Forest.BaseHeight(worldView.World, stump) + TreeStump.Height, stump.Position.y);
 
         /// <summary>
         /// Дерево упало: модель валится от рубящего (или в случайную сторону, если не рубили), а поленья, уже лежащие
@@ -364,8 +412,8 @@ namespace Emberhold.Gameplay.Trees
             var bark = WorkerMeshBuilder.Paint(species.TrunkColor);
             var cut = WorkerMeshBuilder.Paint(DebrisColors.WoodChip);
             // Низ уходит в землю, чтобы на склоне не было щели.
-            mesh.AddPrism(7, Vector3.down * 0.15f, radius * 1.18f, radius * 1.02f, StumpHeight + 0.15f, radius * 0.06f, random, bark);
-            mesh.Transform = Matrix4x4.TRS(Vector3.up * StumpHeight, Quaternion.Euler(8f, 0f, 0f), Vector3.one);
+            mesh.AddPrism(7, Vector3.down * 0.15f, radius * 1.18f, radius * 1.02f, TreeStump.Height + 0.15f, radius * 0.06f, random, bark);
+            mesh.Transform = Matrix4x4.TRS(Vector3.up * TreeStump.Height, Quaternion.Euler(8f, 0f, 0f), Vector3.one);
             mesh.AddPrism(7, Vector3.down * 0.02f, radius * 0.95f, radius * 0.92f, 0.03f, 0f, random, cut);
             mesh.Transform = Matrix4x4.identity;
             return mesh.ToMesh($"Stump {species.DisplayName}");

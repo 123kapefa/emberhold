@@ -12,9 +12,10 @@ namespace Emberhold.Gameplay.Items
     /// <summary>
     /// Ресурсы на земле и обломки. Слушает удары по блокам (<see cref="BlockDamage"/>): от удара летят крошки,
     /// разбитый блок раскалывается на осколки (<see cref="Debris"/>), а выпавший по таблице BlockDrops ресурс
-    /// ложится на место блока. Кучку видно предметами: сколько единиц, столько поленьев или камней
-    /// (<see cref="ItemPileLayout"/>). Новые предметы вылетают из места, откуда выпали (из блока или, по
-    /// <see cref="ExpectArrivals"/>, из упавшего дерева), летят дугой и с подскоком ложатся в кучку.
+    /// ложится на место блока. Кучку видно предметами: поленья — по одному на единицу, поленницей
+    /// (<see cref="ItemPileLayout"/>), вылетают из места выпадения (из блока или, по <see cref="ExpectArrivals"/>,
+    /// из упавшего дерева), летят дугой и с подскоком ложатся на место. Камни — по <see cref="StoneHeap.PerUnit"/>
+    /// на единицу: вылетают из разбитого блока, падают, отскакивают, сталкиваются и ссыпаются горкой (<see cref="StoneHeap"/>).
     /// Каждый кадр кладёт кучки на опору заново, чтобы они не висели в воздухе, когда блок под ними выкопали.
     /// Если задан <see cref="BlockFallView"/>, опустившаяся кучка падает с тем же ускорением, что и блоки,
     /// поэтому ресурс на упавшем блоке летит вместе с ним; данные (<see cref="DroppedItems"/>) меняются сразу.
@@ -95,6 +96,8 @@ namespace Emberhold.Gameplay.Items
             {
                 foreach (var unit in pile.Units)
                     Destroy(unit.Object);
+                foreach (var stone in pile.StoneObjects)
+                    Destroy(stone);
             }
             while (pool.Count > 0)
                 Destroy(pool.Pop());
@@ -161,65 +164,24 @@ namespace Emberhold.Gameplay.Items
             arrivals.RemoveAll(arrival => arrival.Origins.Count == 0 || Time.time > arrival.Start + 5f);
         }
 
-        /// <summary>Предметы кучек: новые вылетают из места выпадения, взятые исчезают, лежащие стоят по местам.</summary>
+        /// <summary>
+        /// Предметы кучек: новые вылетают из места выпадения, взятые исчезают, поленья стоят по местам поленницы,
+        /// камни лежат там, где их остановила горка.
+        /// </summary>
         private void ShowPiles()
         {
             var space = worldView.transform;
             var now = Time.time;
-            var ease = 1f - Mathf.Exp(-SlotEase * Time.deltaTime);
             var shown = 0;
             foreach (var item in Items.Items)
             {
                 if (!piles.TryGetValue(item, out var pile))
-                    piles[item] = pile = new Pile(Yaw(item.Cell));
+                    piles[item] = pile = new Pile(Yaw(item.Cell), item.Cell.GetHashCode());
                 var count = Mathf.Min(item.Drop.Count, maxStack);
-                while (pile.Units.Count > count)
-                {
-                    var last = pile.Units.Count - 1;
-                    Release(pile.Units[last].Object);
-                    pile.Units.RemoveAt(last);
-                }
                 var ground = new Vector3(item.Position.x, ShownHeight(item), item.Position.z);
-                var turn = Quaternion.Euler(0f, pile.Yaw, 0f);
-                for (var i = pile.Units.Count; i < count; i++)
-                    pile.Units.Add(NewUnit(item, i, ground, now));
-
-                for (var i = 0; i < pile.Units.Count; i++)
-                {
-                    var unit = pile.Units[i];
-                    var slot = ItemPileLayout.Slot(item.Drop.ItemId, i, count);
-                    var spot = turn * slot.Position;
-                    // Кучка стала больше или меньше: предметы плавно сдвигаются на новые места.
-                    if (unit.HasSlot && unit.Slot != spot)
-                        unit.Offset += unit.Slot - spot;
-                    unit.Slot = spot;
-                    unit.HasSlot = true;
-                    unit.Offset *= 1f - ease;
-                    var target = ground + spot + unit.Offset;
-                    var rotation = turn * slot.Rotation;
-                    var t = (now - unit.Start) / unit.Duration;
-                    if (t < 0f)
-                    {
-                        unit.Object.SetActive(false);
-                        continue;
-                    }
-                    Vector3 position;
-                    if (t < 1f)
-                    {
-                        // Полёт дугой из места выпадения, предмет кувыркается и выравнивается к концу.
-                        position = Vector3.Lerp(unit.From, target, t) + Vector3.up * (unit.Arc * 4f * t * (1f - t));
-                        rotation = Quaternion.Slerp(unit.Tumble, rotation, t * t);
-                    }
-                    else
-                    {
-                        var after = (now - unit.Start - unit.Duration) / LandingSeconds;
-                        position = target + (after < 1f ? Vector3.up * (LandingHop * Mathf.Sin(after * Mathf.PI)) : Vector3.zero);
-                    }
-                    unit.Object.transform.SetPositionAndRotation(space.TransformPoint(position), space.rotation * rotation);
-                    unit.Object.transform.localScale = space.lossyScale * slot.Scale;
-                    unit.Object.SetActive(true);
-                    shown++;
-                }
+                shown += ItemPileLayout.IsLog(item.Drop.ItemId)
+                    ? ShowLogs(item, pile, count, ground, space, now)
+                    : ShowStones(item, pile, count, ground, space);
             }
             ShownPieces = shown;
 
@@ -232,29 +194,153 @@ namespace Emberhold.Gameplay.Items
             }
             foreach (var item in gone)
             {
-                foreach (var unit in piles[item].Units)
+                var pile = piles[item];
+                foreach (var unit in pile.Units)
                     Release(unit.Object);
+                foreach (var stone in pile.StoneObjects)
+                    Release(stone);
                 piles.Remove(item);
             }
+        }
+
+        /// <summary>Поленья кучки: по одному на единицу, поленницей. Возвращает, сколько видно.</summary>
+        private int ShowLogs(DroppedItem item, Pile pile, int count, Vector3 ground, Transform space, float now)
+        {
+            var ease = 1f - Mathf.Exp(-SlotEase * Time.deltaTime);
+            var shown = 0;
+            while (pile.Units.Count > count)
+            {
+                var last = pile.Units.Count - 1;
+                Release(pile.Units[last].Object);
+                pile.Units.RemoveAt(last);
+            }
+            var turn = Quaternion.Euler(0f, pile.Yaw, 0f);
+            for (var i = pile.Units.Count; i < count; i++)
+                pile.Units.Add(NewUnit(item, i, ground, now));
+
+            for (var i = 0; i < pile.Units.Count; i++)
+            {
+                var unit = pile.Units[i];
+                var slot = ItemPileLayout.Slot(i, count);
+                var spot = turn * slot.Position;
+                // Кучка стала больше или меньше: поленья плавно сдвигаются на новые места.
+                if (unit.HasSlot && unit.Slot != spot)
+                    unit.Offset += unit.Slot - spot;
+                unit.Slot = spot;
+                unit.HasSlot = true;
+                unit.Offset *= 1f - ease;
+                var target = ground + spot + unit.Offset;
+                var rotation = turn * slot.Rotation;
+                var t = (now - unit.Start) / unit.Duration;
+                if (t < 0f)
+                {
+                    unit.Object.SetActive(false);
+                    continue;
+                }
+                Vector3 position;
+                if (t < 1f)
+                {
+                    // Полёт дугой из места выпадения, полено кувыркается и выравнивается к концу.
+                    position = Vector3.Lerp(unit.From, target, t) + Vector3.up * (unit.Arc * 4f * t * (1f - t));
+                    rotation = Quaternion.Slerp(unit.Tumble, rotation, t * t);
+                }
+                else
+                {
+                    var after = (now - unit.Start - unit.Duration) / LandingSeconds;
+                    position = target + (after < 1f ? Vector3.up * (LandingHop * Mathf.Sin(after * Mathf.PI)) : Vector3.zero);
+                }
+                unit.Object.transform.SetPositionAndRotation(space.TransformPoint(position), space.rotation * rotation);
+                unit.Object.transform.localScale = space.lossyScale * slot.Scale;
+                unit.Object.SetActive(true);
+                shown++;
+            }
+            return shown;
+        }
+
+        /// <summary>
+        /// Камни кучки: по <see cref="StoneHeap.PerUnit"/> на единицу. Новые вылетают из блока, на месте которого лежит
+        /// кучка (или из точки <see cref="ExpectArrivals"/>), и ссыпаются горкой. Возвращает, сколько видно.
+        /// </summary>
+        private int ShowStones(DroppedItem item, Pile pile, int count, Vector3 ground, Transform space)
+        {
+            var heap = pile.Heap;
+            var wanted = count * StoneHeap.PerUnit;
+            if (heap.Stones.Count > wanted)
+                heap.RemoveLast(heap.Stones.Count - wanted);
+            var stagger = 0;
+            while (heap.Stones.Count < wanted)
+            {
+                // Из блока: середина клетки над кучкой.
+                var from = new Vector3(0f, 0.5f, 0f);
+                if (TakeArrival(item, out var origin, out var delay))
+                    from = origin - ground;
+                heap.Burst(from, StoneHeap.PerUnit, delay + stagger++ * ArrivalStagger);
+            }
+            heap.Step(Time.deltaTime);
+
+            while (pile.StoneObjects.Count > heap.Stones.Count)
+            {
+                var last = pile.StoneObjects.Count - 1;
+                Release(pile.StoneObjects[last]);
+                pile.StoneObjects.RemoveAt(last);
+            }
+            while (pile.StoneObjects.Count < heap.Stones.Count)
+            {
+                var stoneData = heap.Stones[pile.StoneObjects.Count];
+                var go = pool.Count > 0 ? pool.Pop() : CreateObject();
+                go.GetComponent<MeshFilter>().sharedMesh = ItemPieceMeshes.Stone(stoneData.Variant);
+                go.name = "Dropped Stone";
+                pile.StoneObjects.Add(go);
+            }
+
+            var shown = 0;
+            for (var i = 0; i < heap.Stones.Count; i++)
+            {
+                var stone = heap.Stones[i];
+                var go = pile.StoneObjects[i];
+                if (stone.Wait > 0f)
+                {
+                    go.SetActive(false);
+                    continue;
+                }
+                go.transform.SetPositionAndRotation(space.TransformPoint(ground + stone.Position), space.rotation * stone.Rotation);
+                go.transform.localScale = space.lossyScale * stone.Scale;
+                go.SetActive(true);
+                shown++;
+            }
+            return shown;
+        }
+
+        /// <summary>Ждёт ли кучку предмет из точки <see cref="ExpectArrivals"/>: откуда он вылетит и через сколько секунд.</summary>
+        private bool TakeArrival(DroppedItem item, out Vector3 origin, out float delay)
+        {
+            foreach (var arrival in arrivals)
+            {
+                if (arrival.Cell != item.Cell || arrival.ItemId != item.Drop.ItemId || arrival.Origins.Count == 0)
+                    continue;
+                origin = arrival.Origins.Dequeue();
+                delay = Mathf.Max(0f, arrival.Start - Time.time) + arrival.Taken++ * ArrivalStagger;
+                return true;
+            }
+            origin = default;
+            delay = 0f;
+            return false;
         }
 
         private Unit NewUnit(DroppedItem item, int index, Vector3 ground, float now)
         {
             var from = ground + new Vector3(Signed() * 0.2f, 0.5f, Signed() * 0.2f);
             var start = now + index % 4 * ArrivalStagger;
-            foreach (var arrival in arrivals)
+            if (TakeArrival(item, out var origin, out var delay))
             {
-                if (arrival.Cell != item.Cell || arrival.ItemId != item.Drop.ItemId || arrival.Origins.Count == 0)
-                    continue;
-                from = arrival.Origins.Dequeue();
-                start = Mathf.Max(now, arrival.Start) + arrival.Taken++ * ArrivalStagger;
-                break;
+                from = origin;
+                start = now + delay;
             }
             var distance = Vector3.Distance(from, ground);
             var go = pool.Count > 0 ? pool.Pop() : CreateObject();
             var log = ItemPileLayout.IsLog(item.Drop.ItemId);
             go.GetComponent<MeshFilter>().sharedMesh = log ? ItemPieceMeshes.Log() : ItemPieceMeshes.Stone(random.Next(ItemPieceMeshes.Variants));
-            go.name = log ? "Dropped Log" : "Dropped Stone";
+            go.name = log ? "Dropped Log" : "Dropped Item";
             go.SetActive(false);
             return new Unit
             {
@@ -347,9 +433,17 @@ namespace Emberhold.Gameplay.Items
         private sealed class Pile
         {
             public readonly float Yaw;
+            /// <summary>Поленья: по одному на единицу.</summary>
             public readonly List<Unit> Units = new();
+            /// <summary>Камни горкой и их объекты (по порядку камней горки).</summary>
+            public readonly StoneHeap Heap;
+            public readonly List<GameObject> StoneObjects = new();
 
-            public Pile(float yaw) => Yaw = yaw;
+            public Pile(float yaw, int seed)
+            {
+                Yaw = yaw;
+                Heap = new StoneHeap(seed);
+            }
         }
 
         private sealed class Unit

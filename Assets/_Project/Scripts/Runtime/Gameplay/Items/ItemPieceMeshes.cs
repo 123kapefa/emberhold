@@ -53,7 +53,7 @@ namespace Emberhold.Gameplay.Items
             return log = Keep(mesh.ToMesh("Log"));
         }
 
-        /// <summary>Камень variant: неровный гранёный булыжник радиуса <see cref="ItemPileLayout.StoneRadius"/>.</summary>
+        /// <summary>Камень variant: неровный гранёный булыжник радиуса <see cref="StoneHeap.Radius"/>.</summary>
         public static Mesh Stone(int variant)
         {
             variant = Mod(variant, Variants);
@@ -61,7 +61,7 @@ namespace Emberhold.Gameplay.Items
                 return Stones[variant];
             var mesh = new FacetedMesh();
             var random = new System.Random(17 + variant * 31);
-            var radius = ItemPileLayout.StoneRadius;
+            var radius = StoneHeap.Radius;
             var radii = new Vector3(radius * (1.05f + 0.1f * variant), radius * 0.78f, radius * (0.95f - 0.05f * variant));
             mesh.AddBlob(Vector3.zero, radii, 1, 0.22f, random, FacetShade(StoneGrey, 0.86f, 1.04f, 0f, variant));
             return Stones[variant] = Keep(mesh.ToMesh($"Stone {variant}"));
