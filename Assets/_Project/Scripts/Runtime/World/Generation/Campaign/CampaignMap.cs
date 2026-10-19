@@ -30,6 +30,8 @@ namespace Emberhold.World.Generation
         [Header("Поверхность")]
         [Tooltip("Гладкая земля: склоны любой крутизны по высотам карты, без террас; нетронутая земля рисуется сплошной поверхностью. Выкл — скосы до 45° и террасы.")]
         [SerializeField] private bool smoothSurface = true;
+        [Tooltip("Край мира без обреза: к краю карты хребет плавно уходит вниз почти до дна мира, под море тумана. Выкл — хребет стоит до самого края.")]
+        [SerializeField] private bool outerSlope = true;
 
         [SerializeField] private List<Location> locations = new();
         [SerializeField] private List<Gorge> gorges = new();
@@ -60,6 +62,7 @@ namespace Emberhold.World.Generation
             var layout = new CampaignLayout
             {
                 SmoothSurface = smoothSurface,
+                OuterSlope = outerSlope,
                 Ridge = new CampaignRidge
                 {
                     MinHeight = ridgeMinHeight,

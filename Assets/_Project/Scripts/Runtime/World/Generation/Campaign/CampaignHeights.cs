@@ -58,6 +58,15 @@ namespace Emberhold.World.Generation
         private const float RimFill = 16f;
         // На сколько блоков скруглён верх стенки массива над котловиной.
         private const float PeakWallRound = 8f;
+        // Внешний склон у края мира (#102): у самого края земля на OuterFoot блоках (под морем тумана), вглубь
+        // карты потолок поднимается: на расстоянии d от края он на d · (OuterSlope + d · OuterCurve) выше, то есть
+        // у подножия склон пологий, выше круче, как у настоящей горы. Расстояние гуляет по шуму на ±OuterSlopeSpread,
+        // поэтому линия склона неровная. Стык с горами скруглён на OuterRound.
+        private const float OuterFoot = 4f;
+        private const float OuterSlope = 1.5f;
+        private const float OuterSlopeSpread = 0.3f;
+        private const float OuterCurve = 0.2f;
+        private const float OuterRound = 6f;
         // Насколько быстрее рёбер опускаются грани пирамиды: посередине грани гора уже в (1 + PeakFaceDrop) раз.
         private const float PeakFaceDrop = 1f;
         // Мелкие рёбра и кулуары на гранях пирамиды, доля радиуса.
@@ -144,13 +153,13 @@ namespace Emberhold.World.Generation
                 var floors = new float[locations.Length];
                 var distances = new float[locations.Length];
                 for (var x = 0; x <= sizeX; x++)
-                    result.Compute(layout.Ridge, layout.SmoothSurface, locations, gorges, peaks, noise, x, z, sizeX, sizeZ, maxHeight,
+                    result.Compute(layout.Ridge, layout.SmoothSurface, layout.OuterSlope, locations, gorges, peaks, noise, x, z, sizeX, sizeZ, maxHeight,
                         floors, distances);
             });
             return result;
         }
 
-        private void Compute(CampaignRidge ridge, bool smooth, PreparedLocation[] locations, PreparedGorge[] gorges, PreparedPeak[] peaks,
+        private void Compute(CampaignRidge ridge, bool smooth, bool outerSlope, PreparedLocation[] locations, PreparedGorge[] gorges, PreparedPeak[] peaks,
             CampaignNoise noise,
             int xi, int zi, int sizeX, int sizeZ, float maxHeight, float[] floors, float[] distances)
         {
@@ -325,6 +334,16 @@ namespace Emberhold.World.Generation
             GrassTints[xi, zi] = tintWeight < 1f ? tint + (1f - tintWeight) * ridgeTint : tint / tintWeight;
             var ridgeKind = Voxels.GrassKinds.Weight(ridge.GrassKind);
             GrassKinds[xi, zi] = tintWeight < 1f ? kind + (1f - tintWeight) * ridgeKind : kind / tintWeight;
+
+            // Внешний склон: чем ближе к краю мира, тем ниже потолок; у края земля уходит под туман.
+            if (outerSlope)
+            {
+                var outerReach = edge
+                                 * (1f + (noise.Fbm(x * 0.03f + 31f, z * 0.03f - 47f, 2) - 0.5f) * 2f * OuterSlopeSpread);
+                var outer = OuterFoot + outerReach * (OuterSlope + outerReach * OuterCurve);
+                if (h > outer - OuterRound)
+                    h = CampaignNoise.SmoothMin(h, outer, OuterRound);
+            }
 
             Heights[xi, zi] = Math.Max(1f, Math.Min(maxHeight, h));
             Owners[xi, zi] = owner;

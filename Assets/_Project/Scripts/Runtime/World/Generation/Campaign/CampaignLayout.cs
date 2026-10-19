@@ -21,6 +21,12 @@ namespace Emberhold.World.Generation
         /// </summary>
         public bool SmoothSurface;
 
+        /// <summary>
+        /// Край мира без обреза: к краю карты хребет плавно уходит вниз почти до дна мира (под море тумана).
+        /// false — хребет стоит до самого края.
+        /// </summary>
+        public bool OuterSlope;
+
         public readonly List<CampaignLocationShape> Locations = new();
         public readonly List<CampaignGorgeShape> Gorges = new();
 

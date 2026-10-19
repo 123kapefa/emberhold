@@ -377,6 +377,35 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void OuterSlope_GoesDownToTheEdge_WithoutACut()
+        {
+            var layout = new CampaignLayout();
+            var ridge = layout.Ridge;
+            ridge.PeakHeight = 68f;
+            layout.Ridge = ridge;
+            var cut = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
+            layout.OuterSlope = true;
+            var slope = CampaignHeights.Build(layout, Seed, Size, Size, 78f);
+
+            float edgeMax = float.MinValue, nearMax = float.MinValue, cutEdgeMin = float.MaxValue;
+            for (var t = 0; t <= Size; t++)
+            {
+                edgeMax = Mathf.Max(edgeMax, slope.Heights[t, 0], slope.Heights[0, t], slope.Heights[t, Size], slope.Heights[Size, t]);
+                cutEdgeMin = Mathf.Min(cutEdgeMin, cut.Heights[t, 0], cut.Heights[0, t]);
+                // В трёх блоках от края склон ещё низкий: обрыва-среза у края нет.
+                for (var d = 1; d <= 3; d++)
+                    nearMax = Mathf.Max(nearMax, slope.Heights[t, d], slope.Heights[d, t], slope.Heights[t, Size - d], slope.Heights[Size - d, t]);
+            }
+            Assert.That(cutEdgeMin, Is.GreaterThanOrEqualTo(ridge.MinHeight), "без склона хребет стоит до самого края");
+            Assert.That(edgeMax, Is.LessThan(8f), "со склоном у самого края земля внизу");
+            Assert.That(nearMax, Is.LessThan(20f), "у края склон пологий, без обрыва");
+            // Глубже 40 блоков склон рельеф не трогает.
+            for (var z = 40; z <= Size - 40; z += 4)
+            for (var x = 40; x <= Size - 40; x += 4)
+                Assert.That(slope.Heights[x, z], Is.EqualTo(cut.Heights[x, z]), $"{x},{z}");
+        }
+
+        [Test]
         public void CliffSnowBias_GullyAbove_RibBelow_FlatInTheMiddle()
         {
             Assert.That(TerrainGenerator.CliffSnowBias(0f), Is.EqualTo(1.5f));
@@ -539,13 +568,22 @@ namespace Emberhold.Tests.EditMode.World
                 if (heights.Owners[x, z] == CampaignHeights.Ridge && heights.Heights[x, z] > 56f)
                     high++;
             Assert.That(high, Is.GreaterThan(150), "вершины цепи выше снеговой линии");
-            // Вдоль всех краёв горы без провалов: в каждом куске края по 32 блока есть вершина выше плато.
+            // Вдоль всех краёв горы без провалов: в каждом куске края по 32 блока есть гребень выше плато
+            // (внешний склон срезает вершины у самого края, поэтому порог чуть ниже вершин цепи).
             for (var t = 0; t < 512; t += 32)
             {
-                Assert.That(MaxAlongEdge(heights, t, 0, 1, 0), Is.GreaterThan(50f), $"юг, x {t}");
-                Assert.That(MaxAlongEdge(heights, t, 512, 1, 0), Is.GreaterThan(50f), $"север, x {t}");
-                Assert.That(MaxAlongEdge(heights, 0, t, 0, 1), Is.GreaterThan(50f), $"запад, z {t}");
-                Assert.That(MaxAlongEdge(heights, 512, t, 0, 1), Is.GreaterThan(50f), $"восток, z {t}");
+                Assert.That(MaxAlongEdge(heights, t, 0, 1, 0), Is.GreaterThan(44f), $"юг, x {t}");
+                Assert.That(MaxAlongEdge(heights, t, 512, 1, 0), Is.GreaterThan(44f), $"север, x {t}");
+                Assert.That(MaxAlongEdge(heights, 0, t, 0, 1), Is.GreaterThan(44f), $"запад, z {t}");
+                Assert.That(MaxAlongEdge(heights, 512, t, 0, 1), Is.GreaterThan(44f), $"восток, z {t}");
+            }
+            // Край мира без обреза (#102): у самого края земля внизу, под морем тумана.
+            for (var t = 0; t <= 512; t += 8)
+            {
+                Assert.That(heights.Heights[t, 0], Is.LessThan(8f), $"юг, x {t}");
+                Assert.That(heights.Heights[t, 512], Is.LessThan(8f), $"север, x {t}");
+                Assert.That(heights.Heights[0, t], Is.LessThan(8f), $"запад, z {t}");
+                Assert.That(heights.Heights[512, t], Is.LessThan(8f), $"восток, z {t}");
             }
         }
 
