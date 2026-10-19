@@ -49,7 +49,9 @@ namespace Emberhold.Tests.EditMode.Enemies
             {
                 Assert.That(CreatureModels.Build(kind, 0).Elements.Any(e => e.LevelAdd), Is.False, $"{kind}: у обычного нет облика уровня");
                 var seasoned = CreatureModels.Build(kind, 1);
-                Assert.That(seasoned.Elements.Any(e => e.Kind == ElementKind.Crack), Is.True, $"{kind}: у матёрого трещины");
+                // У мотыльков нет деталей крупнее порога трещин (как и в прототипе): их облик — изморозь и свет.
+                if (kind != CreatureKind.Moths)
+                    Assert.That(seasoned.Elements.Any(e => e.Kind == ElementKind.Crack), Is.True, $"{kind}: у матёрого трещины");
                 Assert.That(seasoned.Elements.Any(e => e.Kind == ElementKind.Ground), Is.True, $"{kind}: у матёрого изморозь");
                 Assert.That(seasoned.LightAt, Is.Not.Null, $"{kind}: у матёрого холодный свет");
                 var ancient = CreatureModels.Build(kind, 2);
