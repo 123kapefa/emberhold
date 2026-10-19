@@ -23,11 +23,14 @@ namespace Emberhold.World.Meshing
         /// <summary>Расстояния рядов от края и шаг вершин вдоль каждого ряда.</summary>
         public static IEnumerable<(float Distance, float Step)> Rows()
         {
-            yield return (0f, 1f);
-            yield return (2f, 2f);
-            for (var d = 4f; d <= 64f; d += 4f)
+            // У края шаг как у сетки мира (блок), дальше, где горы уже в дымке, реже.
+            for (var d = 0f; d <= 16f; d += 1f)
+                yield return (d, 1f);
+            for (var d = 18f; d <= 48f; d += 2f)
+                yield return (d, 2f);
+            for (var d = 52f; d <= 128f; d += 4f)
                 yield return (d, 4f);
-            for (var d = 72f; d <= Width; d += 8f)
+            for (var d = 136f; d <= Width; d += 8f)
                 yield return (d, 8f);
         }
 

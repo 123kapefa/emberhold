@@ -26,6 +26,13 @@ namespace Emberhold.World.Generation
         private const float SinkWarpScale = 1f / 70f;
         // Полуширина сглаживания профиля края на каждый блок от края.
         private const float EdgeSmoothing = 0.5f;
+        // Мелкий рельеф поверх гор, как у хребта мира: рёбра и кулуары, а по ним неровности в пару блоков.
+        // Появляется за DetailFrom блоков от края, чтобы у самого края высота оставалась высотой земли.
+        private const float RibRise = 16f;
+        private const float RibScale = 1f / 26f;
+        private const float RoughRise = 2f;
+        private const float RoughScale = 1f / 7f;
+        private const float DetailFrom = 6f;
 
         private readonly float[] south, north, west, east;
         // Суммы высот края с начала стороны: среднее по любому отрезку края за два обращения.
@@ -80,6 +87,7 @@ namespace Emberhold.World.Generation
             // Чем дальше от края, тем глаже его профиль: мелкие неровности края не тянутся полосами наружу.
             var edge = EdgeHeight(x, z, d * EdgeSmoothing);
             var h = CampaignNoise.Lerp(edge, edge + Mountains(x, z), Spread(d));
+            h += Detail(x, z) * CampaignNoise.SmoothStep(0f, DetailFrom, d);
             // Дальность до тумана своя в каждом месте: линия, где горы тонут, не повторяет край мира.
             var warped = d * (0.5f + noise.Fbm(x * SinkWarpScale + 71f, z * SinkWarpScale - 13f, 3));
             h -= SinkRate * Math.Max(warped - SinkFrom, 0f);
@@ -130,6 +138,15 @@ namespace Emberhold.World.Generation
             for (var i = 0; i < edge.Length; i++)
                 sums[i + 1] = sums[i] + edge[i];
             return sums;
+        }
+
+        private float Detail(float x, float z)
+        {
+            // Повёрнутые координаты: у шума на решётке иначе видны прямые углы вдоль осей мира.
+            float rx = x * 0.8f - z * 0.6f, rz = x * 0.6f + z * 0.8f;
+            var ribs = RibRise * (noise.Ridged(rx * RibScale + 113f, rz * RibScale - 57f) - 0.45f);
+            var rough = RoughRise * (noise.Fbm(rz * RoughScale - 211f, -rx * RoughScale + 89f, 2) - 0.5f) * 2f;
+            return ribs + rough;
         }
 
         private float Mountains(float x, float z)
