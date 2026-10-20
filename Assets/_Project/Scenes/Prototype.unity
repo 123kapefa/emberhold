@@ -957,6 +957,7 @@ MonoBehaviour:
   droppedItems: {fileID: 1950212302}
   buildZone: {fileID: 1770339611}
   forest: {fileID: 1310000002}
+  campfirePrefab: {fileID: 2978219545329093532, guid: 78757cb222e1c4de7865a48bc24f67bd, type: 3}
   workerMaterial: {fileID: 2100000, guid: e92f40ea9c964ab69da7990fb50db554, type: 2}
   outlineMaterial: {fileID: 2100000, guid: 23c00fcf84bdd4e26b0b5cba1c16e61c, type: 2}
   blueprintColor: {r: 0.35, g: 0.75, b: 1, a: 1}
