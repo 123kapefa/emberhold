@@ -120,7 +120,7 @@ fail() { status "failed"; echo "$*" | tee "$OUT/summary.txt"; exit 1; }
 # 1. Worktree.
 status "preparing worktree"
 git -C "$ROOT" fetch -q origin "$BRANCH" || fail "git fetch origin $BRANCH не удался"
-TARGET=$(git -C "$ROOT" rev-parse FETCH_HEAD)
+TARGET=$(git -C "$ROOT" rev-parse "refs/remotes/origin/$BRANCH") || fail "нет ветки origin/$BRANCH"
 if [ -d "$WT" ]; then
   [ -z "$(git -C "$WT" status --porcelain --untracked-files=no)" ] \
     || fail "В $WT есть незакоммиченные правки, прогон остановлен. Разберитесь с ними вручную."
