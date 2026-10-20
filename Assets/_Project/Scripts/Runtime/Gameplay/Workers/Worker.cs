@@ -30,8 +30,9 @@ namespace Emberhold.Gameplay.Workers
     /// Рабочий: сам берёт свободную задачу из <see cref="WorkOrders"/> — сначала самую важную (топливо для огня),
     /// среди равных ближайшую. Для чертежа приносит ресурс из ближайшей кучки и ставит блок, для топлива приносит
     /// полено и кладёт в огонь (за ходку — одна единица ресурса, положить её — PutSeconds), для приказа копать бьёт блок через <see cref="Emberhold.World.Editing.BlockDamage"/>,
-    /// для приказа рубить бьёт дерево; один удар за анимацию копки. Ходит и работает только на освещённых столбцах; если свет ушёл
-    /// из-под ног, бросает задачу и ношу и уходит к ближайшему свету.
+    /// для приказа рубить бьёт дерево; один удар за анимацию копки. Ресурс для задачи берёт из кучки на земле или с поддона, что ближе.
+    /// Когда свободных задач нет, относит ничейные кучки на поддоны (<see cref="Pallets"/>), тоже по одной единице за ходку.
+    /// Ходит и работает только на освещённых столбцах; если свет ушёл из-под ног, бросает задачу и ношу и уходит к ближайшему свету.
     /// Чистая логика: положение — в координатах мира блоков, вид рисует <see cref="WorkerCrew"/>.
     /// </summary>
     public sealed class Worker
@@ -41,7 +42,11 @@ namespace Emberhold.Gameplay.Workers
         private int pathIndex;
         private float timer;
         private float fleeTimer;
-        private DroppedItem pile;
+        private ItemSource source;
+        // Ноша на поддон: из какой кучки (пока не подняли), на какой поддон и какой ресурс.
+        private DroppedItem haulPile;
+        private Pallet haulTo;
+        private string haulItemId;
 
         public Worker(WorkerContext context, Vector3 position)
         {
@@ -62,6 +67,12 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Что рабочий несёт, или null.</summary>
         public ItemDrop? Carrying { get; private set; }
 
+        /// <summary>Поддон, на который рабочий относит ничейный ресурс, или null.</summary>
+        public Pallet HaulTarget => haulTo;
+
+        /// <summary>За каким ресурсом рабочий идёт или какой несёт по задаче или на поддон; null — ни за каким.</summary>
+        public string WantedItemId => Order?.ItemId ?? haulItemId;
+
         /// <summary>Куда рабочий сейчас идёт; пустой, если стоит.</summary>
         public IReadOnlyList<Vector2Int> Path => path;
 
@@ -76,6 +87,12 @@ namespace Emberhold.Gameplay.Workers
             else if (Order != null && !context.IsOrderLit(Order))
             {
                 // Свет ушёл с задачи: она остаётся и ждёт, пока его вернут.
+                Abandon();
+            }
+
+            if (haulTo != null && !context.Pallets.Contains(haulTo))
+            {
+                // Поддон убрали: ноша падает у ног.
                 Abandon();
             }
 
@@ -105,7 +122,8 @@ namespace Emberhold.Gameplay.Workers
                     if (timer <= 0f)
                     {
                         timer = context.Settings.IdleSearchSeconds;
-                        TryTakeOrder();
+                        if (!TryTakeOrder())
+                            TryHaul();
                     }
                     break;
                 case WorkerState.ToPile:
@@ -139,19 +157,21 @@ namespace Emberhold.Gameplay.Workers
             if (Order != null && Order.Worker == this)
                 Order.Worker = null;
             Order = null;
-            pile = null;
+            source = default;
+            ReleaseHaul();
             DropCarried();
             path.Clear();
             State = WorkerState.Idle;
         }
 
-        private void TryTakeOrder()
+        /// <summary>Взять самую важную, а среди равных ближайшую свободную задачу. false — брать нечего.</summary>
+        private bool TryTakeOrder()
         {
             if (!HasFreeOrder())
-                return;
+                return false;
             context.Flood.Run(context.Surface, Column, context.IsLit);
             WorkOrder best = null;
-            DroppedItem bestPile = null;
+            var bestSource = default(ItemSource);
             var bestStand = default(Vector2Int);
             var bestCost = float.PositiveInfinity;
             var bestPriority = int.MinValue;
@@ -162,60 +182,66 @@ namespace Emberhold.Gameplay.Workers
                     || order.Kind == WorkKind.Chop && context.Forest == null
                     || !context.TryStandSpot(order.Cell, false, out var stand, out var cost))
                     continue;
-                DroppedItem source = null;
+                var from = default(ItemSource);
                 if (order.NeedsItems)
                 {
-                    source = context.NearestPile(order.ItemId, out stand, out var toPile);
-                    if (source == null)
+                    from = context.NearestSource(order.ItemId, out stand, out var toPile);
+                    if (from.IsNone)
                         continue;
-                    // Путь от кучки до чертежа оцениваем по прямой: точный разлив для каждой пары дорог.
-                    cost = toPile + Vector2.Distance(new Vector2(source.Cell.x, source.Cell.z), new Vector2(order.Cell.x, order.Cell.z));
+                    // Путь от кучки или поддона до чертежа оцениваем по прямой: точный разлив для каждой пары дорог.
+                    cost = toPile + Vector2.Distance(from.Column, new Vector2(order.Cell.x, order.Cell.z));
                 }
                 if (order.Priority == bestPriority && cost >= bestCost)
                     continue;
                 best = order;
                 bestPriority = order.Priority;
-                bestPile = source;
+                bestSource = from;
                 bestStand = stand;
                 bestCost = cost;
             }
 
             if (best == null)
-                return;
+                return false;
             Order = best;
             best.Worker = this;
-            pile = bestPile;
-            WalkTo(bestStand, bestPile != null ? WorkerState.ToPile : WorkerState.ToSite);
+            source = bestSource;
+            WalkTo(bestStand, !bestSource.IsNone ? WorkerState.ToPile : WorkerState.ToSite);
+            return true;
         }
 
-        /// <summary>Есть свободная задача, которую можно начать: ресурсу для неё есть хоть одна кучка.</summary>
+        /// <summary>Задач нет: пойти за ничейной кучкой, чтобы отнести одну её единицу на поддон.</summary>
+        private void TryHaul()
+        {
+            if (context.Pallets.All.Count == 0 || context.Items.Items.Count == 0)
+                return;
+            context.Flood.Run(context.Surface, Column, context.IsLit);
+            if (!context.TryFindHaul(out var pile, out var pallet, out var stand) || !context.Pallets.Reserve(pallet, pile.Drop.ItemId))
+                return;
+            haulPile = pile;
+            haulTo = pallet;
+            haulItemId = pile.Drop.ItemId;
+            context.HaulClaims[pile] = context.HaulClaims.TryGetValue(pile, out var claimed) ? claimed + 1 : 1;
+            source = new ItemSource(pile, null);
+            WalkTo(stand, WorkerState.ToPile);
+        }
+
+        /// <summary>Есть свободная задача, которую можно начать: ресурс для неё где-то лежит, на земле или на поддоне.</summary>
         private bool HasFreeOrder()
         {
             foreach (var order in context.Orders.Orders)
             {
-                if (order.Worker == null && context.IsOrderLit(order) && (!order.NeedsItems || HasPile(order.ItemId)))
+                if (order.Worker == null && context.IsOrderLit(order) && (!order.NeedsItems || context.HasItem(order.ItemId)))
                     return true;
             }
             return false;
         }
 
-        /// <summary>Лежит ли где-нибудь ресурс itemId: без него задачу топлива не начать, и искать путь незачем.</summary>
-        private bool HasPile(string itemId)
-        {
-            foreach (var pile in context.Items.Items)
-            {
-                if (pile.Drop.ItemId == itemId)
-                    return true;
-            }
-            return false;
-        }
-
-        /// <summary>Найти кучку с ресурсом для своего чертежа и пойти к ней; если её нет — отпустить задачу.</summary>
+        /// <summary>Найти кучку или поддон с ресурсом для своего чертежа и пойти туда; если ресурса нет — отпустить задачу.</summary>
         private void FetchItems()
         {
             context.Flood.Run(context.Surface, Column, context.IsLit);
-            pile = context.NearestPile(Order.ItemId, out var stand, out _);
-            if (pile == null)
+            source = context.NearestSource(Order.ItemId, out var stand, out _);
+            if (source.IsNone)
             {
                 Abandon();
                 return;
@@ -226,15 +252,31 @@ namespace Emberhold.Gameplay.Workers
         private void PickUp()
         {
             // За одну ходку — одна единица: одно бревно или одна полная корзина. Нужно больше — ещё ходки.
-            if (!context.Items.Take(pile, 1, out var taken))
+            if (!context.TakeOne(source, out var taken))
             {
-                // Кучку забрал другой рабочий.
+                // Кучку или поддон опустошил другой рабочий. Носильщик ищет ношу заново с нуля.
+                if (haulTo != null)
+                {
+                    Abandon();
+                    return;
+                }
                 FetchItems();
                 return;
             }
-            pile = null;
+            source = default;
             Carrying = taken;
+            ReleaseClaim();
             context.Flood.Run(context.Surface, Column, context.IsLit);
+            if (haulTo != null)
+            {
+                if (!context.TryPalletStand(haulTo, out var spot, out _))
+                {
+                    Abandon();
+                    return;
+                }
+                WalkTo(spot, WorkerState.ToSite);
+                return;
+            }
             if (!context.TryStandSpot(Order.Cell, false, out var stand, out _))
             {
                 Abandon();
@@ -253,6 +295,12 @@ namespace Emberhold.Gameplay.Workers
                     timer = context.Settings.PickUpSeconds;
                     break;
                 case WorkerState.ToSite:
+                    if (haulTo != null)
+                    {
+                        State = WorkerState.Putting;
+                        timer = context.Settings.PutSeconds;
+                        break;
+                    }
                     if (Order.Kind is WorkKind.Dig or WorkKind.Chop)
                     {
                         State = WorkerState.Working;
@@ -278,6 +326,11 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Ноша положена: в огонь или на чертёж; дальше — как после доставки.</summary>
         private void PutDown()
         {
+            if (haulTo != null)
+            {
+                StoreHaul();
+                return;
+            }
             if (Order.Kind != WorkKind.Fuel && Carrying is { } carried && carried.ItemId == Order.ItemId)
             {
                 Order.Delivered += carried.Count;
@@ -362,6 +415,44 @@ namespace Emberhold.Gameplay.Workers
                 DropCarried();
             }
             Finish();
+        }
+
+        /// <summary>Положить ношу на поддон. Если не легла (поддон чем-то занят), она падает у ног.</summary>
+        private void StoreHaul()
+        {
+            if (Carrying is { } carried && context.Pallets.Store(haulTo, carried))
+            {
+                // Бронь ушла в положенное.
+                Carrying = null;
+                haulTo = null;
+                haulItemId = null;
+            }
+            Abandon();
+            timer = 0f;
+        }
+
+        /// <summary>Отпустить ношу на поддон: занятую часть кучки и бронь места.</summary>
+        private void ReleaseHaul()
+        {
+            ReleaseClaim();
+            if (haulTo != null)
+                context.Pallets.Release(haulTo);
+            haulTo = null;
+            haulItemId = null;
+        }
+
+        private void ReleaseClaim()
+        {
+            if (haulPile == null)
+                return;
+            if (context.HaulClaims.TryGetValue(haulPile, out var claimed))
+            {
+                if (claimed <= 1)
+                    context.HaulClaims.Remove(haulPile);
+                else
+                    context.HaulClaims[haulPile] = claimed - 1;
+            }
+            haulPile = null;
         }
 
         private void Finish()

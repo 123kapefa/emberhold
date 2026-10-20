@@ -50,6 +50,13 @@ namespace Emberhold.Gameplay.Workers
         [Tooltip("Id ресурса, которым рабочие кормят огонь.")]
         [SerializeField] private string fuelItemId = "wood";
 
+        [Header("Поддоны")]
+        [Tooltip("Сколько ресурса помещается на поддон 2×2 высотой 2, по id ресурса.")]
+        [SerializeField] private PalletLimit[] palletLimits = { new("wood", 20), new("stone", 76), new("grass", 70) };
+        [Tooltip("Сколько помещается ресурса, которого нет в списке выше.")]
+        [Min(1)]
+        [SerializeField] private int defaultPalletLimit = 20;
+
         [Header("Поиск задач")]
         [Tooltip("Как часто свободный рабочий ищет задачу, в секундах.")]
         [Range(0.05f, 5f)]
@@ -98,6 +105,20 @@ namespace Emberhold.Gameplay.Workers
         public string FuelItemId => string.IsNullOrEmpty(fuelItemId) ? "wood" : fuelItemId;
         public float Height => height;
 
+        /// <summary>Сколько ресурса itemId помещается на один поддон.</summary>
+        public int PalletCapacity(string itemId)
+        {
+            if (palletLimits != null)
+            {
+                foreach (var limit in palletLimits)
+                {
+                    if (limit.ItemId == itemId)
+                        return limit.Count;
+                }
+            }
+            return defaultPalletLimit;
+        }
+
         /// <summary>Облик рабочего с номером index: один номер всегда даёт один облик. Роль — Свободный.</summary>
         public WorkerLook LookFor(int index) => LookFor(index, WorkerRole.Free);
 
@@ -117,6 +138,23 @@ namespace Emberhold.Gameplay.Workers
                 }
             }
             return hoodColor;
+        }
+
+        [Serializable]
+        private struct PalletLimit
+        {
+            [SerializeField] private string itemId;
+            [Min(1)]
+            [SerializeField] private int count;
+
+            public PalletLimit(string itemId, int count)
+            {
+                this.itemId = itemId;
+                this.count = count;
+            }
+
+            public string ItemId => itemId;
+            public int Count => count;
         }
 
         [Serializable]
