@@ -117,6 +117,16 @@ namespace Emberhold.World.Generation
         {
             var cx = Math.Min(Math.Max(x, 0f), SizeX);
             var cz = Math.Min(Math.Max(z, 0f), SizeZ);
+            var dx = Math.Max(-x, x - SizeX);
+            var dz = Math.Max(-z, z - SizeZ);
+            if (dx > 0f && dz > 0f)
+            {
+                // Напротив угла мира: смесь двух сторон, сходящихся в угле, — у продолжения каждой стороны
+                // целиком её профиль, поэтому через эти линии высота идёт без ступеньки.
+                var alongX = Along(cz <= 0f ? south : north, cz <= 0f ? southSum : northSum, cx, radius);
+                var alongZ = Along(cx <= 0f ? west : east, cx <= 0f ? westSum : eastSum, cz, radius);
+                return CampaignNoise.Lerp(alongX, alongZ, dx / (dx + dz));
+            }
             // Ближайшая точка края: у точки внутри мира — на ближайшей стороне.
             var toWest = cx;
             var toEast = SizeX - cx;

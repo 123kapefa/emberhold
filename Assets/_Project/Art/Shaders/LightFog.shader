@@ -108,7 +108,7 @@ Shader "Emberhold/Fog/LightFog"
                     if (sky)
                     {
                         float up = normalize(world - _WorldSpaceCameraPos).y;
-                        edgeDensity = _EmberholdEdgeFogParams.x * smoothstep(0.08, -0.01, up);
+                        edgeDensity = _EmberholdEdgeFogParams.x * (1.0 - smoothstep(-0.01, 0.08, up));
                     }
                     else
                     {

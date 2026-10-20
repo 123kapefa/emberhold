@@ -53,6 +53,18 @@ namespace Emberhold.Tests.EditMode.World
         }
 
         [Test]
+        public void Shape_AcrossTheLinesFromWorldCorners_HasNoStep()
+        {
+            // Южный край низкий (20), западный высокий (60): напротив угла они сходятся без ступеньки.
+            var shape = new WorldSkirtShape((x, z) => x == 0 && z > 0 ? 60f : 20f, Size, Size, 12345);
+            foreach (var d in new[] { 4f, 10f, 30f })
+            {
+                Assert.That(shape.Height(-d, -0.01f), Is.EqualTo(shape.Height(-d, 0.01f)).Within(0.5f), $"вдоль запада, {d}");
+                Assert.That(shape.Height(-0.01f, -d), Is.EqualTo(shape.Height(0.01f, -d)).Within(0.5f), $"вдоль юга, {d}");
+            }
+        }
+
+        [Test]
         public void Mesh_StartsOnTheEdgeCorners_FacesUp_AndCoversTheRingWithoutHoles()
         {
             var surface = Ridge();
