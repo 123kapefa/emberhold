@@ -332,6 +332,45 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Worker_SkipsDarkDigOrderUntilLightReturns()
+        {
+            // Рабочий стоит на свету, а блок рядом — в темноте (#98): его не копают, пока свет не вернётся.
+            var lightReaches = false;
+            var cell = new Vector3Int(12, Ground - 1, 12);
+            world.SetBlock(cell, Block.Full(BlockMaterials.Stone));
+            var order = orders.AddDig(cell);
+            var worker = Spawn(new Vector2Int(9, 9), null, c => c != cell || lightReaches);
+
+            Run(10f, () => false, worker);
+            Assert.That(order.Worker, Is.Null, "Тёмный приказ не взят");
+            Assert.That(damage.Taken(cell), Is.Zero);
+
+            lightReaches = true;
+            Run(20f, () => orders.Orders.Count == 0, worker);
+            Assert.That(world.GetBlock(cell).IsAir, Is.True, "Свет вернулся — блок выкопан");
+        }
+
+        [Test]
+        public void Worker_DropsDigOrderWhenItsBlockGoesDark()
+        {
+            var lightReaches = true;
+            var cell = new Vector3Int(12, Ground - 1, 12);
+            world.SetBlock(cell, Block.Full(BlockMaterials.Stone));
+            var order = orders.AddDig(cell);
+            var worker = Spawn(new Vector2Int(9, 9), null, c => c != cell || lightReaches);
+            Run(20f, () => damage.Taken(cell) > 0f, worker);
+            Assume.That(order.Worker, Is.EqualTo(worker));
+
+            lightReaches = false;
+            var taken = damage.Taken(cell);
+            Run(5f, () => false, worker);
+
+            Assert.That(order.Worker, Is.Null, "Задача отпущена");
+            Assert.That(orders.Contains(order), Is.True, "Задача ждёт света");
+            Assert.That(damage.Taken(cell), Is.EqualTo(taken), "В темноте не бьют");
+        }
+
+        [Test]
         public void Worker_TopsUpPartialBlock()
         {
             var cell = new Vector3Int(12, Ground, 12);
@@ -362,9 +401,9 @@ namespace Emberhold.Tests.EditMode.Workers
             Assert.That(items.Items, Is.Empty);
         }
 
-        private Worker Spawn(Vector2Int column, Func<Vector2Int, bool> isLit = null)
+        private Worker Spawn(Vector2Int column, Func<Vector2Int, bool> isLit = null, Func<Vector3Int, bool> isCellLit = null)
         {
-            var context = new WorkerContext(world, orders, items, damage, new BlockStability(), settings, isLit);
+            var context = new WorkerContext(world, orders, items, damage, new BlockStability(), settings, isLit, isCellLit: isCellLit);
             return new Worker(context, context.Surface.StandPoint(column));
         }
 

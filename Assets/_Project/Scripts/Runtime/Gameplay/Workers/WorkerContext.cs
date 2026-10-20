@@ -41,7 +41,7 @@ namespace Emberhold.Gameplay.Workers
 
         public WorkerContext(VoxelWorld world, WorkOrders orders, DroppedItems items, BlockDamage damage,
             BlockStability stability, WorkerSettings settings, Func<Vector2Int, bool> isLit, Func<bool> hasAnyLight = null,
-            Action<Vector3Int> worldChanged = null, Forest forest = null, Pallets pallets = null,
+            Action<Vector3Int> worldChanged = null, Forest forest = null, Pallets pallets = null, Func<Vector3Int, bool> isCellLit = null,
             Action<Vector3Int> campfireBuilt = null)
         {
             this.worldChanged = worldChanged;
@@ -54,6 +54,7 @@ namespace Emberhold.Gameplay.Workers
             Stability = stability;
             Settings = settings;
             IsLit = isLit ?? (_ => true);
+            IsCellLit = isCellLit ?? (cell => IsLit(new Vector2Int(cell.x, cell.z)));
             HasAnyLight = hasAnyLight ?? (() => true);
             Pallets = pallets ?? new Pallets(settings.PalletCapacity);
             Surface = new WalkSurface(world, settings.MaxStep);
@@ -80,6 +81,15 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>Столбец освещён: рабочие ходят и работают только там.</summary>
         public Func<Vector2Int, bool> IsLit { get; }
+
+        /// <summary>Свет доходит до клетки: глубоко под огнём темно, хотя столбец сверху освещён.</summary>
+        public Func<Vector3Int, bool> IsCellLit { get; }
+
+        /// <summary>
+        /// Задачу можно делать: её клетка в свете. Чертежи и приказы, оставшиеся в темноте, ждут света;
+        /// топливо носят и к погасшему огню.
+        /// </summary>
+        public bool IsOrderLit(WorkOrder order) => order.Kind == WorkKind.Fuel || IsCellLit(order.Cell);
 
         /// <summary>Горит хотя бы один огонь: если нет, из темноты идти некуда.</summary>
         public Func<bool> HasAnyLight { get; }

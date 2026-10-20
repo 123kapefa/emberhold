@@ -59,6 +59,9 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private Material outlineMaterial;
         [SerializeField] private Color blueprintColor = new(0.35f, 0.75f, 1f);
         [SerializeField] private Color digOrderColor = new(1f, 0.45f, 0.15f);
+        [Tooltip("Насколько блёкнут рамки чертежей и приказов в темноте: 0 — как в свету, 1 — серые.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float darkFade = 0.7f;
         [SerializeField] private Color palletColor = new(0.95f, 0.8f, 0.45f);
         [Range(0f, 0.1f)]
         [SerializeField] private float outlinePadding = 0.03f;
@@ -76,6 +79,10 @@ namespace Emberhold.Gameplay.Workers
         private readonly List<int> lineIndices = new();
         private GameObject blueprintLines;
         private GameObject digLines;
+        private GameObject darkBlueprintLines;
+        private GameObject darkDigLines;
+        private readonly HashSet<WorkOrder> darkOrders = new();
+        private readonly HashSet<WorkOrder> shownDarkOrders = new();
         private GameObject palletLines;
         private int shownOrdersVersion = -1;
         private int shownPalletsVersion = -1;
@@ -108,12 +115,15 @@ namespace Emberhold.Gameplay.Workers
 
             Pallets = new Pallets(settings.PalletCapacity);
             context = new WorkerContext(worldView.World, Orders, droppedItems.Items, editor.Damage, editor.Stability, settings, IsLit,
-                () => buildZone == null || litZone.Count > 0, editor.OnWorldChanged, forest != null ? forest.Forest : null, Pallets, BuildCampfire);
+                () => buildZone == null || litZone.Count > 0, editor.OnWorldChanged, forest != null ? forest.Forest : null, Pallets, IsCellLit,
+                BuildCampfire);
             Orders.Cancelled += OnOrderCancelled;
             if (dayNight == null)
                 dayNight = FindAnyObjectByType<DayNightCycle>();
             blueprintLines = CreateLines("Blueprints", blueprintColor);
             digLines = CreateLines("Dig Orders", digOrderColor);
+            darkBlueprintLines = CreateLines("Blueprints In Dark", Faded(blueprintColor));
+            darkDigLines = CreateLines("Dig Orders In Dark", Faded(digOrderColor));
             palletLines = CreateLines("Pallets", palletColor);
             UpdateLight();
             Spawn();
@@ -133,6 +143,8 @@ namespace Emberhold.Gameplay.Workers
             }
             DestroyLines(blueprintLines);
             DestroyLines(digLines);
+            DestroyLines(darkBlueprintLines);
+            DestroyLines(darkDigLines);
             DestroyLines(palletLines);
         }
 
@@ -459,6 +471,11 @@ namespace Emberhold.Gameplay.Workers
         private bool IsLit(Vector2Int column) =>
             buildZone == null || litZone.Contains(worldView.transform.TransformPoint(new Vector3(column.x + 0.5f, 0f, column.y + 0.5f)));
 
+        private bool IsCellLit(Vector3Int cell) =>
+            buildZone == null || litZone.Reaches(worldView.transform.TransformPoint(cell + new Vector3(0.5f, 0.5f, 0.5f)));
+
+        private Color Faded(Color color) => Color.Lerp(color, new Color(0.45f, 0.45f, 0.45f, color.a), darkFade);
+
         private void UpdateLight()
         {
             if (buildZone != null)
@@ -563,11 +580,24 @@ namespace Emberhold.Gameplay.Workers
                 shownPalletsVersion = Pallets.Version;
                 FillPalletLines();
             }
-            if (shownOrdersVersion == Orders.Version)
+            PlaceInWorld(darkBlueprintLines.transform);
+            PlaceInWorld(darkDigLines.transform);
+            // Свет гаснет и разгорается без смены задач, поэтому следим и за тем, какие задачи сейчас в темноте.
+            darkOrders.Clear();
+            foreach (var order in Orders.Orders)
+            {
+                if (!context.IsOrderLit(order))
+                    darkOrders.Add(order);
+            }
+            if (shownOrdersVersion == Orders.Version && darkOrders.SetEquals(shownDarkOrders))
                 return;
             shownOrdersVersion = Orders.Version;
-            FillLines(blueprintLines, WorkKind.Build);
-            FillLines(digLines, WorkKind.Dig);
+            shownDarkOrders.Clear();
+            shownDarkOrders.UnionWith(darkOrders);
+            FillLines(blueprintLines, WorkKind.Build, false);
+            FillLines(digLines, WorkKind.Dig, false);
+            FillLines(darkBlueprintLines, WorkKind.Build, true);
+            FillLines(darkDigLines, WorkKind.Dig, true);
         }
 
         private void PlaceInWorld(Transform target)
@@ -577,12 +607,15 @@ namespace Emberhold.Gameplay.Workers
             target.localScale = space.lossyScale;
         }
 
-        private void FillLines(GameObject lines, WorkKind kind)
+        /// <summary>Рамки задач вида kind: в свету (dark = false) или блёклые, ждущие света (dark = true).</summary>
+        private void FillLines(GameObject lines, WorkKind kind, bool dark)
         {
             lineVertices.Clear();
             lineIndices.Clear();
             foreach (var order in Orders.Orders)
             {
+                if (darkOrders.Contains(order) != dark)
+                    continue;
                 // Приказы рубить рисуются вместе с приказами копать, рамкой вокруг дерева.
                 if (kind == WorkKind.Dig && order.Kind == WorkKind.Chop && forest != null)
                 {
