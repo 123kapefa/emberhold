@@ -30,6 +30,13 @@ namespace Emberhold.Gameplay.Lighting
             return zone.Contains(worldPoint);
         }
 
+        /// <summary>Свет доходит до точки мира: под огнём только в пределах шара радиуса (копать и строить можно только тут).</summary>
+        public bool Reaches(Vector3 worldPoint)
+        {
+            CollectCircles(zone);
+            return zone.Reaches(worldPoint);
+        }
+
         /// <summary>Заполнить target кругами горящих источников на текущий момент (туман берёт их отсюда же).</summary>
         public void CollectCircles(LightZone target)
         {

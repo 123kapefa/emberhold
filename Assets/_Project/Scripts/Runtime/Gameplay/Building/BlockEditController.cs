@@ -99,9 +99,10 @@ namespace Emberhold.Gameplay.Building
         private int cracksVersion = -1;
         private int cracksHiddenVersion = -1;
         private float blockedMessageUntil = float.NegativeInfinity;
-        private string blockedMessage = OutOfLightMessage;
-        private const string OutOfLightMessage = "Вне света костра: строить и копать нельзя";
-        private const string UnbreakableMessage = "Скала и коренная порода не копаются";
+        private string blockedMessage = DarkDigMessage;
+        private const string DarkDigMessage = "Темно, сюда не копать";
+        private const string DarkBuildMessage = "Темно, здесь не построить";
+        private const string UnbreakableMessage = "Не копается";
         private const string PalletBlockedMessage = "Поддону нужна ровная свободная площадка 2 на 2 в свете костра";
 
         private BlockGhost ghost;
@@ -239,7 +240,7 @@ namespace Emberhold.Gameplay.Building
             if (HoveredTree is { } tree && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
                 if (!ApplyToTree(tree))
-                    ShowBlockedMessage(OutOfLightMessage);
+                    ShowBlockedMessage(DarkDigMessage);
             }
             else if (Hovered is { } palletHit && Tool == BlockTool.Pallet && use.WasPressedThisFrame() && !IsCameraDragging()
                      && !IsStrikingCrawler())
@@ -252,7 +253,7 @@ namespace Emberhold.Gameplay.Building
                 if (IsUnbreakable(hit))
                     ShowBlockedMessage(UnbreakableMessage);
                 else if (!CanApply(hit))
-                    ShowBlockedMessage(OutOfLightMessage);
+                    ShowBlockedMessage(DarkMessage);
                 Apply(hit);
                 // Блок мог исчезнуть или появиться: рамка и предпросмотр должны сразу показать новое состояние.
                 Hovered = worldView.World.GetBlock(hit.Block).IsAir ? null : hit;
@@ -442,9 +443,25 @@ namespace Emberhold.Gameplay.Building
                                      || Tool == BlockTool.DigOrder && order.Kind == WorkKind.Dig);
         }
 
-        /// <summary>Блок освещён (центр блока внутри света) или зона застройки не задана.</summary>
+        /// <summary>
+        /// Блок освещён (свет доходит до центра блока; глубоко под огнём темно) или зона застройки не задана.
+        /// </summary>
         public bool CanEdit(Vector3Int block) =>
-            buildZone == null || buildZone.Contains(worldView.transform.TransformPoint(block + new Vector3(0.5f, 0.5f, 0.5f)));
+            buildZone == null || buildZone.Reaches(worldView.transform.TransformPoint(block + new Vector3(0.5f, 0.5f, 0.5f)));
+
+        private string DarkMessage => Tool is BlockTool.Dig or BlockTool.Remove or BlockTool.DigOrder ? DarkDigMessage : DarkBuildMessage;
+
+        /// <summary>Подсказка у курсора, пока он наведён туда, где текущий инструмент не сработает; иначе null.</summary>
+        private string HoverMessage()
+        {
+            if (HoveredTree is { } tree)
+                return CanEdit(tree.Cell) || workers != null && workers.Orders.At(tree.Cell) is { Kind: WorkKind.Chop } ? null : DarkDigMessage;
+            if (Hovered is not { } hit)
+                return null;
+            if (IsUnbreakable(hit))
+                return UnbreakableMessage;
+            return CanApply(hit) ? null : DarkMessage;
+        }
 
         /// <summary>Дерево под курсором при инструменте 5, если луч попадает в него раньше, чем в землю.</summary>
         private TreeStand PickTree(Vector2 screenPosition)
@@ -665,12 +682,13 @@ namespace Emberhold.Gameplay.Building
                 ? "1 — копать, 2 — убрать сразу, 3 — строить сразу, 4 — чертёж, 5 — поручить копать или рубить дерево, 6 — поддон, ЛКМ — применить"
                 : "1 — копать, 2 — убрать сразу, 3 — строить, ЛКМ — применить";
             GUI.Label(new Rect(10, 10, 900, 22), $"Инструмент: {name}   ({keys})");
-            if (Time.unscaledTime < blockedMessageUntil)
+            var message = HoverMessage() ?? (Time.unscaledTime < blockedMessageUntil ? blockedMessage : null);
+            if (message != null)
             {
                 // Подсказка у курсора: GUI считает y сверху, экран — снизу.
                 var mouse = point.ReadValue<Vector2>();
                 var rect = new Rect(mouse.x + 16f, Screen.height - mouse.y - 8f, 360f, 24f);
-                GUI.Label(rect, blockedMessage);
+                GUI.Label(rect, message);
             }
             if (!PlacesBlocks)
                 return;

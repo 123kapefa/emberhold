@@ -46,6 +46,11 @@ namespace Emberhold.Tests.PlayMode.Lighting
             var inside = SurfaceBlock(view, center + new Vector3(campfire.Radius - 2f, 0f, 0f));
             Assert.That(editor.CanEdit(inside.Block), Is.True, "Блок внутри света");
 
+            // Глубоко под костром темно (#98): к забою нужно нести свет.
+            var underFire = SurfaceBlock(view, center).Block;
+            Assert.That(editor.CanEdit(underFire), Is.True, "Блок под костром");
+            Assert.That(editor.CanEdit(underFire + Vector3Int.down * Mathf.CeilToInt(campfire.Radius + 1f)), Is.False, "Глубоко под костром");
+
             var outside = SurfaceBlock(view, center + new Vector3(campfire.Radius + 3f, 0f, 0f));
             Assert.That(editor.CanEdit(outside.Block), Is.False, "Блок вне света");
             var before = view.World.GetBlock(outside.Block);
