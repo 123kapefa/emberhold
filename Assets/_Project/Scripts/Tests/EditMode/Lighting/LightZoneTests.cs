@@ -33,6 +33,28 @@ namespace Emberhold.Tests.EditMode.Lighting
         }
 
         [Test]
+        public void Reaches_WholeCircleAboveSourceButOnlyBallBelow()
+        {
+            var circle = new LightCircle(new Vector3(0f, 10f, 0f), 5f);
+            Assert.That(circle.Reaches(new Vector3(4.5f, 30f, 0f)), Is.True, "Выше огня — весь круг");
+            Assert.That(circle.Reaches(new Vector3(0f, 6f, 0f)), Is.True, "Под огнём неглубоко");
+            Assert.That(circle.Reaches(new Vector3(3f, 6.5f, 0f)), Is.True, "Под огнём в шаре");
+            Assert.That(circle.Reaches(new Vector3(0f, 4.9f, 0f)), Is.False, "Глубже радиуса под огнём темно");
+            Assert.That(circle.Reaches(new Vector3(4f, 6.5f, 0f)), Is.False, "У края круга свет уходит вглубь неглубоко");
+            Assert.That(circle.Reaches(new Vector3(5.1f, 10f, 0f)), Is.False, "За кругом темно");
+        }
+
+        [Test]
+        public void Zone_ReachesIfAnyCircleReaches()
+        {
+            var zone = new LightZone();
+            zone.Add(new LightCircle(Vector3.zero, 3f));
+            zone.Add(new LightCircle(new Vector3(10f, -10f, 0f), 3f));
+            Assert.That(zone.Reaches(new Vector3(0f, -5f, 0f)), Is.False, "Глубоко под верхним огнём темно");
+            Assert.That(zone.Reaches(new Vector3(10f, -12f, 0f)), Is.True, "Рядом с нижним огнём светло");
+        }
+
+        [Test]
         public void Zone_IsUnionOfCircles()
         {
             var zone = new LightZone();

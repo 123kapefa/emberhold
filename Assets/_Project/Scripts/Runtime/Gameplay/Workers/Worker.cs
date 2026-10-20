@@ -73,6 +73,11 @@ namespace Emberhold.Gameplay.Workers
                 Order = null;
                 Abandon();
             }
+            else if (Order != null && !context.IsOrderLit(Order))
+            {
+                // Свет ушёл с задачи: она остаётся и ждёт, пока его вернут.
+                Abandon();
+            }
 
             if (State != WorkerState.Fleeing && !context.IsLit(Column))
             {
@@ -152,7 +157,8 @@ namespace Emberhold.Gameplay.Workers
             var bestPriority = int.MinValue;
             foreach (var order in context.Orders.Orders)
             {
-                if (order.Worker != null || order.Priority < bestPriority || !WorkOrders.IsValid(context.World, order)
+                if (order.Worker != null || order.Priority < bestPriority || !context.IsOrderLit(order)
+                    || !WorkOrders.IsValid(context.World, order)
                     || order.Kind == WorkKind.Chop && context.Forest == null
                     || !context.TryStandSpot(order.Cell, false, out var stand, out var cost))
                     continue;
@@ -187,7 +193,7 @@ namespace Emberhold.Gameplay.Workers
         {
             foreach (var order in context.Orders.Orders)
             {
-                if (order.Worker == null && (!order.NeedsItems || HasPile(order.ItemId)))
+                if (order.Worker == null && context.IsOrderLit(order) && (!order.NeedsItems || HasPile(order.ItemId)))
                     return true;
             }
             return false;
