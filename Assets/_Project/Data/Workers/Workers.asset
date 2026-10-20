@@ -24,5 +24,13 @@ MonoBehaviour:
   digHitSeconds: 1
   digHitDamage: 25
   fuelItemId: wood
+  palletLimits:
+  - itemId: wood
+    count: 20
+  - itemId: stone
+    count: 76
+  - itemId: grass
+    count: 70
+  defaultPalletLimit: 20
   idleSearchSeconds: 0.5
   hoodColor: {r: 0.26, g: 0.36, b: 0.3, a: 1}

@@ -109,7 +109,7 @@ namespace Emberhold.Tests.EditMode.Workers
         private Worker Spawn(Vector2Int column)
         {
             var context = new WorkerContext(world, orders, items, new BlockDamage(new UniformBlockDurability(100f)),
-                new BlockStability(), settings, null, null, null, null, built.Add);
+                new BlockStability(), settings, null, null, null, null, campfireBuilt: built.Add);
             return new Worker(context, context.Surface.StandPoint(column));
         }
 
