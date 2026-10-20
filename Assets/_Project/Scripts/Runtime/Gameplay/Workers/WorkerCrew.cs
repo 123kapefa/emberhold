@@ -20,6 +20,8 @@ namespace Emberhold.Gameplay.Workers
     /// ноша на плече из WorkerCarryBuilder), рамки чертежей и приказов копать и рубить.
     /// Чертежи и приказы ставит игрок инструментами BlockEditController (4 и 5). Топливо для огней отряд заводит сам:
     /// у каждого огня, в котором есть место хотя бы под одно полено, висит задача принести полено.
+    /// Поддоны (<see cref="Pallets"/>) ставит игрок инструментом 6; пока у них нет своего вида, отряд рисует их рамкой 2×2×2
+    /// и подписью над ней: что лежит, сколько и сколько влезает («бревно 2-20»).
     /// Урон блоков и устойчивость общие с BlockEditController, ресурсы на земле — из DroppedItemsView.
     /// </summary>
     public sealed class WorkerCrew : MonoBehaviour
@@ -54,6 +56,7 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private Material outlineMaterial;
         [SerializeField] private Color blueprintColor = new(0.35f, 0.75f, 1f);
         [SerializeField] private Color digOrderColor = new(1f, 0.45f, 0.15f);
+        [SerializeField] private Color palletColor = new(0.95f, 0.8f, 0.45f);
         [Range(0f, 0.1f)]
         [SerializeField] private float outlinePadding = 0.03f;
 
@@ -69,12 +72,18 @@ namespace Emberhold.Gameplay.Workers
         private readonly List<int> lineIndices = new();
         private GameObject blueprintLines;
         private GameObject digLines;
+        private GameObject palletLines;
         private int shownOrdersVersion = -1;
+        private int shownPalletsVersion = -1;
+        private GUIStyle palletLabelStyle;
 
         /// <summary>Чертежи и приказы копать.</summary>
         public WorkOrders Orders { get; } = new();
 
         public IReadOnlyList<Worker> Workers => workers;
+
+        /// <summary>Поддоны для ресурсов; создаются в Start, до этого null.</summary>
+        public Pallets Pallets { get; private set; }
 
         private void Start()
         {
@@ -87,13 +96,15 @@ namespace Emberhold.Gameplay.Workers
                 return;
             }
 
+            Pallets = new Pallets(settings.PalletCapacity);
             context = new WorkerContext(worldView.World, Orders, droppedItems.Items, editor.Damage, editor.Stability, settings, IsLit,
-                () => buildZone == null || litZone.Count > 0, editor.OnWorldChanged, forest != null ? forest.Forest : null);
+                () => buildZone == null || litZone.Count > 0, editor.OnWorldChanged, forest != null ? forest.Forest : null, Pallets);
             Orders.Cancelled += OnOrderCancelled;
             if (dayNight == null)
                 dayNight = FindAnyObjectByType<DayNightCycle>();
             blueprintLines = CreateLines("Blueprints", blueprintColor);
             digLines = CreateLines("Dig Orders", digOrderColor);
+            palletLines = CreateLines("Pallets", palletColor);
             UpdateLight();
             Spawn();
         }
@@ -112,6 +123,7 @@ namespace Emberhold.Gameplay.Workers
             }
             DestroyLines(blueprintLines);
             DestroyLines(digLines);
+            DestroyLines(palletLines);
         }
 
         private void Update()
@@ -121,6 +133,7 @@ namespace Emberhold.Gameplay.Workers
             UpdateLight();
             // Клетку чертежа могли занять, блок под приказом — выкопать вручную, дерево — уронить.
             Orders.Prune(worldView.World);
+            PrunePallets();
             UpdateFuelOrders();
             var deltaTime = Time.deltaTime;
             foreach (var worker in workers)
@@ -158,7 +171,9 @@ namespace Emberhold.Gameplay.Workers
             var fire = NearestFire(worker.Position);
             var warming = worker.State == WorkerState.Idle && night && fire.HasValue && visual.Speed < 0.3f;
             Vector3? look = null;
-            if (worker.State is WorkerState.Working or WorkerState.Putting && worker.Order != null)
+            if (worker.State == WorkerState.Putting && worker.HaulTarget != null)
+                look = worker.HaulTarget.Center - worker.Position;
+            else if (worker.State is WorkerState.Working or WorkerState.Putting && worker.Order != null)
                 look = worker.Order.Cell + new Vector3(0.5f, 0f, 0.5f) - worker.Position;
             else if (move.sqrMagnitude > 1e-6f)
                 look = move;
@@ -206,7 +221,7 @@ namespace Emberhold.Gameplay.Workers
                     break;
             }
             // Ноша — по тому, что несут; пока поднимает — то, за чем пришёл.
-            var itemId = worker.Carrying?.ItemId ?? (worker.State == WorkerState.PickingUp ? worker.Order?.ItemId : null);
+            var itemId = worker.Carrying?.ItemId ?? (worker.State == WorkerState.PickingUp ? worker.WantedItemId : null);
             var carry = WorkerCarryBuilder.CarryFor(itemId, visual.Look.Role);
             var pose = animator.Update(deltaTime, WorkerMotion.For(visual.Look, settings.Height, visual.Speed, visual.Seed, carry));
             WorkerSkeleton.Evaluate(pose, settings.Height, partMatrices);
@@ -288,6 +303,42 @@ namespace Emberhold.Gameplay.Workers
             if (Orders.At(tree.Cell) is { } existing)
                 return existing.Kind == WorkKind.Chop && Orders.Cancel(existing);
             return Orders.AddChop(tree) != null;
+        }
+
+        /// <summary>
+        /// Поставить поддон с угловой клеткой origin (над землёй) или убрать тот, что уже стоит в этой клетке.
+        /// Ставить можно на ровный твёрдый пол 2×2 с пустым местом на 2 блока вверх. true — что-то изменилось.
+        /// </summary>
+        public bool TogglePallet(Vector3Int origin)
+        {
+            if (Pallets == null)
+                return false;
+            if (Pallets.At(origin) is { } existing)
+                return RemovePallet(existing);
+            return Pallets.Add(worldView.World, origin) != null;
+        }
+
+        /// <summary>Убрать поддон; что на нём лежало, высыпается кучкой на его место.</summary>
+        public bool RemovePallet(Pallet pallet)
+        {
+            var itemId = pallet.ItemId;
+            var count = pallet.Count;
+            if (!Pallets.Remove(pallet))
+                return false;
+            if (count > 0)
+                droppedItems.Items.Drop(worldView.World, pallet.Origin, new ItemDrop(itemId, count));
+            return true;
+        }
+
+        /// <summary>Поддон, под которым выкопали пол или в клетки которого поставили блок, разваливается: ресурс высыпается.</summary>
+        private void PrunePallets()
+        {
+            for (var i = Pallets.All.Count - 1; i >= 0; i--)
+            {
+                var pallet = Pallets.All[i];
+                if (!Pallets.IsValid(worldView.World, pallet))
+                    RemovePallet(pallet);
+            }
         }
 
         /// <summary>
@@ -441,6 +492,12 @@ namespace Emberhold.Gameplay.Workers
         {
             PlaceInWorld(blueprintLines.transform);
             PlaceInWorld(digLines.transform);
+            PlaceInWorld(palletLines.transform);
+            if (shownPalletsVersion != Pallets.Version)
+            {
+                shownPalletsVersion = Pallets.Version;
+                FillPalletLines();
+            }
             if (shownOrdersVersion == Orders.Version)
                 return;
             shownOrdersVersion = Orders.Version;
@@ -481,6 +538,43 @@ namespace Emberhold.Gameplay.Workers
             mesh.SetIndices(lineIndices, MeshTopology.Lines, 0);
             mesh.RecalculateBounds();
             lines.SetActive(lineIndices.Count > 0);
+        }
+
+        private void FillPalletLines()
+        {
+            lineVertices.Clear();
+            lineIndices.Clear();
+            foreach (var pallet in Pallets.All)
+                BlockOutlineMesh.AppendBox(pallet.Origin, pallet.Origin + new Vector3(Pallet.Size, Pallet.Height, Pallet.Size), outlinePadding,
+                    lineVertices, lineIndices);
+            var mesh = palletLines.GetComponent<MeshFilter>().sharedMesh;
+            mesh.Clear();
+            mesh.SetVertices(lineVertices);
+            mesh.SetIndices(lineIndices, MeshTopology.Lines, 0);
+            mesh.RecalculateBounds();
+            palletLines.SetActive(lineIndices.Count > 0);
+        }
+
+        /// <summary>Подписи поддонов над их рамками: что лежит и сколько из скольких.</summary>
+        private void OnGUI()
+        {
+            if (context == null || Pallets.All.Count == 0)
+                return;
+            var camera = UnityEngine.Camera.main;
+            if (camera == null)
+                return;
+            palletLabelStyle ??= new GUIStyle(GUI.skin.box) { alignment = TextAnchor.MiddleCenter };
+            foreach (var pallet in Pallets.All)
+            {
+                var top = worldView.transform.TransformPoint(pallet.Center + Vector3.up * (Pallet.Height + 0.3f));
+                var screen = camera.WorldToScreenPoint(top);
+                if (screen.z <= 0f)
+                    continue;
+                var text = PalletLabel.Text(pallet, Pallets.Capacity(pallet.ItemId));
+                var size = palletLabelStyle.CalcSize(new GUIContent(text));
+                // GUI считает y сверху, экран — снизу.
+                GUI.Label(new Rect(screen.x - size.x * 0.5f, Screen.height - screen.y - size.y, size.x, size.y), text, palletLabelStyle);
+            }
         }
 
         /// <summary>Огонь как цель для топлива рабочих.</summary>
