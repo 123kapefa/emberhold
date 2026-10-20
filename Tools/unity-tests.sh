@@ -117,9 +117,20 @@ trap 'exit 130' INT TERM HUP
 
 fail() { status "failed"; echo "$*" | tee "$OUT/summary.txt"; exit 1; }
 
+# Сетевые команды повторяем: разовый сбой SSL до github.com не должен ронять прогон.
+retry() {
+  local delay
+  for delay in ${EMBERHOLD_RETRY_DELAYS:-2 4 8 16}; do
+    "$@" && return 0
+    echo "Не вышло: $*. Повтор через $delay с."
+    sleep "$delay"
+  done
+  "$@"
+}
+
 # 1. Worktree.
 status "preparing worktree"
-git -C "$ROOT" fetch -q origin "$BRANCH" || fail "git fetch origin $BRANCH не удался"
+retry git -C "$ROOT" fetch -q origin "$BRANCH" || fail "git fetch origin $BRANCH не удался"
 TARGET=$(git -C "$ROOT" rev-parse "refs/remotes/origin/$BRANCH") || fail "нет ветки origin/$BRANCH"
 if [ -d "$WT" ]; then
   [ -z "$(git -C "$WT" status --porcelain --untracked-files=no)" ] \
@@ -128,7 +139,7 @@ if [ -d "$WT" ]; then
 else
   GIT_LFS_SKIP_SMUDGE=1 git -C "$ROOT" worktree add -q --detach "$WT" "$TARGET" || fail "git worktree add $WT не удался"
 fi
-git -C "$WT" lfs pull || fail "git lfs pull в $WT не удался"
+retry git -C "$WT" lfs pull || fail "git lfs pull в $WT не удался"
 COMMIT=$(git -C "$WT" rev-parse --short HEAD)
 
 VERSION=$(sed -n 's/^m_EditorVersion: *//p' "$WT/ProjectSettings/ProjectVersion.txt")
