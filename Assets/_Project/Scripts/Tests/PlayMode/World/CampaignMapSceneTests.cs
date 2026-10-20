@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System.Collections;
 using Emberhold.Core;
+using Emberhold.Gameplay.Fog;
 using Emberhold.Gameplay.Trees;
 using Emberhold.World;
 using NUnit.Framework;
@@ -41,6 +42,25 @@ namespace Emberhold.Tests.PlayMode.World
                     birches++;
             }
             Assert.That(birches, Is.GreaterThan(10), "в Берёзовой долине растут деревья");
+
+            // Море тумана за краем (#102): у края мира низ в пелене, в долинах тумана нет.
+            yield return null;
+            var fog = Object.FindAnyObjectByType<WorldEdgeFog>();
+            Assert.That(fog, Is.Not.Null);
+            Assert.That(fog.WorldRect, Is.EqualTo(new Rect(-256f, -256f, 512f, 512f)));
+            Assert.That(fog.DensityAt(new Vector3(0f, 4f, 255.5f)), Is.GreaterThan(0.5f), "у края");
+            Assert.That(fog.DensityAt(new Vector3(112f - 256f, 14f, 102f - 256f)), Is.Zero, "в Берёзовой долине");
+
+            // Горы за краем (#102): кольцо вокруг мира, у края на высоте земли, вдали в тумане.
+            var skirt = Object.FindAnyObjectByType<WorldSkirt>();
+            Assert.That(skirt, Is.Not.Null);
+            Assert.That(skirt.Mesh, Is.Not.Null);
+            Assert.That(skirt.Mesh.vertexCount, Is.GreaterThan(1000));
+            Assert.That(skirt.Shape.Height(256f, 512f), Is.EqualTo(view.World.Surface.Corner(256, 512) / 16f).Within(1e-3f));
+            var far = 0f;
+            for (var x = 0; x < 512; x += 8)
+                far += skirt.Shape.Height(x, 512f + 200f) / 64f;
+            Assert.That(far, Is.LessThan(26f), "вдали горы в тумане");
         }
 
         private static float GroundHeight(VoxelWorldView view, int x, int z)

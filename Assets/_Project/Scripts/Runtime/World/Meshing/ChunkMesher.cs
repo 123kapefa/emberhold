@@ -223,9 +223,8 @@ namespace Emberhold.World.Meshing
 
             void Wall(Side side, int nx, int nz, int ax, int az, int bx, int bz)
             {
-                if (!surface.Contains(nx, nz))
-                    return;
-                // Ниже верха соседа стенку закрывает он сам.
+                // Ниже верха соседа стенку закрывает он сам. За краем мира соседа нет: стенка до самого дна,
+                // чтобы сквозь край не было видно изнанку поверхности.
                 var below = surface.IsNatural(nx, nz) ? surface.Ceiling(nx, nz) : 0;
                 if (below >= surface.Ceiling(gx, gz))
                     return;
