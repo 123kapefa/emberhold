@@ -352,6 +352,16 @@ namespace Emberhold.Gameplay.Workers
             }
         }
 
+        /// <summary>Поручить выкорчевать пень или снять приказ. true — что-то изменилось.</summary>
+        public bool ToggleUproot(TreeStump stump)
+        {
+            if (stump == null)
+                return false;
+            if (Orders.At(stump.Cell) is { } existing)
+                return existing.Kind == WorkKind.Chop && Orders.Cancel(existing);
+            return Orders.AddUproot(stump) != null;
+        }
+
         /// <summary>
         /// Задачи топлива: у огня, в котором помещается хотя бы одно полено, — задача принести одно полено (одна ходка).
         /// Ещё никем не взятая задача снимается, если огонь успели накормить. Задача огня, который погасили насовсем
@@ -550,10 +560,10 @@ namespace Emberhold.Gameplay.Workers
             {
                 if (darkOrders.Contains(order) != dark)
                     continue;
-                // Приказы рубить рисуются вместе с приказами копать, рамкой вокруг дерева.
+                // Приказы рубить и корчевать рисуются вместе с приказами копать, рамкой вокруг дерева или пня.
                 if (kind == WorkKind.Dig && order.Kind == WorkKind.Chop && forest != null)
                 {
-                    var (min, max) = forest.LocalBounds(order.Tree);
+                    var (min, max) = order.Stump != null ? forest.LocalBounds(order.Stump) : forest.LocalBounds(order.Tree);
                     BlockOutlineMesh.AppendBox(order.Cell + min, order.Cell + max, outlinePadding, lineVertices, lineIndices);
                     continue;
                 }

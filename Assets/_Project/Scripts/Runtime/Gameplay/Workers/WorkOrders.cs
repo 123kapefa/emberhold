@@ -13,7 +13,10 @@ namespace Emberhold.Gameplay.Workers
         Build,
         /// <summary>Приказ копать: рабочий разбивает блок ударами.</summary>
         Dig,
-        /// <summary>Приказ рубить: рабочий рубит дерево ударами, поленья падают у основания.</summary>
+        /// <summary>
+        /// Приказ рубить: рабочий рубит дерево ударами, поленья падают у основания. Тот же приказ корчует пень
+        /// (<see cref="WorkOrder.Stump"/>).
+        /// </summary>
         Chop,
         /// <summary>Подбросить топливо: рабочий приносит полено и кладёт его в огонь.</summary>
         Fuel,
@@ -65,6 +68,9 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>Дерево под приказом рубить, иначе null.</summary>
         public TreeStand Tree { get; internal set; }
+
+        /// <summary>Пень под приказом выкорчевать (вид задачи — <see cref="WorkKind.Chop"/>), иначе null.</summary>
+        public TreeStump Stump { get; internal set; }
 
         /// <summary>Куда нести топливо (для <see cref="WorkKind.Fuel"/>), иначе null.</summary>
         public IFuelTarget FuelTarget { get; internal set; }
@@ -124,6 +130,14 @@ namespace Emberhold.Gameplay.Workers
             return Add(new WorkOrder(WorkKind.Chop, tree.Cell, Block.Air, false, null, 0) { Tree = tree });
         }
 
+        /// <summary>Поручить выкорчевать пень. Null, если клетка пня уже занята задачей.</summary>
+        public WorkOrder AddUproot(TreeStump stump)
+        {
+            if (stump == null || !stump.IsPresent || byCell.ContainsKey(stump.Cell))
+                return null;
+            return Add(new WorkOrder(WorkKind.Chop, stump.Cell, Block.Air, false, null, 0) { Stump = stump });
+        }
+
         /// <summary>
         /// Поручить принести count единиц топлива itemId в огонь target, стоящий в клетке cell.
         /// Null, если клетка уже занята задачей.
@@ -164,14 +178,14 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>
         /// Можно ли ещё выполнить задачу: чертёж — клетка свободна (или там тот же неполный блок, который досыпаем),
-        /// приказ копать — блок на месте, приказ рубить — дерево стоит. Топливо носить можно всегда.
+        /// приказ копать — блок на месте, приказ рубить — дерево или пень стоит. Топливо носить можно всегда.
         /// </summary>
         public static bool IsValid(VoxelWorld world, WorkOrder order)
         {
             if (order.Kind == WorkKind.Fuel)
                 return true;
             if (order.Kind == WorkKind.Chop)
-                return order.Tree.IsStanding;
+                return order.Stump?.IsPresent ?? order.Tree.IsStanding;
             if (!world.IsInsideBlocks(order.Cell))
                 return false;
             var current = world.GetBlock(order.Cell);

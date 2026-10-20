@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Emberhold.Gameplay.Items;
 using Emberhold.Gameplay.Lighting;
 using Emberhold.World;
+using Emberhold.World.Meshing;
 using Emberhold.World.Trees;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -12,7 +13,7 @@ namespace Emberhold.Gameplay.Trees
     /// Лес в сцене: при старте рассаживает деревья по профилям местности мира (фон и зоны, <see cref="ForestScatter"/>;
     /// у каждого огня сцены роща на краю круга света),
     /// показывает каждое гранёной моделью вида (<see cref="TreeMeshBuilder"/>) и убирает упавшие. Упавшее дерево кладёт поленья
-    /// в те же ресурсы на земле, что и камень (<see cref="DroppedItemsView"/>). Рубят деревья рабочие (WorkerCrew),
+    /// в те же ресурсы на земле, что и камень (<see cref="DroppedItemsView"/>). На месте срубленного остаётся пень. Рубят деревья рабочие (WorkerCrew),
     /// приказ рубить ставит игрок инструментом 5 (BlockEditController).
     /// </summary>
     public sealed class ForestView : MonoBehaviour
@@ -38,6 +39,9 @@ namespace Emberhold.Gameplay.Trees
         private readonly Dictionary<TreeStand, GameObject> visuals = new();
         // Сетки строятся один раз на форму вида и общие у всех деревьев этой формы.
         private readonly Dictionary<(TreeSpecies species, int variant), Mesh> meshes = new();
+        private readonly Dictionary<TreeStump, GameObject> stumps = new();
+        private readonly List<TreeStump> stumpsGone = new();
+        private readonly Dictionary<TreeSpecies, Mesh> stumpMeshes = new();
         private MaterialPropertyBlock properties;
         private Forest forest;
         private int shownVersion = -1;
@@ -74,7 +78,14 @@ namespace Emberhold.Gameplay.Trees
                 if (visual != null)
                     Destroy(visual);
             }
+            foreach (var stump in stumps.Values)
+            {
+                if (stump != null)
+                    Destroy(stump);
+            }
             foreach (var mesh in meshes.Values)
+                Destroy(mesh);
+            foreach (var mesh in stumpMeshes.Values)
                 Destroy(mesh);
         }
 
@@ -92,6 +103,7 @@ namespace Emberhold.Gameplay.Trees
                 if (!visuals.ContainsKey(tree))
                     visuals[tree] = CreateVisual(tree);
             }
+            ShowStumps();
         }
 
         /// <summary>
@@ -107,6 +119,25 @@ namespace Emberhold.Gameplay.Trees
             // Мир не масштабируется, поэтому расстояние в блоках совпадает с расстоянием в сцене.
             return forest.Raycast(worldView.World, space.InverseTransformPoint(ray.origin),
                 space.InverseTransformDirection(ray.direction), maxDistance, out tree, out distance);
+        }
+
+        /// <summary>Пень, в который попадает луч из сцены, ближе maxDistance; distance — в единицах сцены.</summary>
+        public bool RaycastStump(Ray ray, float maxDistance, out TreeStump stump, out float distance)
+        {
+            stump = null;
+            distance = maxDistance;
+            if (Forest == null)
+                return false;
+            var space = worldView.transform;
+            return forest.RaycastStump(worldView.World, space.InverseTransformPoint(ray.origin),
+                space.InverseTransformDirection(ray.direction), maxDistance, out stump, out distance);
+        }
+
+        /// <summary>Коробка пня для рамки, в долях клетки пня.</summary>
+        public (Vector3 min, Vector3 max) LocalBounds(TreeStump stump)
+        {
+            var (min, max) = Forest.StumpBounds(worldView.World, stump);
+            return (min - stump.Cell, max - stump.Cell);
         }
 
         /// <summary>Коробка дерева для рамки: от основания до макушки, шириной с крону; в долях клетки дерева.</summary>
@@ -190,6 +221,63 @@ namespace Emberhold.Gameplay.Trees
             // Без коллайдера: дерево выбирается лучом по коробке (Forest.Raycast) и не мешает лучу выбора блока.
             return root;
         }
+
+        /// <summary>Пни: новые ставим, исчезнувшие (выкорчевали, под ними копали, в клетку поставили блок) убираем.</summary>
+        private void ShowStumps()
+        {
+            foreach (var stump in forest.Stumps)
+            {
+                if (!stumps.ContainsKey(stump))
+                    stumps[stump] = CreateStump(stump);
+            }
+            stumpsGone.Clear();
+            foreach (var stump in stumps.Keys)
+            {
+                if (!stump.IsPresent)
+                    stumpsGone.Add(stump);
+            }
+            foreach (var stump in stumpsGone)
+            {
+                Destroy(stumps[stump]);
+                stumps.Remove(stump);
+            }
+        }
+
+        private GameObject CreateStump(TreeStump stump)
+        {
+            var go = new GameObject($"Stump {stump.Species.DisplayName}");
+            go.transform.SetParent(transform, false);
+            var space = worldView.transform;
+            var position = stump.Position;
+            go.transform.SetPositionAndRotation(
+                space.TransformPoint(new Vector3(position.x, Forest.BaseHeight(worldView.World, stump), position.y)),
+                space.rotation * Quaternion.Euler(0f, CellSeed(stump.Cell) % 360, 0f));
+            if (!stumpMeshes.TryGetValue(stump.Species, out var mesh))
+                stumpMeshes[stump.Species] = mesh = BuildStump(stump.Species);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = go.AddComponent<MeshRenderer>();
+            if (material != null)
+                renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.On;
+            return go;
+        }
+
+        /// <summary>Пень-заглушка: короткий гранёный ствол чуть шире дерева со светлым срезом сверху (вид — #120).</summary>
+        private static Mesh BuildStump(TreeSpecies species)
+        {
+            var mesh = new FacetedMesh();
+            var radius = Mathf.Max(0.06f, species.TrunkWidth * 0.5f);
+            var random = new System.Random(species.DisplayName.GetHashCode());
+            // a = 0: шейдер деревьев оставляет цвет вершин как есть (не красит его оттенком кроны).
+            var bark = Untinted(species.TrunkColor.linear);
+            var cut = Untinted(Color.Lerp(species.TrunkColor, Color.white, 0.45f).linear);
+            // Низ уходит в землю, чтобы на склоне не было щели.
+            mesh.AddPrism(7, Vector3.down * 0.15f, radius * 1.18f, radius * 1.02f, TreeStump.Height + 0.15f, radius * 0.06f, random, _ => bark);
+            mesh.AddPrism(7, Vector3.up * (TreeStump.Height - 0.01f), radius * 0.95f, radius * 0.92f, 0.03f, 0f, random, _ => cut);
+            return mesh.ToMesh($"Stump {species.DisplayName}");
+        }
+
+        private static Color Untinted(Color color) => new(color.r, color.g, color.b, 0f);
 
         private Mesh MeshFor(TreeSpecies species, int variant)
         {
