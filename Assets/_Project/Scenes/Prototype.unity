@@ -987,6 +987,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1530000003}
   - component: {fileID: 1530000002}
+  - component: {fileID: 1530000004}
   m_Layer: 0
   m_Name: Run
   m_TagString: Untagged
@@ -1011,6 +1012,21 @@ MonoBehaviour:
   dayNight: {fileID: 0}
   spawner: {fileID: 625837800}
   actions: {fileID: 0}
+--- !u!114 &1530000004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1530000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7eff63d356b34720ab30826b0829366d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Run.PlaytestLog
+  run: {fileID: 1530000002}
+  dayNight: {fileID: 0}
+  spawner: {fileID: 625837800}
 --- !u!4 &1530000003
 Transform:
   m_ObjectHideFlags: 0
