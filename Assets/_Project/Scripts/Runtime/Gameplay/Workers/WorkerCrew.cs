@@ -310,13 +310,14 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>
         /// Поставить чертёж костра в клетке или снять уже стоящий там. Ставится только в пустую клетку над землёй,
-        /// где ещё нет огня. true — что-то изменилось.
+        /// где ещё нет огня и поддона. true — что-то изменилось.
         /// </summary>
         public bool ToggleCampfire(Vector3Int cell)
         {
             if (Orders.At(cell) is { } existing)
                 return existing.Kind == WorkKind.Campfire && Orders.Cancel(existing);
-            if (campfirePrefab == null || costs == null || !WorkOrders.CanHoldCampfire(worldView.World, cell) || HasFireAt(cell))
+            if (campfirePrefab == null || costs == null || !WorkOrders.CanHoldCampfire(worldView.World, cell) || HasFireAt(cell)
+                || Pallets?.At(cell) != null)
                 return false;
             return Orders.AddCampfire(cell, costs.CampfireCost) != null;
         }
@@ -387,8 +388,30 @@ namespace Emberhold.Gameplay.Workers
                 return false;
             if (Pallets.At(origin) is { } existing)
                 return RemovePallet(existing);
-            return Pallets.Add(worldView.World, origin) != null;
+            return !HasFireOrCampfireUnder(origin) && Pallets.Add(worldView.World, origin) != null;
         }
+
+        /// <summary>На площадке будущего поддона с углом origin стоит огонь или чертёж костра.</summary>
+        private bool HasFireOrCampfireUnder(Vector3Int origin)
+        {
+            foreach (var order in Orders.Orders)
+            {
+                if (order.Kind == WorkKind.Campfire && InPalletSpace(origin, order.Cell))
+                    return true;
+            }
+            if (buildZone == null)
+                return false;
+            foreach (var source in buildZone.Sources)
+            {
+                if (source != null && InPalletSpace(origin, FireCell(source)))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool InPalletSpace(Vector3Int origin, Vector3Int cell) =>
+            cell.x >= origin.x && cell.x < origin.x + Pallet.Size && cell.z >= origin.z && cell.z < origin.z + Pallet.Size
+            && cell.y >= origin.y && cell.y < origin.y + Pallet.Height;
 
         /// <summary>Убрать поддон; что на нём лежало, высыпается кучкой на его место.</summary>
         public bool RemovePallet(Pallet pallet)

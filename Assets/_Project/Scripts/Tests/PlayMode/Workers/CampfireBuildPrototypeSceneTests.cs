@@ -48,6 +48,23 @@ namespace Emberhold.Tests.PlayMode.Workers
             Assert.That(crew.Orders.At(cell), Is.Null, "Повторный клик снимает чертёж");
             Assert.That(editor.Apply(hit), Is.True);
 
+            // Поддон и костёр не ставятся друг на друга.
+            for (var dz = -1; dz <= 0; dz++)
+            for (var dx = -1; dx <= 0; dx++)
+                Assert.That(crew.TogglePallet(cell + new Vector3Int(dx, 0, dz)), Is.False, "Поддон на чертеже костра");
+            var palletPlaced = false;
+            for (var x = -8.5f; x <= -3.5f && !palletPlaced; x += 1f)
+            {
+                var origin = SurfaceHit(view, x, -4.5f).Block + Vector3Int.up;
+                if (!crew.TogglePallet(origin))
+                    continue;
+                palletPlaced = true;
+                Assert.That(crew.ToggleCampfire(origin), Is.False, "Костёр на поддоне");
+                Assert.That(crew.ToggleCampfire(origin + new Vector3Int(1, 0, 1)), Is.False, "Костёр на поддоне");
+                Assert.That(crew.TogglePallet(origin), Is.True, "Поддон убран");
+            }
+            Assert.That(palletPlaced, Is.True, "Не нашлось места под поддон для проверки");
+
             dropped.Items.Drop(view.World, SurfaceHit(view, 5.5f, 2.5f).Block + Vector3Int.up, new ItemDrop("wood", 7));
 
             var timeScale = Time.timeScale;
