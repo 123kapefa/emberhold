@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Tools/unity-tests.sh:*)",
+      "Bash(./Tools/unity-tests.sh:*)"
+    ]
+  }
+}

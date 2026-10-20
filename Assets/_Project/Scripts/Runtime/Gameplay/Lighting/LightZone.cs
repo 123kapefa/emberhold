@@ -22,6 +22,20 @@ namespace Emberhold.Gameplay.Lighting
             var dz = point.z - Center.z;
             return dx * dx + dz * dz <= Radius * Radius;
         }
+
+        /// <summary>
+        /// Свет доходит до блока: выше источника — весь круг, ниже — только шар радиуса вокруг источника.
+        /// Глубоко под огнём темно, поэтому к забою туннеля нужно нести свет.
+        /// </summary>
+        public bool Reaches(Vector3 point)
+        {
+            var dx = point.x - Center.x;
+            var dy = point.y - Center.y;
+            var dz = point.z - Center.z;
+            var flat = dx * dx + dz * dz;
+            var radius = Radius * Radius;
+            return flat <= radius && (dy >= 0f || flat + dy * dy <= radius);
+        }
     }
 
     /// <summary>
@@ -45,6 +59,17 @@ namespace Emberhold.Gameplay.Lighting
             foreach (var circle in circles)
             {
                 if (circle.Contains(point))
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Свет хотя бы одного источника доходит до блока (см. <see cref="LightCircle.Reaches"/>).</summary>
+        public bool Reaches(Vector3 point)
+        {
+            foreach (var circle in circles)
+            {
+                if (circle.Reaches(point))
                     return true;
             }
             return false;
