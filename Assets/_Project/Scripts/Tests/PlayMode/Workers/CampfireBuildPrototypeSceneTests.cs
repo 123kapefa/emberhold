@@ -36,17 +36,30 @@ namespace Emberhold.Tests.PlayMode.Workers
 
             // Вне света чертёж костра не ставится.
             editor.Tool = BlockTool.Campfire;
-            Assert.That(editor.Apply(SurfaceHit(view, main.FullRadius + 4.5f, 0.5f)), Is.False, "Вне света костёр не поставить");
+            Assert.That(editor.Apply(SurfaceHit(view, main.transform.position.x + main.FullRadius + 4.5f, main.transform.position.z)), Is.False, "Вне света костёр не поставить");
 
-            // Чертёж у края света; повторный клик его снимает.
-            var hit = SurfaceHit(view, 8.5f, 0.5f);
+            // Чертёж ближе к краю света, на первом подходящем месте (рельеф сцены неровный); повторный клик его снимает.
+            var hit = default(BlockHit);
+            var found = false;
+            for (var r = 8.5f; r >= 3.5f && !found; r -= 1f)
+            for (var a = 0; a < 8 && !found; a++)
+            {
+                var angle = a * Mathf.PI / 4f;
+                var probe = SurfaceHit(view, main.transform.position.x + Mathf.Cos(angle) * r, main.transform.position.z + Mathf.Sin(angle) * r);
+                var above = probe.Block + Vector3Int.up;
+                if (!editor.CanEdit(above) || !WorkOrders.CanHoldCampfire(view.World, above) || crew.Orders.At(above) != null)
+                    continue;
+                hit = probe;
+                found = true;
+            }
+            Assert.That(found, Is.True, "Не нашлось места под костёр в свету");
             var cell = hit.Block + Vector3Int.up;
-            Assert.That(editor.Apply(hit), Is.True);
+            Assert.That(editor.Apply(hit), Is.True, $"Чертёж костра не поставился в {cell}");
             Assert.That(crew.Orders.At(cell)?.Kind, Is.EqualTo(WorkKind.Campfire));
             Assert.That(crew.Orders.At(cell).Needed, Is.EqualTo(6), "Костёр стоит 6 поленьев");
-            Assert.That(editor.Apply(hit), Is.True);
+            Assert.That(editor.Apply(hit), Is.True, "Повторный клик");
             Assert.That(crew.Orders.At(cell), Is.Null, "Повторный клик снимает чертёж");
-            Assert.That(editor.Apply(hit), Is.True);
+            Assert.That(editor.Apply(hit), Is.True, "Чертёж снова");
 
             // Поддон и костёр не ставятся друг на друга.
             for (var dz = -1; dz <= 0; dz++)
@@ -65,7 +78,8 @@ namespace Emberhold.Tests.PlayMode.Workers
             }
             Assert.That(palletPlaced, Is.True, "Не нашлось места под поддон для проверки");
 
-            dropped.Items.Drop(view.World, SurfaceHit(view, 5.5f, 2.5f).Block + Vector3Int.up, new ItemDrop("wood", 7));
+            var pile = (main.transform.position + view.transform.TransformPoint(cell + new Vector3(0.5f, 0f, 0.5f))) * 0.5f;
+            dropped.Items.Drop(view.World, SurfaceHit(view, pile.x, pile.z).Block + Vector3Int.up, new ItemDrop("wood", 7));
 
             var timeScale = Time.timeScale;
             Time.timeScale = 4f;
