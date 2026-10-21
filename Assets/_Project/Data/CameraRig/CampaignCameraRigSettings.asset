@@ -17,14 +17,14 @@ MonoBehaviour:
   startDistance: 60
   panSpeed: 20
   panReferenceDistance: 30
-  focusBoundsMin: {x: -256, y: -256}
-  focusBoundsMax: {x: 256, y: 256}
+  focusBoundsMin: {x: -200, y: -200}
+  focusBoundsMax: {x: 200, y: 200}
   rotateSpeed: 90
   mouseOrbitSensitivity: 0.25
   minPitch: 25
   maxPitch: 80
   minDistance: 8
-  maxDistance: 200
+  maxDistance: 140
   zoomStepFraction: 0.12
   zoomKeySteps: 6
   sharpness: 12
