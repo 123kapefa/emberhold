@@ -18,7 +18,8 @@ namespace Emberhold.Gameplay.Workers
     /// Отряд рабочих в сцене: при старте ставит их у первого источника света, каждый кадр обновляет задачи
     /// и рабочих, рисует рабочих (гранёный человек из частей WorkerMeshBuilder, анимация по состоянию из WorkerAnimation,
     /// ноша на плече из WorkerCarryBuilder), рамки чертежей и приказов копать и рубить.
-    /// Чертежи и приказы ставит игрок инструментами BlockEditController (4 и 5). Топливо для огней отряд заводит сам:
+    /// Чертежи и приказы ставит игрок инструментами BlockEditController (4, 5 и 7 — костёр). Построенный костёр отряд ставит
+    /// из префаба пустым: он загорается, когда рабочие принесут первое полено. Топливо для огней отряд заводит сам:
     /// у каждого огня, в котором есть место хотя бы под одно полено, висит задача принести полено.
     /// Поддоны (<see cref="Pallets"/>) ставит игрок инструментом 6; пока у них нет своего вида, отряд рисует их рамкой 2×2×2
     /// и подписью над ней: что лежит, сколько и сколько влезает («бревно 2-20»).
@@ -49,6 +50,8 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private ForestView forest;
         [Tooltip("Смена суток: ночью свободные рабочие греются и сидят у огня. Если пусто — ищется в сцене.")]
         [SerializeField] private DayNightCycle dayNight;
+        [Tooltip("Костёр, который ставят рабочие по чертежу (инструмент 7). Если пусто — костры не строятся.")]
+        [SerializeField] private LightSource campfirePrefab;
 
         [Header("Вид")]
         [SerializeField] private Material workerMaterial;
@@ -68,6 +71,7 @@ namespace Emberhold.Gameplay.Workers
         private readonly Dictionary<LightSource, FuelTarget> fuelTargets = new();
         private readonly List<LightSource> goneFires = new();
         private readonly LightZone litZone = new();
+        private readonly List<LightSource> builtFires = new();
         private readonly Matrix4x4[] partMatrices = new Matrix4x4[WorkerPose.PartCount];
         private WorkerContext context;
 
@@ -92,6 +96,12 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Поддоны для ресурсов; создаются в Start, до этого null.</summary>
         public Pallets Pallets { get; private set; }
 
+        /// <summary>Можно ставить чертежи костров: префаб костра назначен.</summary>
+        public bool BuildsCampfires => campfirePrefab != null;
+
+        /// <summary>Костры, построенные рабочими.</summary>
+        public IReadOnlyList<LightSource> BuiltFires => builtFires;
+
         private void Start()
         {
             // Урон блоков и ресурсы на земле создаются в Awake других компонентов.
@@ -105,7 +115,8 @@ namespace Emberhold.Gameplay.Workers
 
             Pallets = new Pallets(settings.PalletCapacity);
             context = new WorkerContext(worldView.World, Orders, droppedItems.Items, editor.Damage, editor.Stability, settings, IsLit,
-                () => buildZone == null || litZone.Count > 0, editor.OnWorldChanged, forest != null ? forest.Forest : null, Pallets, IsCellLit);
+                () => buildZone == null || litZone.Count > 0, editor.OnWorldChanged, forest != null ? forest.Forest : null, Pallets, IsCellLit,
+                BuildCampfire);
             Orders.Cancelled += OnOrderCancelled;
             if (dayNight == null)
                 dayNight = FindAnyObjectByType<DayNightCycle>();
@@ -211,7 +222,7 @@ namespace Emberhold.Gameplay.Workers
                 case WorkerState.Putting:
                     animator.Play(WorkerClip.Put, settings.PutSeconds);
                     break;
-                case WorkerState.Working when worker.Order != null && worker.Order.Kind == WorkKind.Build:
+                case WorkerState.Working when worker.Order != null && worker.Order.Kind is WorkKind.Build or WorkKind.Campfire:
                     animator.Play(WorkerClip.Place, settings.BuildSeconds);
                     break;
                 case WorkerState.Working:
@@ -297,6 +308,57 @@ namespace Emberhold.Gameplay.Workers
             return Orders.AddBuild(plan.Cell, plan.Block, plan.FillsExisting, cost) != null;
         }
 
+        /// <summary>
+        /// Поставить чертёж костра в клетке или снять уже стоящий там. Ставится только в пустую клетку над землёй,
+        /// где ещё нет огня и поддона. true — что-то изменилось.
+        /// </summary>
+        public bool ToggleCampfire(Vector3Int cell)
+        {
+            if (Orders.At(cell) is { } existing)
+                return existing.Kind == WorkKind.Campfire && Orders.Cancel(existing);
+            if (campfirePrefab == null || costs == null || !WorkOrders.CanHoldCampfire(worldView.World, cell) || HasFireAt(cell)
+                || Pallets?.At(cell) != null)
+                return false;
+            return Orders.AddCampfire(cell, costs.CampfireCost) != null;
+        }
+
+        /// <summary>В клетке уже стоит огонь.</summary>
+        private bool HasFireAt(Vector3Int cell)
+        {
+            if (buildZone == null)
+                return false;
+            foreach (var source in buildZone.Sources)
+            {
+                if (source != null && FireCell(source) == cell)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Рабочие построили костёр: ставим префаб в клетку пустым. Его пульт топлива (подпись и клавиша L) остаётся
+        /// только у главного костра, поэтому у копии он снимается до включения.
+        /// </summary>
+        private void BuildCampfire(Vector3Int cell)
+        {
+            if (campfirePrefab == null)
+                return;
+            var position = worldView.transform.TransformPoint(new Vector3(cell.x + 0.5f, cell.y, cell.z + 0.5f));
+            // Под выключенным родителем Awake и OnEnable не вызываются: успеваем снять пульт.
+            var holder = new GameObject("Campfire Holder");
+            holder.SetActive(false);
+            var fire = Instantiate(campfirePrefab, position, campfirePrefab.transform.rotation, holder.transform);
+            fire.name = $"Built Campfire {builtFires.Count + 1}";
+            foreach (var controls in fire.GetComponentsInChildren<CampfireFuelControls>(true))
+                DestroyImmediate(controls);
+            fire.transform.SetParent(null, true);
+            Destroy(holder);
+            // Топливо носят отдельно: новый костёр не горит, пока рабочие не принесут полено.
+            if (fire.Fuel != null)
+                fire.DrainFuel(fire.Fuel.Amount);
+            builtFires.Add(fire);
+        }
+
         /// <summary>Поручить выкопать блок или снять приказ. true — что-то изменилось.</summary>
         public bool ToggleDig(Vector3Int block)
         {
@@ -326,8 +388,30 @@ namespace Emberhold.Gameplay.Workers
                 return false;
             if (Pallets.At(origin) is { } existing)
                 return RemovePallet(existing);
-            return Pallets.Add(worldView.World, origin) != null;
+            return !HasFireOrCampfireUnder(origin) && Pallets.Add(worldView.World, origin) != null;
         }
+
+        /// <summary>На площадке будущего поддона с углом origin стоит огонь или чертёж костра.</summary>
+        private bool HasFireOrCampfireUnder(Vector3Int origin)
+        {
+            foreach (var order in Orders.Orders)
+            {
+                if (order.Kind == WorkKind.Campfire && InPalletSpace(origin, order.Cell))
+                    return true;
+            }
+            if (buildZone == null)
+                return false;
+            foreach (var source in buildZone.Sources)
+            {
+                if (source != null && InPalletSpace(origin, FireCell(source)))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool InPalletSpace(Vector3Int origin, Vector3Int cell) =>
+            cell.x >= origin.x && cell.x < origin.x + Pallet.Size && cell.z >= origin.z && cell.z < origin.z + Pallet.Size
+            && cell.y >= origin.y && cell.y < origin.y + Pallet.Height;
 
         /// <summary>Убрать поддон; что на нём лежало, высыпается кучкой на его место.</summary>
         public bool RemovePallet(Pallet pallet)
@@ -379,9 +463,7 @@ namespace Emberhold.Gameplay.Workers
                     continue;
                 if (!fuelTargets.TryGetValue(source, out var target))
                     fuelTargets[source] = target = new FuelTarget(source);
-                // Огонь стоит на земле; его клетка — пустая над ней, даже если под огнём скат или полублок.
-                var local = worldView.transform.InverseTransformPoint(source.transform.position);
-                var cell = new Vector3Int(Mathf.FloorToInt(local.x), Mathf.FloorToInt(local.y + 0.5f), Mathf.FloorToInt(local.z));
+                var cell = FireCell(source);
                 var space = Mathf.FloorToInt(source.Fuel.Space + 1e-4f);
                 if (target.Order != null && Orders.Contains(target.Order))
                 {
@@ -393,6 +475,13 @@ namespace Emberhold.Gameplay.Workers
                 if (space >= 1 && worldView.World.IsInsideBlocks(cell) && Orders.At(cell) == null)
                     target.Order = Orders.AddFuel(cell, target, settings.FuelItemId, 1);
             }
+        }
+
+        /// <summary>Клетка огня. Огонь стоит на земле; его клетка — пустая над ней, даже если под огнём скат или полублок.</summary>
+        private Vector3Int FireCell(LightSource source)
+        {
+            var local = worldView.transform.InverseTransformPoint(source.transform.position);
+            return new Vector3Int(Mathf.FloorToInt(local.x), Mathf.FloorToInt(local.y + 0.5f), Mathf.FloorToInt(local.z));
         }
 
         private void CancelFuelOrder(FuelTarget target)
@@ -555,6 +644,12 @@ namespace Emberhold.Gameplay.Workers
                 {
                     var (min, max) = forest.LocalBounds(order.Tree);
                     BlockOutlineMesh.AppendBox(order.Cell + min, order.Cell + max, outlinePadding, lineVertices, lineIndices);
+                    continue;
+                }
+                // Чертёж костра — заглушка: рамка на весь блок вместе с чертежами блоков.
+                if (kind == WorkKind.Build && order.Kind == WorkKind.Campfire)
+                {
+                    BlockOutlineMesh.AppendBox(order.Cell, 1f, outlinePadding, lineVertices, lineIndices);
                     continue;
                 }
                 if (order.Kind != kind)

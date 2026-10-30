@@ -6,7 +6,7 @@ namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
     /// Сколько стоит блок по чертежу: какой ресурс и сколько единиц рабочие должны принести.
-    /// Материалы, которых нет в таблице, строятся бесплатно (в прототипе трава и земля).
+    /// Материалы, которых нет в таблице, строятся бесплатно (в прототипе трава и земля). Здесь же цена костра.
     /// </summary>
     [CreateAssetMenu(fileName = "BuildCosts", menuName = "Emberhold/Build Costs")]
     public sealed class BuildCostTable : ScriptableObject
@@ -23,6 +23,16 @@ namespace Emberhold.Gameplay.Workers
         }
 
         [SerializeField] private Entry[] costs = { new() { material = 3, itemId = "stone", count = 1 } };
+
+        [Header("Костёр")]
+        [Tooltip("Id ресурса, из которого строят костёр.")]
+        [SerializeField] private string campfireItemId = "wood";
+        [Tooltip("Сколько единиц нужно на постройку костра. Топливо в него носят отдельно, после постройки.")]
+        [Min(1)]
+        [SerializeField] private int campfireCount = 6;
+
+        /// <summary>Что стоит новый костёр.</summary>
+        public ItemDrop CampfireCost => new(string.IsNullOrEmpty(campfireItemId) ? "wood" : campfireItemId, Mathf.Max(1, campfireCount));
 
         /// <summary>Что стоит блок из материала; null — бесплатно.</summary>
         public ItemDrop? CostOf(byte material)

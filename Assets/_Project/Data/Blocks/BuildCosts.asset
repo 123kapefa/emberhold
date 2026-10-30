@@ -19,3 +19,5 @@ MonoBehaviour:
   - material: 4
     itemId: wood
     count: 1
+  campfireItemId: wood
+  campfireCount: 6

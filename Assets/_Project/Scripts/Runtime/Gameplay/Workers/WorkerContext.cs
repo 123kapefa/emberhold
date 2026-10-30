@@ -37,12 +37,15 @@ namespace Emberhold.Gameplay.Workers
     {
         private readonly List<BlockFall> falls = new();
         private readonly Action<Vector3Int> worldChanged;
+        private readonly Action<Vector3Int> campfireBuilt;
 
         public WorkerContext(VoxelWorld world, WorkOrders orders, DroppedItems items, BlockDamage damage,
             BlockStability stability, WorkerSettings settings, Func<Vector2Int, bool> isLit, Func<bool> hasAnyLight = null,
-            Action<Vector3Int> worldChanged = null, Forest forest = null, Pallets pallets = null, Func<Vector3Int, bool> isCellLit = null)
+            Action<Vector3Int> worldChanged = null, Forest forest = null, Pallets pallets = null, Func<Vector3Int, bool> isCellLit = null,
+            Action<Vector3Int> campfireBuilt = null)
         {
             this.worldChanged = worldChanged;
+            this.campfireBuilt = campfireBuilt;
             Forest = forest;
             World = world;
             Orders = orders;
@@ -111,6 +114,9 @@ namespace Emberhold.Gameplay.Workers
             if (Stability.Settle(World, changed, falls) > 0)
                 Damage.Move(falls);
         }
+
+        /// <summary>Рабочий построил костёр в клетке: в сцене отряд ставит туда огонь (campfireBuilt).</summary>
+        public void BuildCampfire(Vector3Int cell) => campfireBuilt?.Invoke(cell);
 
         /// <summary>
         /// Можно ли из столбца stand дотянуться до клетки cell: столбец соседний (или тот же, если sameColumn),
