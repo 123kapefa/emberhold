@@ -28,7 +28,7 @@ namespace Emberhold.Gameplay.Workers
 
     /// <summary>
     /// Рабочий: сам берёт свободную задачу из <see cref="WorkOrders"/> — сначала самую важную (топливо для огня),
-    /// среди равных ближайшую. Для чертежа приносит ресурс из ближайшей кучки и ставит блок, для топлива приносит
+    /// среди равных ближайшую. Для чертежа приносит ресурс из ближайшей кучки и ставит блок (или костёр), для топлива приносит
     /// полено и кладёт в огонь (за ходку — одна единица ресурса, положить её — PutSeconds), для приказа копать бьёт блок через <see cref="Emberhold.World.Editing.BlockDamage"/>,
     /// для приказа рубить бьёт дерево; один удар за анимацию копки. Ресурс для задачи берёт из кучки на земле или с поддона, что ближе.
     /// Когда свободных задач нет, относит ничейные кучки на поддоны (<see cref="Pallets"/>), тоже по одной единице за ходку.
@@ -393,6 +393,12 @@ namespace Emberhold.Gameplay.Workers
                 context.Orders.Cancel(Order);
                 Order = null;
                 Abandon();
+                return;
+            }
+            if (Order.Kind == WorkKind.Campfire)
+            {
+                context.BuildCampfire(Order.Cell);
+                Finish();
                 return;
             }
             context.World.SetBlock(Order.Cell, Order.Block);

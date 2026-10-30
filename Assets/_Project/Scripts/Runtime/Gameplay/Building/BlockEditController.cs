@@ -25,6 +25,8 @@ namespace Emberhold.Gameplay.Building
         DigOrder,
         /// <summary>Поддон 2×2 для ресурсов: ставится сразу и бесплатно, повторный клик убирает.</summary>
         Pallet,
+        /// <summary>Чертёж костра: рабочие приносят поленья и ставят новый костёр на блок под курсором.</summary>
+        Campfire,
     }
 
     /// <summary>
@@ -35,6 +37,7 @@ namespace Emberhold.Gameplay.Building
     /// 4 — «Чертёж» и 5 — «Поручить копать»: то же самое делают рабочие (<see cref="WorkerCrew"/>);
     /// клик инструментом 5 по дереву поручает его срубить; повторный клик по тому же месту снимает чертёж или приказ.
     /// 6 — «Поддон»: ставит поддон 2×2 на землю под курсором (блок под курсором — его ближний угол) или убирает стоящий там.
+    /// 7 — «Костёр»: чертёж костра на блоке под курсором (клетка над ним должна быть в свету); строят его рабочие.
     /// При стройке и чертеже G — следующая форма, T — материал, щелчок ПКМ — поворот, [ и ] — высота полублока.
     /// ПКМ с перетаскиванием по-прежнему вращает камеру: поворот блока срабатывает, только если мышь
     /// между нажатием и отпусканием почти не сдвинулась. Камера занимает ПКМ (удержание), СКМ, колесо
@@ -73,6 +76,7 @@ namespace Emberhold.Gameplay.Building
         private InputAction toolBlueprint;
         private InputAction toolDigOrder;
         private InputAction toolPallet;
+        private InputAction toolCampfire;
         private InputAction nextForm;
         private InputAction nextMaterial;
         private InputAction rotate;
@@ -188,6 +192,7 @@ namespace Emberhold.Gameplay.Building
             toolBlueprint = map.FindAction("ToolBlueprint", true);
             toolDigOrder = map.FindAction("ToolDigOrder", true);
             toolPallet = map.FindAction("ToolPallet", true);
+            toolCampfire = map.FindAction("ToolCampfire");
             nextForm = map.FindAction("NextForm", true);
             nextMaterial = map.FindAction("NextMaterial", true);
             rotate = map.FindAction("Rotate", true);
@@ -235,6 +240,8 @@ namespace Emberhold.Gameplay.Building
                 Tool = BlockTool.DigOrder;
             if (workers != null && toolPallet.WasPressedThisFrame())
                 Tool = BlockTool.Pallet;
+            if (workers != null && workers.BuildsCampfires && toolCampfire != null && toolCampfire.WasPressedThisFrame())
+                Tool = BlockTool.Campfire;
             if (PlacesBlocks)
                 ReadBuildInput();
 
@@ -361,6 +368,8 @@ namespace Emberhold.Gameplay.Building
                     return workers != null && workers.ToggleDig(hit.Block);
                 case BlockTool.Pallet:
                     return ApplyPallet(hit);
+                case BlockTool.Campfire:
+                    return workers != null && workers.ToggleCampfire(hit.Block + Vector3Int.up);
                 default:
                     return false;
             }
@@ -453,9 +462,16 @@ namespace Emberhold.Gameplay.Building
         private bool IsHeldByStump(BlockHit hit) =>
             Tool != BlockTool.Pallet && forest != null && forest.Forest is { } trees && trees.BlocksEdit(TargetCell(hit));
 
-        /// <summary>Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, иначе — блок под курсором.</summary>
-        private Vector3Int TargetCell(BlockHit hit) =>
-            PlacesBlocks && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p) ? p.Cell : hit.Block;
+        /// <summary>
+        /// Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, у костра — клетка над блоком
+        /// под курсором, иначе — блок под курсором.
+        /// </summary>
+        private Vector3Int TargetCell(BlockHit hit)
+        {
+            if (Tool == BlockTool.Campfire)
+                return hit.Block + Vector3Int.up;
+            return PlacesBlocks && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p) ? p.Cell : hit.Block;
+        }
 
         /// <summary>
         /// Инструмент можно применить: клетка в свете. Чертёж или приказ, оставшийся в темноте (костёр погас
@@ -468,7 +484,8 @@ namespace Emberhold.Gameplay.Building
                 return true;
             var order = workers != null ? workers.Orders.At(cell) : null;
             return order != null && (Tool == BlockTool.Blueprint && order.Kind == WorkKind.Build
-                                     || Tool == BlockTool.DigOrder && order.Kind == WorkKind.Dig);
+                                     || Tool == BlockTool.DigOrder && order.Kind == WorkKind.Dig
+                                     || Tool == BlockTool.Campfire && order.Kind == WorkKind.Campfire);
         }
 
         /// <summary>
@@ -610,12 +627,13 @@ namespace Emberhold.Gameplay.Building
             }
 
             PlaceInWorld(outline.transform, cell);
-            var color = !CanEdit(cell) || IsUnbreakable(hit) || IsHeldByStump(hit) ? settings.BlockedColor : Tool switch
+            var color = !CanEdit(TargetCell(hit)) || IsUnbreakable(hit) || IsHeldByStump(hit) ? settings.BlockedColor : Tool switch
             {
                 BlockTool.Dig => settings.DigColor,
                 BlockTool.Build => settings.BuildColor,
                 BlockTool.Blueprint => settings.BlueprintColor,
                 BlockTool.DigOrder => settings.DigOrderColor,
+                BlockTool.Campfire => settings.BlueprintColor,
                 _ => settings.RemoveColor,
             };
             outlineProperties.SetColor(BaseColorId, color);
@@ -729,10 +747,12 @@ namespace Emberhold.Gameplay.Building
                 BlockTool.Build => "Строить",
                 BlockTool.Blueprint => "Чертёж",
                 BlockTool.Pallet => "Поддон",
+                BlockTool.Campfire => "Костёр",
                 _ => "Поручить копать и рубить",
             };
             var keys = workers != null
-                ? "1 — копать, 2 — убрать сразу, 3 — строить сразу, 4 — чертёж, 5 — поручить копать или рубить дерево, 6 — поддон, ЛКМ — применить"
+                ? "1 — копать, 2 — убрать сразу, 3 — строить сразу, 4 — чертёж, 5 — поручить копать или рубить дерево, 6 — поддон" +
+                  (workers.BuildsCampfires ? ", 7 — костёр" : "") + ", ЛКМ — применить"
                 : "1 — копать, 2 — убрать сразу, 3 — строить, ЛКМ — применить";
             GUI.Label(new Rect(10, 10, 900, 22), $"Инструмент: {name}   ({keys})");
             var message = HoverMessage() ?? (Time.unscaledTime < blockedMessageUntil ? blockedMessage : null);
