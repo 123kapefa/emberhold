@@ -367,9 +367,12 @@ namespace Emberhold.Gameplay.Workers
 
             if (Order.Kind == WorkKind.Chop)
             {
-                // Урон копится на дереве, даже если рабочий уйдёт; срубленное дерево само кладёт поленья.
+                // Урон копится на дереве или пне, даже если рабочий уйдёт; срубленное дерево и выкорчеванный пень сами кладут поленья.
                 timer += context.Settings.DigHitSeconds;
-                if (context.Forest.Hit(context.World, Order.Tree, context.Settings.DigHitDamage))
+                var done = Order.Stump != null
+                    ? context.Forest.HitStump(context.World, Order.Stump, context.Settings.DigHitDamage)
+                    : context.Forest.Hit(context.World, Order.Tree, context.Settings.DigHitDamage);
+                if (done)
                     Finish();
                 return;
             }

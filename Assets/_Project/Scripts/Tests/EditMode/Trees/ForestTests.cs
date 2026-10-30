@@ -200,6 +200,83 @@ namespace Emberhold.Tests.EditMode.Trees
         }
 
         [Test]
+        public void Hit_ChoppedTreeLeavesAStump()
+        {
+            var cell = new Vector3Int(10, Ground, 10);
+            var tree = forest.Plant(cell, birch);
+            while (!forest.Hit(world, tree, 25f)) { }
+
+            Assert.That(tree.Chopped, Is.True);
+            Assert.That(forest.Stumps, Has.Count.EqualTo(1));
+            Assert.That(forest.Stumps[0].Cell, Is.EqualTo(cell));
+            Assert.That(forest.Stumps[0].Species, Is.SameAs(birch));
+            Assert.That(forest.StumpAt(cell), Is.SameAs(forest.Stumps[0]));
+        }
+
+        [Test]
+        public void Stump_GoesAwayWhenItsCellIsBuiltOrGroundIsDug()
+        {
+            var built = forest.Plant(new Vector3Int(10, Ground, 10), birch);
+            var dug = forest.Plant(new Vector3Int(20, Ground, 20), birch);
+            while (!forest.Hit(world, built, 25f)) { }
+            while (!forest.Hit(world, dug, 25f)) { }
+            Assert.That(forest.Stumps, Has.Count.EqualTo(2));
+
+            world.SetBlock(built.Cell, Block.Full(BlockMaterials.Stone));
+            world.SetBlock(dug.Cell + Vector3Int.down, Block.Air);
+            var version = forest.Version;
+            forest.Settle(world);
+
+            Assert.That(forest.Stumps, Is.Empty);
+            Assert.That(forest.Version, Is.GreaterThan(version));
+        }
+
+        [Test]
+        public void Stump_BlocksBuildingInItsCellAndDiggingUnderIt()
+        {
+            var tree = forest.Plant(new Vector3Int(10, Ground, 10), birch);
+            Assert.That(forest.BlocksEdit(tree.Cell), Is.False, "Стоящее дерево не мешает");
+            while (!forest.Hit(world, tree, 25f)) { }
+
+            Assert.That(forest.BlocksEdit(tree.Cell), Is.True, "В клетку пня блок не поставить");
+            Assert.That(forest.BlocksEdit(tree.Cell + Vector3Int.down), Is.True, "Блок под пнём не выкопать");
+            Assert.That(forest.BlocksEdit(tree.Cell + Vector3Int.right), Is.False);
+            Assert.That(forest.BlocksEdit(tree.Cell + Vector3Int.up), Is.False);
+        }
+
+        [Test]
+        public void HitStump_UprootsItAfterSomeHitsAndDropsOneLog()
+        {
+            var tree = forest.Plant(new Vector3Int(10, Ground, 10), birch);
+            while (!forest.Hit(world, tree, 25f)) { }
+            var stump = forest.Stumps[0];
+            var logs = items.Items[0].Drop.Count;
+
+            var hits = 1;
+            while (!forest.HitStump(world, stump, 25f))
+                hits++;
+
+            Assert.That(hits, Is.GreaterThan(1), "Пень корчуют не с одного удара");
+            Assert.That(stump.IsPresent, Is.False);
+            Assert.That(forest.Stumps, Is.Empty);
+            Assert.That(forest.BlocksEdit(tree.Cell), Is.False);
+            Assert.That(items.Items, Has.Count.EqualTo(1), "Полено ложится в ту же кучку");
+            Assert.That(items.Items[0].Drop.Count, Is.EqualTo(logs + 1));
+            Assert.That(forest.HitStump(world, stump, 25f), Is.False, "Выкорчеванный пень больше не бьётся");
+        }
+
+        [Test]
+        public void TreeThatLostItsGround_LeavesNoStump()
+        {
+            var tree = forest.Plant(new Vector3Int(10, Ground, 10), birch);
+            world.SetBlock(tree.Cell + Vector3Int.down, Block.Air);
+
+            Assert.That(forest.Settle(world), Is.EqualTo(1));
+            Assert.That(tree.Chopped, Is.False);
+            Assert.That(forest.Stumps, Is.Empty);
+        }
+
+        [Test]
         public void BiggerSpeciesNeedsMoreHitsAndGivesMoreWood()
         {
             var tree = forest.Plant(new Vector3Int(20, Ground, 20), pine);
