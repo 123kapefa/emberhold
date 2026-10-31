@@ -299,6 +299,21 @@ namespace Emberhold.Tests.EditMode.Trees
                         Assert.That(GroundCoverThinning.Keeps(p, level + 1), Is.True);
         }
 
+        [Test]
+        public void Thinning_FirstLevelIsWherePatchAppears()
+        {
+            var moss = Kind("Мох", GroundCoverShape.Moss, 0.1f);
+            for (var z = 0; z < 40; z++)
+            for (var x = 0; x < 40; x++)
+            {
+                var p = new GroundCoverPatch(new Vector3Int(x, Ground, z), (x + z) % 3 == 0 ? fern : (x + z) % 3 == 1 ? grass : moss, 0, Vector2.zero, 0f, 1f);
+                var first = GroundCoverThinning.FirstLevel(p);
+                Assert.That(first, Is.InRange(1, GroundCoverThinning.Steps));
+                for (var level = 0; level <= GroundCoverThinning.Steps; level++)
+                    Assert.That(GroundCoverThinning.Keeps(p, level), Is.EqualTo(level >= first), $"Ступень {level}, первая {first}");
+            }
+        }
+
         private GroundCover Scatter(float density, int seed, bool onStone = false, System.Func<Vector2Int, bool> keepClear = null)
         {
             var mix = new ForestMix(0f).WithGroundCover(new GroundCoverMix(density, onStone, new[] { Entry(grass, 1f) }));
