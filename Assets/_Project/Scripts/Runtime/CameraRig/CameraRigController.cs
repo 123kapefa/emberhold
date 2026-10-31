@@ -14,6 +14,12 @@ namespace Emberhold.CameraRig
         // После подвисания (загрузка, брейкпоинт) удержанная клавиша не должна унести камеру далеко.
         private const float MaxDeltaTime = 0.1f;
 
+        /// <summary>На каком расстоянии вокруг фокуса ещё смотрим высоту земли: фокус не проваливается в узкую яму.</summary>
+        private const float FocusSpread = 1.5f;
+
+        /// <summary>Сколько градусов наклона можно добавить, чтобы заглянуть за стенку: выше не смотрим.</summary>
+        private const float LiftMaxPitch = 85f;
+
         [SerializeField] private CameraRigSettings settings;
         [Tooltip("Камера, которой управляет риг. Если пусто — Camera.main.")]
         [SerializeField] private UnityEngine.Camera targetCamera;
@@ -31,6 +37,7 @@ namespace Emberhold.CameraRig
 
         private CameraRigState current;
         private CameraRigState target;
+        private float pitchLift;
 
         public CameraRigState Target => target;
 
@@ -42,6 +49,7 @@ namespace Emberhold.CameraRig
             target.Focus = ClampFocus(focus);
             target.Focus.y = SampleGroundHeight(target.Focus);
             current = target;
+            pitchLift = NeededPitchLift(current);
             ApplyPose(current);
         }
 
@@ -109,6 +117,8 @@ namespace Emberhold.CameraRig
             target.Focus.y = SampleGroundHeight(target.Focus);
 
             current = CameraRigMath.Damp(current, target, settings.Sharpness, dt);
+            // Подъём наклона сглаживаем так же, как движение рига, чтобы вид не прыгал у края ямы.
+            pitchLift = Mathf.Lerp(pitchLift, NeededPitchLift(current), CameraRigMath.DampFactor(settings.Sharpness, dt));
             ApplyPose(current);
         }
 
@@ -151,23 +161,43 @@ namespace Emberhold.CameraRig
             CameraRigMath.ClampToBounds(focus, settings.FocusBoundsMin, settings.FocusBoundsMax);
 
         /// <summary>
-        /// Высота земли под фокусом лучом сверху вниз. Мир будет из блоков с неполной высотой и склонами,
-        /// поэтому y=0 не предполагаем; если луч ничего не нашёл, высота остаётся прежней.
+        /// Высота земли под фокусом: самая высокая из точки под ним и восьми точек вокруг на FocusSpread.
+        /// Так фокус не ныряет в выкопанную яму или узкую щель, а остаётся на уровне земли вокруг.
+        /// Мир из блоков с неполной высотой и склонами, поэтому y=0 не предполагаем; если лучи ничего не нашли, высота прежняя.
         /// </summary>
         private float SampleGroundHeight(Vector3 focus)
         {
-            var origin = new Vector3(focus.x, focus.y + settings.GroundProbeHeight, focus.z);
-            if (Physics.Raycast(origin, Vector3.down, out var hit, settings.GroundProbeHeight * 2f,
-                    settings.GroundMask, QueryTriggerInteraction.Ignore))
-                return hit.point.y;
-            return focus.y;
+            var found = false;
+            var height = float.NegativeInfinity;
+            for (var i = -1; i < 8; i++)
+            {
+                var point = focus;
+                if (i >= 0)
+                {
+                    var angle = i * Mathf.PI * 0.25f;
+                    point += new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * FocusSpread;
+                }
+                var origin = new Vector3(point.x, focus.y + settings.GroundProbeHeight, point.z);
+                if (!Physics.Raycast(origin, Vector3.down, out var hit, settings.GroundProbeHeight * 2f,
+                        settings.GroundMask, QueryTriggerInteraction.Ignore))
+                    continue;
+                found = true;
+                height = Mathf.Max(height, hit.point.y);
+            }
+            return found ? height : focus.y;
         }
+
+        /// <summary>На сколько круче смотреть сверху, чтобы между фокусом и камерой не было стенки.</summary>
+        private float NeededPitchLift(CameraRigState state) =>
+            CameraTerrainClearance.PitchLift(state, Mathf.Max(LiftMaxPitch, state.Pitch), settings.GroundMask,
+                settings.CameraCollisionRadius, settings.CameraClearance);
 
         private void ApplyPose(CameraRigState state)
         {
             transform.position = state.Focus;
             if (targetCamera == null)
                 return;
+            state.Pitch += pitchLift;
             // Сама поза рига не меняется: подъезд и подъём над землёй только для камеры в этом кадре.
             var desired = state.CameraPosition;
             var position = CameraTerrainClearance.Resolve(state.Focus, desired, settings.GroundMask,
