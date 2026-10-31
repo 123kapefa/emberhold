@@ -100,6 +100,9 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Можно ставить чертежи костров: префаб костра назначен.</summary>
         public bool BuildsCampfires => campfirePrefab != null;
 
+        /// <summary>Сколько стоит новый костёр; null — таблица цен не назначена.</summary>
+        public ItemDrop? CampfireCost => costs != null ? costs.CampfireCost : null;
+
         /// <summary>Костры, построенные рабочими.</summary>
         public IReadOnlyList<LightSource> BuiltFires => builtFires;
 
@@ -695,26 +698,36 @@ namespace Emberhold.Gameplay.Workers
             palletLines.SetActive(lineIndices.Count > 0);
         }
 
-        /// <summary>Подписи поддонов над их рамками: что лежит и сколько из скольких.</summary>
+        /// <summary>
+        /// Подписи над поддонами (что лежит и сколько из скольких) и над чертежами костров (сколько брёвен уже принесли, #150).
+        /// </summary>
         private void OnGUI()
         {
-            if (context == null || Pallets.All.Count == 0)
+            if (context == null)
                 return;
             var camera = UnityEngine.Camera.main;
             if (camera == null)
                 return;
             palletLabelStyle ??= new GUIStyle(GUI.skin.box) { alignment = TextAnchor.MiddleCenter };
             foreach (var pallet in Pallets.All)
+                DrawLabel(camera, pallet.Center + Vector3.up * (Pallet.Height + 0.3f),
+                    PalletLabel.Text(pallet, Pallets.Capacity(pallet.ItemId)));
+            foreach (var order in Orders.Orders)
             {
-                var top = worldView.transform.TransformPoint(pallet.Center + Vector3.up * (Pallet.Height + 0.3f));
-                var screen = camera.WorldToScreenPoint(top);
-                if (screen.z <= 0f)
-                    continue;
-                var text = PalletLabel.Text(pallet, Pallets.Capacity(pallet.ItemId));
-                var size = palletLabelStyle.CalcSize(new GUIContent(text));
-                // GUI считает y сверху, экран — снизу.
-                GUI.Label(new Rect(screen.x - size.x * 0.5f, Screen.height - screen.y - size.y, size.x, size.y), text, palletLabelStyle);
+                if (order.Kind == WorkKind.Campfire && order.ItemId != null)
+                    DrawLabel(camera, order.Cell + new Vector3(0.5f, 1.3f, 0.5f), CostLabel.Progress(order.ItemId, order.Delivered, order.Needed));
             }
+        }
+
+        /// <summary>Подпись в рамке, нижним краем над точкой мира (в координатах блоков).</summary>
+        private void DrawLabel(UnityEngine.Camera camera, Vector3 localPoint, string text)
+        {
+            var screen = camera.WorldToScreenPoint(worldView.transform.TransformPoint(localPoint));
+            if (screen.z <= 0f)
+                return;
+            var size = palletLabelStyle.CalcSize(new GUIContent(text));
+            // GUI считает y сверху, экран — снизу.
+            GUI.Label(new Rect(screen.x - size.x * 0.5f, Screen.height - screen.y - size.y, size.x, size.y), text, palletLabelStyle);
         }
 
         /// <summary>Огонь как цель для топлива рабочих.</summary>

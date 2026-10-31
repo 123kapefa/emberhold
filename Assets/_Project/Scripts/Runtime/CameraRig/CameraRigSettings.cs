@@ -58,6 +58,12 @@ namespace Emberhold.CameraRig
         [SerializeField] private LayerMask groundMask = Layers.GroundMask;
         [Range(10f, 1000f)]
         [SerializeField] private float groundProbeHeight = 200f;
+        [Tooltip("Насколько камера держится над землёй под собой.")]
+        [Range(0.1f, 5f)]
+        [SerializeField] private float cameraClearance = 1f;
+        [Tooltip("Радиус шара, которым проверяем, нет ли земли между фокусом и камерой. Меньше зазора.")]
+        [Range(0.05f, 2f)]
+        [SerializeField] private float cameraCollisionRadius = 0.5f;
 
         public float StartYaw => startYaw;
         public float StartPitch => startPitch;
@@ -77,6 +83,8 @@ namespace Emberhold.CameraRig
         public float Sharpness => sharpness;
         public LayerMask GroundMask => groundMask;
         public float GroundProbeHeight => groundProbeHeight;
+        public float CameraClearance => cameraClearance;
+        public float CameraCollisionRadius => cameraCollisionRadius;
 
         private void OnValidate()
         {
@@ -87,6 +95,8 @@ namespace Emberhold.CameraRig
             maxPitch = Mathf.Clamp(maxPitch, minPitch, 89f);
             startPitch = Mathf.Clamp(startPitch, minPitch, maxPitch);
             focusBoundsMax = Vector2.Max(focusBoundsMin, focusBoundsMax);
+            // Шар стартует над фокусом на высоте зазора и не должен с самого начала задевать землю.
+            cameraCollisionRadius = Mathf.Min(cameraCollisionRadius, cameraClearance * 0.9f);
         }
     }
 }
