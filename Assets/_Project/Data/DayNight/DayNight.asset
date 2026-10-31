@@ -17,7 +17,7 @@ MonoBehaviour:
   nightSeconds: 240
   dawnSeconds: 60
   startPhase: 0
-  timeScale: 2
+  timeScale: 1
   sunDayColor: {r: 1, g: 0.95, b: 0.85, a: 1}
   sunDayIntensity: 2
   sunDayElevation: 50
