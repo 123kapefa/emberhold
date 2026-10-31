@@ -1401,6 +1401,15 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "ToolNone",
+                    "type": "Button",
+                    "id": "74d06549-6c83-402b-8d91-ab60870f8203",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "NextForm",
                     "type": "Button",
                     "id": "2a0d6eda-0503-4fee-b9d3-28b1d3363070",
@@ -1543,6 +1552,28 @@
                     "processors": "",
                     "groups": "Keyboard&Mouse",
                     "action": "ToolCampfire",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "ec3c672d-335f-4fdc-bd49-cf50cd29b195",
+                    "path": "<Keyboard>/escape",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "ToolNone",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "be70422b-f371-4b27-a5cb-9d574676dff2",
+                    "path": "<Keyboard>/0",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "ToolNone",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

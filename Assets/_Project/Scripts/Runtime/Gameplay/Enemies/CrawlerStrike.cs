@@ -5,7 +5,8 @@ namespace Emberhold.Gameplay.Enemies
 {
     /// <summary>
     /// Удар по ползуну щелчком ЛКМ (карта ввода «Enemies», действия Point и Strike), пока ползунов не бьют
-    /// рабочие или башни. Строительство в этот щелчок не копает блок под ползуном (<see cref="Crawler.TryPick"/>).
+    /// рабочие или башни. Щелчок засчитывается и рядом с ползуном (<see cref="Crawler.TryPickNear"/>), в любом
+    /// инструменте; строительство в этот щелчок не трогает блок под ползуном.
     /// </summary>
     public sealed class CrawlerStrike : MonoBehaviour
     {
@@ -49,8 +50,8 @@ namespace Emberhold.Gameplay.Enemies
         {
             if (targetCamera == null || point == null || strike == null || !strike.WasPressedThisFrame())
                 return;
-            var ray = targetCamera.ScreenPointToRay(point.ReadValue<Vector2>());
-            if (Crawler.TryPick(ray, maxDistance, out var crawler))
+            if (Crawler.TryPickNear(targetCamera, point.ReadValue<Vector2>(), maxDistance,
+                    Crawler.PickRadiusScreenFraction * Screen.height, out var crawler))
                 crawler.Hit(damage);
         }
     }
