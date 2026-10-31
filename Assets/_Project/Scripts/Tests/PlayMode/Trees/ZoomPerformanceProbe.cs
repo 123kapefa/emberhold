@@ -75,7 +75,7 @@ namespace Emberhold.Tests.PlayMode.Trees
             }
             string Stats(List<double> v) =>
                 $"max {v.Max():F2} avg {v.Average():F2} p95 {v.OrderBy(x => x).ElementAt((int)(v.Count * 0.95)):F2} >8ms {v.Count(x => x > 8)}";
-            Debug.Log($"[Perf151] {label}: LateUpdate {Stats(lateMs)} | PlayerLoop {Stats(loopMs)} | GC {gcTotal / 1024} KB | regions {view.ShownRegions} | levels {string.Join(" ", levels)}");
+            Debug.Log($"[Perf151] {label}: LateUpdate {Stats(lateMs)} | PlayerLoop {Stats(loopMs)} | GC {gcTotal / 1024} KB | regions {view.ShownRegions} visible {view.VisibleRegions} builds {view.Builds} | levels {string.Join(" ", levels)}");
         }
     }
 }
