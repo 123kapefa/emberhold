@@ -65,6 +65,36 @@ namespace Emberhold.Tests.PlayMode.CameraRig
         }
 
         [UnityTest]
+        public IEnumerator FlatGround_NoPitchLift()
+        {
+            Box(new Vector3(-50f, -1f, -50f), new Vector3(50f, 0f, 50f));
+            yield return new WaitForFixedUpdate();
+
+            var state = new CameraRigState(Far, 0f, 50f, 30f);
+            Assert.That(CameraTerrainClearance.PitchLift(state, 85f, Layers.GroundMask, Radius, Clearance), Is.Zero);
+        }
+
+        [UnityTest]
+        public IEnumerator WallNearFocus_CameraLooksFromAboveInsteadOfHuggingIt()
+        {
+            // Стенка выкопанной ямы между фокусом и камерой: раньше камера подъезжала к ней вплотную.
+            Box(new Vector3(-50f, -1f, -50f), new Vector3(50f, 0f, 50f));
+            Box(new Vector3(-20f, 0f, -4f), new Vector3(20f, 5f, -3f));
+            yield return new WaitForFixedUpdate();
+
+            var state = new CameraRigState(Far, 0f, 25f, 30f);
+            Assert.That(CameraTerrainClearance.IsClear(state.Focus, state.CameraPosition, Layers.GroundMask, Radius, Clearance), Is.False);
+            var lift = CameraTerrainClearance.PitchLift(state, 85f, Layers.GroundMask, Radius, Clearance);
+            Assert.That(lift, Is.GreaterThan(0f));
+            Assert.That(state.Pitch + lift, Is.LessThanOrEqualTo(85f));
+            var lifted = state;
+            lifted.Pitch += lift;
+            Assert.That(CameraTerrainClearance.IsClear(lifted.Focus, lifted.CameraPosition, Layers.GroundMask, Radius, Clearance), Is.True,
+                "Сверху стенка не мешает");
+            Assert.That(Vector3.Distance(lifted.CameraPosition, state.Focus), Is.EqualTo(30f).Within(1e-3f), "Камера на прежнем расстоянии");
+        }
+
+        [UnityTest]
         public IEnumerator HillBehindFocus_CameraMovesInFrontOfIt()
         {
             Box(new Vector3(-50f, -1f, -50f), new Vector3(50f, 0f, 50f));

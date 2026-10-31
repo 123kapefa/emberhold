@@ -3,8 +3,10 @@ using UnityEngine;
 namespace Emberhold.CameraRig
 {
     /// <summary>
-    /// Не даёт камере уйти под рельеф: если между фокусом и камерой есть земля, камера подъезжает к фокусу,
-    /// а если под камерой земля выше допустимого, камера поднимается над ней с зазором.
+    /// Не даёт камере уйти под рельеф. Если между фокусом и камерой есть земля (стенка ямы, холм), риг сначала
+    /// смотрит круче сверху (<see cref="PitchLift"/>) — так камера остаётся на своём расстоянии и не утыкается в стенку;
+    /// только если и сверху не видно, камера подъезжает к фокусу (<see cref="Resolve"/>).
+    /// Если под камерой земля выше допустимого, камера поднимается над ней с зазором.
     /// Положение рига (фокус, углы, дистанция) не меняется: как только место освободится, камера вернётся сама.
     /// </summary>
     public static class CameraTerrainClearance
@@ -33,6 +35,33 @@ namespace Emberhold.CameraRig
             if (Physics.Raycast(probeOrigin, Vector3.down, out var ground, probeHeight * 2f, mask, QueryTriggerInteraction.Ignore))
                 position.y = LiftAbove(position.y, ground.point.y, clearance);
             return position;
+        }
+
+        /// <summary>
+        /// На сколько градусов круче посмотреть сверху, чтобы от фокуса до камеры не было земли: перебираем наклон
+        /// шагами step до maxPitch. 0 — путь и так свободен; если не помогает и maxPitch, возвращается подъём до maxPitch.
+        /// </summary>
+        public static float PitchLift(CameraRigState state, float maxPitch, LayerMask mask, float radius, float clearance, float step = 5f)
+        {
+            var room = Mathf.Max(0f, maxPitch - state.Pitch);
+            for (var lift = 0f; lift < room + step; lift += step)
+            {
+                var tried = Mathf.Min(lift, room);
+                var probe = state;
+                probe.Pitch += tried;
+                if (IsClear(state.Focus, probe.CameraPosition, mask, radius, clearance))
+                    return tried;
+            }
+            return room;
+        }
+
+        /// <summary>От фокуса (с зазором над ним) до камеры нет земли.</summary>
+        public static bool IsClear(Vector3 focus, Vector3 camera, LayerMask mask, float radius, float clearance)
+        {
+            var origin = focus + Vector3.up * clearance;
+            var toCamera = camera - origin;
+            var length = toCamera.magnitude;
+            return length <= 1e-4f || !Physics.SphereCast(origin, radius, toCamera / length, out _, length, mask, QueryTriggerInteraction.Ignore);
         }
 
         /// <summary>Высота камеры не ниже земли под ней плюс зазор.</summary>

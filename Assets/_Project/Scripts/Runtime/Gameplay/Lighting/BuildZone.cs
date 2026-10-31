@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -14,13 +15,25 @@ namespace Emberhold.Gameplay.Lighting
 
         public IReadOnlyList<LightSource> Sources => sources;
 
+        /// <summary>Какой-то круг света появился, пропал или поменял радиус: границам пора перерисовать, что у них накрыто.</summary>
+        public event Action LightChanged;
+
         public void Register(LightSource source)
         {
-            if (!sources.Contains(source))
-                sources.Add(source);
+            if (sources.Contains(source))
+                return;
+            sources.Add(source);
+            NotifyLightChanged();
         }
 
-        public void Unregister(LightSource source) => sources.Remove(source);
+        public void Unregister(LightSource source)
+        {
+            if (sources.Remove(source))
+                NotifyLightChanged();
+        }
+
+        /// <summary>Сообщить, что круг одного из источников изменился.</summary>
+        public void NotifyLightChanged() => LightChanged?.Invoke();
 
         /// <summary>Точка мира (в координатах сцены) освещена хотя бы одним источником.</summary>
         public bool Contains(Vector3 worldPoint)

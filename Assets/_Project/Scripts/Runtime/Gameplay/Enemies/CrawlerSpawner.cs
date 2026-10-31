@@ -19,7 +19,7 @@ namespace Emberhold.Gameplay.Enemies
         private const int SpawnAttempts = 12;
         // Кнопки для проверки в правом верхнем углу экрана (координаты GUI: от левого верхнего угла).
         private const float ButtonsRight = 410f;
-        private const float ButtonsTop = 78f;
+        private static float ButtonsTop => HudText.RowTop(HudText.ButtonRow) + 4f;
         private const float ButtonWidth = 150f;
         private const float ButtonHeight = 22f;
         private const float ButtonGap = 10f;
@@ -213,7 +213,7 @@ namespace Emberhold.Gameplay.Enemies
             foreach (var crawler in crawlers)
                 atFire += crawler.AtFire ? 1 : 0;
             var text = $"Ползуны: {crawlers.Count}, гасят огонь: {atFire}   (ЛКМ по ползуну — ударить)";
-            GUI.Label(new Rect(Screen.width - 410f, 54f, 400f, 22f), text);
+            HudText.Right(HudText.CrawlerRow, text);
         }
     }
 }

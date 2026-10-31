@@ -151,8 +151,7 @@ namespace Emberhold.Gameplay.Run
 
         private void OnGUI()
         {
-            GUI.Label(new Rect(Screen.width - 410f, 76f, 400f, 22f),
-                $"Пережито ночей: {Score.NightsSurvived}   Убито ползунов: {Score.CrawlersKilled}");
+            HudText.Right(HudText.ScoreRow, $"Пережито ночей: {Score.NightsSurvived}   Убито ползунов: {Score.CrawlersKilled}");
 
             if (Countdown == null)
                 return;

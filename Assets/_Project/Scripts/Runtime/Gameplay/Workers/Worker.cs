@@ -37,6 +37,9 @@ namespace Emberhold.Gameplay.Workers
     /// </summary>
     public sealed class Worker
     {
+        /// <summary>Огни, чья заполненность отличается меньше этой доли, считаются одинаково пустыми: тогда идут к ближайшему.</summary>
+        private const float FillTolerance = 0.1f;
+
         private readonly WorkerContext context;
         private readonly List<Vector2Int> path = new();
         private int pathIndex;
@@ -188,6 +191,7 @@ namespace Emberhold.Gameplay.Workers
             var bestStand = default(Vector2Int);
             var bestCost = float.PositiveInfinity;
             var bestPriority = int.MinValue;
+            var bestFill = float.PositiveInfinity;
             foreach (var order in context.Orders.Orders)
             {
                 if (order.Worker != null || order.Priority < bestPriority || !context.IsOrderLit(order)
@@ -205,10 +209,13 @@ namespace Emberhold.Gameplay.Workers
                     // Путь от кучки или поддона до чертежа оцениваем по прямой: точный разлив для каждой пары дорог.
                     cost = toPile + Vector2.Distance(from.Column, new Vector2(order.Cell.x, order.Cell.z));
                 }
-                if (order.Priority == bestPriority && cost >= bestCost)
+                // Среди огней сначала самый пустой; почти равные по топливу — ближайший.
+                var fill = order.FuelTarget?.FuelFill ?? 0f;
+                if (order.Priority == bestPriority && (fill > bestFill + FillTolerance || fill >= bestFill - FillTolerance && cost >= bestCost))
                     continue;
                 best = order;
                 bestPriority = order.Priority;
+                bestFill = fill;
                 bestSource = from;
                 bestStand = stand;
                 bestCost = cost;

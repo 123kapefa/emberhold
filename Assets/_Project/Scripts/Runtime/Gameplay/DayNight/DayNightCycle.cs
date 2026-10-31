@@ -176,7 +176,7 @@ namespace Emberhold.Gameplay.DayNight
             };
             var left = cycle.Duration(Phase) * (1f - PhaseProgress) / Mathf.Max(settings.TimeScale, 0.0001f);
             var text = $"Сутки {DayNumber}, {name}, ещё {(int)left / 60}:{(int)left % 60:00}   (N — следующая фаза)";
-            GUI.Label(new Rect(Screen.width - 410f, 10f, 400f, 22f), text);
+            HudText.Right(HudText.DayRow, text);
         }
     }
 }
