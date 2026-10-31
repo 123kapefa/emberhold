@@ -96,8 +96,11 @@ namespace Emberhold.Tests.PlayMode.Enemies
             Assert.That(Crawler.TryPick(ray, 100f, out var picked), Is.True);
             Assert.That(picked, Is.EqualTo(crawler));
 
-            Assert.That(crawler.Hit(1f), Is.False, "Одного удара мало");
-            Assert.That(crawler.Hit(1f), Is.True, "Второй добивает");
+            var hits = Mathf.CeilToInt(spawner.Settings.Health);
+            Assert.That(hits, Is.GreaterThan(1), "Одного удара мало");
+            for (var i = 1; i < hits; i++)
+                Assert.That(crawler.Hit(1f), Is.False, $"Удар {i} из {hits} ещё не убивает");
+            Assert.That(crawler.Hit(1f), Is.True, "Последний добивает");
             Assert.That(crawler.IsAlive, Is.False);
             Assert.That(spawner.Crawlers.Contains(crawler), Is.False, "Убитый ушёл из списка");
             before = campfire.Fuel.Amount;

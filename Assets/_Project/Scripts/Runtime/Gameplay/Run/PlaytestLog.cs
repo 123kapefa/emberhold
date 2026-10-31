@@ -12,7 +12,7 @@ namespace Emberhold.Gameplay.Run
     /// <summary>
     /// Журнал плейтеста: на каждом рассвете и при проигрыше дописывает строку об этих сутках в CSV-файл
     /// (в редакторе — папка Logs/Playtest рядом с Assets, в сборке — Application.persistentDataPath/Playtest)
-    /// и в консоль. Считает через NightLog; механику не меняет, только смотрит на костёр, сутки и ползунов.
+    /// и в консоль. В batchmode (прогоны тестов) файл не пишется. Считает через NightLog; механику не меняет, только смотрит на костёр, сутки и ползунов.
     /// </summary>
     public sealed class PlaytestLog : MonoBehaviour
     {
@@ -81,6 +81,9 @@ namespace Emberhold.Gameplay.Run
             var folder = Application.isEditor
                 ? Path.Combine(Application.dataPath, "..", "Logs", "Playtest")
                 : Path.Combine(Application.persistentDataPath, "Playtest");
+            // Прогоны тестов (batchmode) тоже грузят сцену; их ночи в журнал плейтеста не пишем, только в консоль.
+            if (Application.isBatchMode)
+                return;
             path = Path.GetFullPath(Path.Combine(folder, $"nights-{DateTime.Now:yyyyMMdd-HHmmss}.csv"));
             Debug.Log($"[Playtest] Журнал ночей: {path}", this);
         }

@@ -18,10 +18,10 @@ MonoBehaviour:
   climbSpeed: 5
   reach: 1.3
   drainPerSecond: 0.2
-  health: 2
+  health: 3
   dissolveSeconds: 0.6
   firstSpawnDelay: 10
-  spawnInterval: 20
+  spawnInterval: 15
   extraPerNight: 0.25
   maxAlive: 6
   spawnDistanceMin: 6
