@@ -153,6 +153,25 @@ namespace Emberhold.Gameplay.Workers
             return !float.IsPositiveInfinity(distance);
         }
 
+        /// <summary>
+        /// Над клеткой (в том же или соседнем столбце, на один-два блока выше) есть приказ копать, до которого можно
+        /// дотянуться по последнему разливу. Такой блок рано копать: яму копают слоями сверху вниз, иначе рабочие роют
+        /// колодцы у края, между ними остаются гребни, а в яму с отвесными стенами в два блока уже не спуститься (#146).
+        /// Недосягаемый приказ сверху (высоко на обрыве, в темноте) не мешает: блок под ним копают, верх осыпается.
+        /// </summary>
+        public bool HasReachableDigAbove(Vector3Int cell)
+        {
+            for (var dy = 1; dy <= 2; dy++)
+            for (var dz = -1; dz <= 1; dz++)
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                var above = Orders.At(new Vector3Int(cell.x + dx, cell.y + dy, cell.z + dz));
+                if (above != null && above.Kind == WorkKind.Dig && IsOrderLit(above) && TryStandSpot(above.Cell, false, out _, out _))
+                    return true;
+            }
+            return false;
+        }
+
         /// <summary>Ближайшая по последнему разливу освещённая кучка ресурса itemId, до которой можно дотянуться.</summary>
         public DroppedItem NearestPile(string itemId, out Vector2Int stand, out float distance)
         {
