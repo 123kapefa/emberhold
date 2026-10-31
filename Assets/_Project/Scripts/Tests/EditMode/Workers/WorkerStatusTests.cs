@@ -114,5 +114,14 @@ namespace Emberhold.Tests.EditMode.Workers
                     return;
             }
         }
+
+        private sealed class StoneDrops : IBlockDrops
+        {
+            public bool TryGetDrop(byte material, out ItemDrop drop)
+            {
+                drop = material == BlockMaterials.Stone ? new ItemDrop("stone", 1) : default;
+                return material == BlockMaterials.Stone;
+            }
+        }
     }
 }
