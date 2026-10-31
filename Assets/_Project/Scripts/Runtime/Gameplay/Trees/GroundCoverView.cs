@@ -16,7 +16,9 @@ namespace Emberhold.Gameplay.Trees
     /// drawDistance): дальше мелочь всё равно не разглядеть. Пучок, под которым копали или строили, пропадает,
     /// и его участок перестраивается. Цвет травы подстраивается под оттенок травы локации, как кроны деревьев.
     /// Когда камера отъезжает от земли дальше thinFrom, мелочь редеет ступенями, дальше hideBeyond скрыта целиком
-    /// (<see cref="GroundCoverThinning"/>).
+    /// (<see cref="GroundCoverThinning"/>). Участок собирается один раз, разложенным на части по ступеням
+    /// (<see cref="GroundCoverThinning.FirstLevel"/>), и смена ступени только включает и выключает готовые части:
+    /// пересборка всех участков на каждой ступени давала рывки при зуме и переполняла буфер видеокарты (#151).
     /// </summary>
     public sealed class GroundCoverView : MonoBehaviour
     {
@@ -49,6 +51,8 @@ namespace Emberhold.Gameplay.Trees
 
         private readonly Dictionary<Vector2Int, List<GroundCoverPatch>> regions = new();
         private readonly Dictionary<Vector2Int, Region> shown = new();
+        // Пучки участка по частям: в части i — те, что видны со ступени i + 1. Общий буфер на время сборки.
+        private readonly List<GroundCoverPatch>[] byLevel = NewByLevel();
         private readonly HashSet<Vector2Int> dirty = new();
         private readonly Dictionary<(GroundCoverKind kind, int variant), GroundCoverMeshBuilder.Shape> shapes = new();
         private readonly List<Vector2Int> wanted = new();
@@ -70,7 +74,9 @@ namespace Emberhold.Gameplay.Trees
         private sealed class Region
         {
             public GameObject Root;
-            public Mesh Mesh;
+            // Части по ступеням: Parts[i] видна со ступени i + 1. Пустая часть не рисуется.
+            public readonly MeshRenderer[] Parts = new MeshRenderer[GroundCoverThinning.Steps];
+            public readonly Mesh[] Meshes = new Mesh[GroundCoverThinning.Steps];
         }
 
         /// <summary>Мелочь мира; рассаживается при первом обращении после леса. Null, если сцена собрана не до конца.</summary>
@@ -84,8 +90,32 @@ namespace Emberhold.Gameplay.Trees
             }
         }
 
-        /// <summary>Сколько участков сейчас нарисовано.</summary>
+        /// <summary>Сколько участков собрано у камеры (видны они или скрыты ступенью редения).</summary>
         public int ShownRegions => shown.Count;
+
+        /// <summary>Сколько собранных участков сейчас рисует хоть одну часть.</summary>
+        public int VisibleRegions
+        {
+            get
+            {
+                var count = 0;
+                foreach (var region in shown.Values)
+                {
+                    foreach (var part in region.Parts)
+                    {
+                        if (part.enabled)
+                        {
+                            count++;
+                            break;
+                        }
+                    }
+                }
+                return count;
+            }
+        }
+
+        /// <summary>Сколько раз собиралась сетка участка с начала игры: смена ступени редения её не трогает.</summary>
+        public int Builds { get; private set; }
 
         /// <summary>Ступень редения: <see cref="GroundCoverThinning.Steps"/> — видна вся мелочь, 0 — скрыта.</summary>
         public int ThinningLevel => level;
@@ -179,24 +209,15 @@ namespace Emberhold.Gameplay.Trees
             if (newLevel != level)
             {
                 level = newLevel;
-                // Другая ступень — перестроить всё нарисованное; скрытая мелочь не держит ни сеток, ни памяти.
-                foreach (var key in shown.Keys)
-                    dirty.Add(key);
-                lastMiddle = null;
-            }
-            if (level == 0)
-            {
+                // Другая ступень — только включить и выключить готовые части, ничего не пересобирая.
                 foreach (var region in shown.Values)
-                    Release(region);
-                shown.Clear();
-                dirty.Clear();
-                wanted.Clear();
-                return;
+                    ApplyLevel(region);
+                lastMiddle = null;
             }
             var keep = drawDistance + RegionSize;
             var middle = new Vector2Int(Mathf.FloorToInt(center.x / RegionSize), Mathf.FloorToInt(center.y / RegionSize));
             // Камера в том же участке, всё нужное построено и ничего не менялось — делать нечего.
-            if (middle == lastMiddle && dirty.Count == 0 && wanted.Count == 0)
+            if (middle == lastMiddle && dirty.Count == 0 && (wanted.Count == 0 || level == 0))
                 return;
 
             far.Clear();
@@ -212,8 +233,7 @@ namespace Emberhold.Gameplay.Trees
                 dirty.Remove(key);
             }
 
-            // Изменившиеся участки перестраиваются в тот же счёт budget, ближние первыми: смена ступени редения
-            // трогает все нарисованные участки, и разом это был бы рывок кадра.
+            // Изменившиеся участки (копали, строили) перестраиваются в тот же счёт budget, ближние первыми.
             sortCenter = center;
             byDistance ??= (a, b) => Distance(a, sortCenter).CompareTo(Distance(b, sortCenter));
             far.Clear();
@@ -223,10 +243,19 @@ namespace Emberhold.Gameplay.Trees
             for (var i = 0; i < refilled; i++)
             {
                 if (shown.TryGetValue(far[i], out var region))
-                    Fill(far[i], region.Mesh);
+                    Fill(far[i], region);
                 dirty.Remove(far[i]);
             }
             budget -= refilled;
+
+            // Мелочь скрыта целиком — новых участков не строим; собранные остаются, чтобы при возвращении
+            // камеры просто включиться.
+            if (level == 0)
+            {
+                wanted.Clear();
+                lastMiddle = middle;
+                return;
+            }
 
             wanted.Clear();
             var reach = Mathf.CeilToInt(drawDistance / RegionSize) + 1;
@@ -257,46 +286,72 @@ namespace Emberhold.Gameplay.Trees
             }
             var root = new GameObject($"Ground cover {key.x},{key.y}");
             root.transform.SetParent(container, false);
-            var mesh = new Mesh { name = root.name, indexFormat = IndexFormat.UInt32 };
-            Fill(key, mesh);
-            root.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var renderer = root.AddComponent<MeshRenderer>();
-            if (material != null)
-                renderer.sharedMaterial = material;
-            renderer.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
-            renderer.lightProbeUsage = LightProbeUsage.Off;
-            return new Region { Root = root, Mesh = mesh };
+            var region = new Region { Root = root };
+            for (var i = 0; i < GroundCoverThinning.Steps; i++)
+            {
+                var part = new GameObject($"Level {i + 1}");
+                part.transform.SetParent(root.transform, false);
+                var mesh = new Mesh { name = $"{root.name} level {i + 1}", indexFormat = IndexFormat.UInt32 };
+                part.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var renderer = part.AddComponent<MeshRenderer>();
+                if (material != null)
+                    renderer.sharedMaterial = material;
+                renderer.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
+                renderer.lightProbeUsage = LightProbeUsage.Off;
+                region.Parts[i] = renderer;
+                region.Meshes[i] = mesh;
+            }
+            Fill(key, region);
+            return region;
         }
 
-        // Сетка участка: формы всех его пучков, поставленные на землю, повёрнутые и подкрашенные оттенком травы.
-        private void Fill(Vector2Int key, Mesh mesh)
+        // Сетки участка по частям: каждая часть — формы её пучков, поставленные на землю, повёрнутые и подкрашенные
+        // оттенком травы. Собираются все части сразу, видимость по ступени ставит ApplyLevel.
+        private void Fill(Vector2Int key, Region region)
+        {
+            Builds++;
+            foreach (var part in byLevel)
+                part.Clear();
+            if (regions.TryGetValue(key, out var list))
+            {
+                foreach (var patch in list)
+                    byLevel[GroundCoverThinning.FirstLevel(patch) - 1].Add(patch);
+            }
+            for (var i = 0; i < byLevel.Length; i++)
+                FillPart(byLevel[i], region.Meshes[i]);
+            ApplyLevel(region);
+        }
+
+        // Часть видна, если ступень дошла до неё и в ней есть что рисовать.
+        private void ApplyLevel(Region region)
+        {
+            for (var i = 0; i < region.Parts.Length; i++)
+                region.Parts[i].enabled = level >= i + 1 && region.Meshes[i].vertexCount > 0;
+        }
+
+        private void FillPart(List<GroundCoverPatch> patches, Mesh mesh)
         {
             vertices.Clear();
             normals.Clear();
             colors.Clear();
             var world = worldView.World;
-            if (regions.TryGetValue(key, out var list))
+            foreach (var patch in patches)
             {
-                foreach (var patch in list)
+                var shape = ShapeFor(patch.Kind, patch.Variant);
+                var position = patch.Position;
+                var rotation = Quaternion.Euler(0f, patch.Rotation, 0f);
+                var origin = new Vector3(position.x, GroundCover.BaseHeight(world, patch), position.y);
+                var grass = world.GrassTint?.Sample(position.x, position.y) ?? Color.white;
+                for (var i = 0; i < shape.Vertices.Count; i++)
                 {
-                    if (!GroundCoverThinning.Keeps(patch, level))
-                        continue;
-                    var shape = ShapeFor(patch.Kind, patch.Variant);
-                    var position = patch.Position;
-                    var rotation = Quaternion.Euler(0f, patch.Rotation, 0f);
-                    var origin = new Vector3(position.x, GroundCover.BaseHeight(world, patch), position.y);
-                    var grass = world.GrassTint?.Sample(position.x, position.y) ?? Color.white;
-                    for (var i = 0; i < shape.Vertices.Count; i++)
-                    {
-                        vertices.Add(origin + rotation * (shape.Vertices[i] * patch.Scale));
-                        normals.Add(rotation * shape.Normals[i]);
-                        var color = shape.Colors[i];
-                        if (color.a > 0.5f)
-                            color = GroundCoverMeshBuilder.Tint(color, grass);
-                        // Альфа 0: шейдер деревьев не красит эти вершины своим _BaseColor.
-                        color.a = 0f;
-                        colors.Add(color);
-                    }
+                    vertices.Add(origin + rotation * (shape.Vertices[i] * patch.Scale));
+                    normals.Add(rotation * shape.Normals[i]);
+                    var color = shape.Colors[i];
+                    if (color.a > 0.5f)
+                        color = GroundCoverMeshBuilder.Tint(color, grass);
+                    // Альфа 0: шейдер деревьев не красит эти вершины своим _BaseColor.
+                    color.a = 0f;
+                    colors.Add(color);
                 }
             }
             mesh.Clear();
@@ -338,6 +393,14 @@ namespace Emberhold.Gameplay.Trees
             return list;
         }
 
+        private static List<GroundCoverPatch>[] NewByLevel()
+        {
+            var parts = new List<GroundCoverPatch>[GroundCoverThinning.Steps];
+            for (var i = 0; i < parts.Length; i++)
+                parts[i] = new List<GroundCoverPatch>();
+            return parts;
+        }
+
         private static Vector2Int RegionOf(GroundCoverPatch patch) =>
             new(Mathf.FloorToInt((float)patch.Cell.x / RegionSize), Mathf.FloorToInt((float)patch.Cell.z / RegionSize));
 
@@ -353,8 +416,11 @@ namespace Emberhold.Gameplay.Trees
         {
             if (region.Root != null)
                 Destroy(region.Root);
-            if (region.Mesh != null)
-                Destroy(region.Mesh);
+            foreach (var mesh in region.Meshes)
+            {
+                if (mesh != null)
+                    Destroy(mesh);
+            }
         }
     }
 }

@@ -6,8 +6,9 @@ namespace Emberhold.World.Vegetation
     /// <summary>
     /// Мелочь при отдалении камеры: до начала редения видна вся, дальше редеет ступенями (<see cref="Steps"/>),
     /// за порогом скрывается целиком. Первыми пропадают самые мелкие пучки (мох, лишайник, грибы, цветы), трава
-    /// и папоротник держатся дольше, но редеет каждый вид. Ступени, а не плавный спад: участки перестраиваются
-    /// только при смене ступени, а не на каждом движении колёсика.
+    /// и папоротник держатся дольше, но редеет каждый вид. Ступени вложены: пучок виден с ступени
+    /// <see cref="FirstLevel"/> и на всех больших, поэтому участок собирается один раз, разложенный по ступеням,
+    /// и при смене ступени лишь показывает или прячет готовые части.
     /// </summary>
     public static class GroundCoverThinning
     {
@@ -37,6 +38,20 @@ namespace Emberhold.World.Vegetation
             if (level <= 0)
                 return false;
             return Importance(patch) >= 1f - (float)level / Steps;
+        }
+
+        /// <summary>
+        /// Наименьшая ступень, на которой пучок виден (1..Steps): на ней и на всех больших
+        /// <see cref="Keeps"/> даёт true, на меньших — false.
+        /// </summary>
+        public static int FirstLevel(GroundCoverPatch patch)
+        {
+            for (var level = 1; level < Steps; level++)
+            {
+                if (Keeps(patch, level))
+                    return level;
+            }
+            return Steps;
         }
 
         /// <summary>
