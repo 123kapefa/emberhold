@@ -24,6 +24,7 @@ namespace Emberhold.Gameplay.Workers
     /// Поддоны (<see cref="Pallets"/>) ставит игрок инструментом 6; пока у них нет своего вида, отряд рисует их рамкой 2×2×2
     /// и подписью над ней: что лежит, сколько и сколько влезает («бревно 2-20»).
     /// Урон блоков и устойчивость общие с BlockEditController, ресурсы на земле — из DroppedItemsView.
+    /// Подпись «что делает» и линию пути над рабочими рисует отдельный вид <see cref="WorkerStatusView"/>, его отряд ставит сам.
     /// </summary>
     public sealed class WorkerCrew : MonoBehaviour
     {
@@ -127,6 +128,8 @@ namespace Emberhold.Gameplay.Workers
             palletLines = CreateLines("Pallets", palletColor);
             UpdateLight();
             Spawn();
+            // Подпись «что делает» и линия пути над рабочими — отдельный вид, логику рабочих он только читает.
+            gameObject.AddComponent<WorkerStatusView>().Bind(this, worldView.transform, outlineMaterial, settings.Height);
         }
 
         private void OnDestroy()
