@@ -30,6 +30,9 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Сколько топлива ещё помещается.</summary>
         float FuelSpace { get; }
 
+        /// <summary>Насколько огонь полон: 0 — пуст, 1 — полон. Рабочие сначала несут дрова в самый пустой.</summary>
+        float FuelFill { get; }
+
         /// <summary>Подбросить топливо; возвращает, сколько принято.</summary>
         float AddFuel(float amount);
     }

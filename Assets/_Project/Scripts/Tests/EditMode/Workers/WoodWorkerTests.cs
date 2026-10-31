@@ -193,6 +193,22 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Worker_FeedsEmptiestFireFirst()
+        {
+            var full = new Fire(10f, 8f);
+            var empty = new Fire(10f, 1f);
+            items.Drop(world, new Vector3Int(10, Ground, 10), new ItemDrop("wood", 2));
+            // Почти полный огонь рядом с рабочим, почти пустой — дальше.
+            orders.AddFuel(new Vector3Int(12, Ground, 12), full, "wood", 1);
+            var far = orders.AddFuel(new Vector3Int(25, Ground, 25), empty, "wood", 1);
+            var worker = Spawn(new Vector2Int(9, 9));
+
+            Run(1f, () => false, worker);
+
+            Assert.That(worker.Order, Is.SameAs(far), "Сначала дрова в самый пустой огонь, даже если он дальше");
+        }
+
+        [Test]
         public void Worker_SkipsFuelWithoutWoodAndDoesOtherWork()
         {
             var fire = new Fire(10f, 0f);
@@ -240,6 +256,8 @@ namespace Emberhold.Tests.EditMode.Workers
             public float Amount { get; set; }
 
             public float FuelSpace => capacity - Amount;
+
+            public float FuelFill => Amount / capacity;
 
             public float AddFuel(float amount)
             {

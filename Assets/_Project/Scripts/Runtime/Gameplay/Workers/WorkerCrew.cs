@@ -742,6 +742,8 @@ namespace Emberhold.Gameplay.Workers
 
             public float FuelSpace => source.Fuel?.Space ?? 0f;
 
+            public float FuelFill => source.Fuel is { Capacity: > 0f } fuel ? fuel.Amount / fuel.Capacity : 1f;
+
             public float AddFuel(float amount) => source.AddFuel(amount);
         }
 

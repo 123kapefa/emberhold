@@ -66,6 +66,52 @@ namespace Emberhold.Tests.PlayMode.Lighting
             Assert.That(editor.CanEdit(inside.Block), Is.True);
         }
 
+        [UnityTest]
+        public IEnumerator PrototypeScene_OverlappingFiresDrawOnlyCommonEdge()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var zone = Object.FindAnyObjectByType<BuildZone>();
+            var main = zone.Sources[0];
+            var radius = main.Radius;
+            var second = Object.Instantiate(main, main.transform.position + new Vector3(radius, 0f, 0f), main.transform.rotation);
+            yield return null;
+            yield return null;
+            Assert.That(zone.Sources, Has.Count.EqualTo(2));
+            Assert.That(second.IsLit, Is.True);
+
+            // Ни одна видимая точка границы не лежит внутри чужого круга.
+            var points = 0;
+            foreach (var (fire, other) in new[] { (main, second), (second, main) })
+            {
+                foreach (var line in fire.GetComponentsInChildren<LineRenderer>())
+                {
+                    if (!line.enabled)
+                        continue;
+                    Assert.That(line.loop, Is.False, "Круг разрезан: замкнутой линии нет");
+                    for (var i = 0; i < line.positionCount; i++)
+                    {
+                        var distance = Vector3.Distance(Flat(line.GetPosition(i)), Flat(other.transform.position));
+                        Assert.That(distance, Is.GreaterThan(other.Radius - 0.05f), $"{fire.name}: точка {i} внутри света соседа");
+                        points++;
+                    }
+                }
+            }
+            Assert.That(points, Is.GreaterThan(32), "Общий край нарисован");
+
+            // Сосед погас — у главного снова целый круг.
+            second.enabled = false;
+            yield return null;
+            var ring = main.GetComponentInChildren<LineRenderer>();
+            Assert.That(ring.enabled && ring.loop, Is.True, "Снова одна замкнутая линия");
+            var shown = 0;
+            foreach (var line in main.GetComponentsInChildren<LineRenderer>())
+                shown += line.enabled ? 1 : 0;
+            Assert.That(shown, Is.EqualTo(1));
+            Object.Destroy(second.gameObject);
+        }
+
         private static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);
 
         private static BlockHit SurfaceBlock(VoxelWorldView view, Vector3 worldPoint)

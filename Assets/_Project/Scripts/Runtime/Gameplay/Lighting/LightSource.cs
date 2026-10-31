@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Emberhold.Core;
 using Emberhold.Gameplay.DayNight;
 using UnityEngine;
@@ -11,12 +12,19 @@ namespace Emberhold.Gameplay.Lighting
     /// Ставится на землю под собой, светит точечным светом и рисует границу радиуса по рельефу.
     /// Горит на топливе: ночью оно сгорает (время берётся из DayNightCycle), и с каждой ночью быстрее; на последних крохах радиус
     /// сжимается, без топлива огонь гаснет — источник выпадает из зоны застройки и тумана.
+    /// Граница рисуется только там, где её не накрывает свет других горящих источников: у пересекающихся кругов виден общий край.
     /// </summary>
     public sealed class LightSource : MonoBehaviour
     {
         private const float GroundProbeHeight = 200f;
         private const float RingLift = 0.08f;
         private const int RingSegments = 96;
+
+        /// <summary>Точка границы на столько ближе края чужого круга, чтобы считаться накрытой: у совпавших кругов граница не пропадает.</summary>
+        private const float CoverMargin = 0.01f;
+
+        /// <summary>Сколько секунд после укуса ползуна огонь считается под атакой.</summary>
+        private const float AttackMemory = 0.5f;
 
         [SerializeField] private LightSourceSettings settings;
         [Tooltip("Зона застройки. Если пусто — первая BuildZone в сцене.")]
@@ -33,6 +41,11 @@ namespace Emberhold.Gameplay.Lighting
         [SerializeField] private DayNightCycle dayNight;
 
         private readonly Vector3[] ringPoints = new Vector3[RingSegments];
+        private readonly bool[] ringCovered = new bool[RingSegments];
+        private readonly List<LineRenderer> ringParts = new();
+        private readonly List<Vector3> partPoints = new();
+        private bool ringLit;
+        private float lastDrainTime = float.NegativeInfinity;
         private Vector3 flameScale = Vector3.one;
         private float radiusFactor = 1f;
         private float ringRadius = -1f;
@@ -46,11 +59,17 @@ namespace Emberhold.Gameplay.Lighting
 
         public LightCircle Circle => new(transform.position, Radius);
 
+        /// <summary>Зона застройки, в которой зарегистрирован источник.</summary>
+        public BuildZone Zone => zone;
+
         /// <summary>Запас топлива; null, если источник горит без топлива.</summary>
         public LightFuel Fuel { get; private set; }
 
         /// <summary>Огонь горит: источник включён и у него есть топливо (или оно ему не нужно).</summary>
         public bool IsLit => isActiveAndEnabled && radiusFactor > 0f;
+
+        /// <summary>Ползуны гасят огонь прямо сейчас (отнимали топливо только что).</summary>
+        public bool UnderAttack => IsLit && Time.time - lastDrainTime < AttackMemory;
 
         /// <summary>Огонь погас или снова загорелся; аргумент — горит ли теперь.</summary>
         public event Action<bool> LitChanged;
@@ -73,7 +92,10 @@ namespace Emberhold.Gameplay.Lighting
                 return 0f;
             var drained = Fuel.Burn(1f, amount);
             if (drained > 0f)
+            {
+                lastDrainTime = Time.time;
                 ApplyFuel();
+            }
             return drained;
         }
 
@@ -111,8 +133,16 @@ namespace Emberhold.Gameplay.Lighting
 
             if (zone == null)
                 zone = FindAnyObjectByType<BuildZone>();
+            // Снова включённый источник показывает границу, если горит; регистрация перерисует и её, и соседей.
+            if (started)
+                ringLit = radiusFactor > 0f;
             if (zone != null)
+            {
+                zone.LightChanged += RefreshRing;
                 zone.Register(this);
+            }
+            else if (started)
+                RefreshRing();
             else
                 Debug.LogWarning("[Light] В сцене нет BuildZone: свет не ограничивает строительство.", this);
         }
@@ -122,7 +152,16 @@ namespace Emberhold.Gameplay.Lighting
             if (dayNight != null)
                 dayNight.TimePassed -= OnTimePassed;
             if (zone != null)
+            {
+                zone.LightChanged -= RefreshRing;
                 zone.Unregister(this);
+            }
+            foreach (var part in ringParts)
+            {
+                if (part != null)
+                    part.enabled = false;
+            }
+            ringLit = false;
         }
 
         private void Start()
@@ -147,6 +186,8 @@ namespace Emberhold.Gameplay.Lighting
 
             started = true;
             ApplyLook();
+            // Погасший с самого начала огонь границу не меняет, но линию из префаба надо спрятать.
+            RefreshRing();
         }
 
         private void OnTimePassed(DayPhase phase, float seconds)
@@ -185,15 +226,24 @@ namespace Emberhold.Gameplay.Lighting
             }
             if (ring != null)
             {
-                ring.enabled = lit;
-                // Перестраиваем границу, только когда радиус заметно изменился: точки кладутся на рельеф лучами.
-                if (lit && Mathf.Abs(Radius - ringRadius) > 0.05f)
-                    BuildRing();
+                // Перемеряем границу, только когда радиус заметно изменился: точки кладутся на рельеф лучами.
+                var measure = lit && Mathf.Abs(Radius - ringRadius) > 0.05f;
+                if (measure)
+                    MeasureRing();
+                if (measure || lit != ringLit)
+                {
+                    ringLit = lit;
+                    // Свой круг поменялся — соседям тоже перерисовать, что у них накрыто.
+                    if (zone != null)
+                        zone.NotifyLightChanged();
+                    else
+                        RefreshRing();
+                }
             }
         }
 
         /// <summary>Граница света: окружность радиуса, каждая точка положена на рельеф.</summary>
-        public void BuildRing()
+        private void MeasureRing()
         {
             var center = transform.position;
             var radius = Radius;
@@ -205,14 +255,131 @@ namespace Emberhold.Gameplay.Lighting
                 point.y = (TryGroundHeight(point, out var ground) ? ground : center.y) + RingLift;
                 ringPoints[i] = point;
             }
+        }
 
-            ring.useWorldSpace = true;
-            ring.loop = true;
-            ring.positionCount = RingSegments;
-            ring.SetPositions(ringPoints);
-            ring.widthMultiplier = settings.RingWidth;
-            ring.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            ring.receiveShadows = false;
+        /// <summary>
+        /// Нарисовать границу: дуги, накрытые светом других горящих источников, пропускаются. Целый круг — одна замкнутая линия,
+        /// иначе каждая видимая дуга — своя линия, а её концы досчитываются точно по краю чужого круга.
+        /// </summary>
+        private void RefreshRing()
+        {
+            if (ring == null)
+                return;
+            var shown = 0;
+            if (started && ringLit && ringRadius > 0f)
+            {
+                var covered = 0;
+                for (var i = 0; i < RingSegments; i++)
+                {
+                    ringCovered[i] = IsCovered(ringPoints[i]);
+                    covered += ringCovered[i] ? 1 : 0;
+                }
+                if (covered == 0)
+                {
+                    partPoints.Clear();
+                    partPoints.AddRange(ringPoints);
+                    SetPart(shown++, true);
+                }
+                else if (covered < RingSegments)
+                {
+                    // Начинаем с накрытой точки, за которой открытая, чтобы ни одна дуга не разрезалась на стыке массива.
+                    var start = 0;
+                    while (!ringCovered[start] || ringCovered[(start + 1) % RingSegments])
+                        start++;
+                    for (var k = 1; k <= RingSegments; k++)
+                    {
+                        var index = (start + k) % RingSegments;
+                        if (ringCovered[index])
+                            continue;
+                        var previous = (index + RingSegments - 1) % RingSegments;
+                        var next = (index + 1) % RingSegments;
+                        if (ringCovered[previous])
+                        {
+                            partPoints.Clear();
+                            partPoints.Add(EdgePoint(index, -1));
+                        }
+                        partPoints.Add(ringPoints[index]);
+                        if (ringCovered[next])
+                        {
+                            partPoints.Add(EdgePoint(index, 1));
+                            SetPart(shown++, false);
+                        }
+                    }
+                }
+            }
+            for (var i = shown; i < ringParts.Count; i++)
+            {
+                if (ringParts[i] != null)
+                    ringParts[i].enabled = false;
+            }
+            if (shown == 0)
+                ring.enabled = false;
+        }
+
+        /// <summary>Точку накрывает свет другого горящего источника этой же зоны.</summary>
+        private bool IsCovered(Vector3 point)
+        {
+            if (zone == null)
+                return false;
+            foreach (var other in zone.Sources)
+            {
+                if (other == this || !other.IsLit)
+                    continue;
+                var offset = point - other.transform.position;
+                offset.y = 0f;
+                var reach = other.Radius - CoverMargin;
+                if (offset.sqrMagnitude < reach * reach)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Где между открытой точкой index и соседней накрытой (step = ±1) кончается граница: делим отрезок дуги пополам.</summary>
+        private Vector3 EdgePoint(int index, int step)
+        {
+            var center = transform.position;
+            var from = ringPoints[index];
+            var to = ringPoints[(index + step + RingSegments) % RingSegments];
+            var angle = index * Mathf.PI * 2f / RingSegments;
+            var delta = step * Mathf.PI * 2f / RingSegments;
+            float open = 0f, shut = 1f;
+            for (var i = 0; i < 10; i++)
+            {
+                var t = (open + shut) * 0.5f;
+                var a = angle + delta * t;
+                var probe = center + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * ringRadius;
+                if (IsCovered(probe))
+                    shut = t;
+                else
+                    open = t;
+            }
+            var edge = angle + delta * open;
+            var point = center + new Vector3(Mathf.Cos(edge), 0f, Mathf.Sin(edge)) * ringRadius;
+            point.y = Mathf.Lerp(from.y, to.y, open);
+            return point;
+        }
+
+        /// <summary>Отдать линии номер index точки partPoints. Первая линия — своя из префаба, остальные — её копии.</summary>
+        private void SetPart(int index, bool loop)
+        {
+            if (ringParts.Count == 0)
+                ringParts.Add(ring);
+            while (ringParts.Count <= index)
+            {
+                var copy = Instantiate(ring, ring.transform.parent);
+                copy.name = $"{ring.name} {ringParts.Count + 1}";
+                ringParts.Add(copy);
+            }
+            var part = ringParts[index];
+            part.useWorldSpace = true;
+            part.loop = loop;
+            part.positionCount = partPoints.Count;
+            for (var i = 0; i < partPoints.Count; i++)
+                part.SetPosition(i, partPoints[i]);
+            part.widthMultiplier = settings.RingWidth;
+            part.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            part.receiveShadows = false;
+            part.enabled = true;
         }
 
         private static bool TryGroundHeight(Vector3 point, out float height)
