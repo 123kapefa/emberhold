@@ -79,11 +79,48 @@ namespace Emberhold.Tests.EditMode.World
             var mesh = new ChunkMeshData();
             ChunkMesher.Build(world, Vector3Int.zero, mesh);
 
-            // Только поверхность, без боковых граней: вся она в подмеше травы и закрывает каждый столбец ровно раз.
-            Assert.That(mesh.TriangleCount, Is.EqualTo(mesh.Triangles[BlockMaterials.Grass].Count / 3));
+            // Поверхность вся в подмеше травы и закрывает каждый столбец ровно раз; боковые грани есть только
+            // у края мира (там стенки до дна, #102), внутри их нет.
             Assert.That(SlopeBlocksTests.UpwardArea(mesh), Is.EqualTo(16f * 16f).Within(1e-3f));
             Assert.That(mesh.Vertices.Max(v => v.y), Is.EqualTo(20f / H).Within(1e-4f));
-            Assert.That(mesh.Normals, Has.None.EqualTo(Vector3.right).And.None.EqualTo(Vector3.down));
+            Assert.That(mesh.Normals, Has.None.EqualTo(Vector3.down));
+            for (var i = 0; i < mesh.Normals.Count; i++)
+            {
+                if (mesh.Normals[i].y != 0f)
+                    continue;
+                var v = mesh.Vertices[i];
+                var onBorder = Mathf.Abs(v.x) < 1e-4f || Mathf.Abs(v.x - 16f) < 1e-4f || Mathf.Abs(v.z) < 1e-4f || Mathf.Abs(v.z - 16f) < 1e-4f;
+                Assert.That(onBorder, Is.True, $"боковая грань внутри мира в {v}");
+            }
+        }
+
+        [Test]
+        public void WorldEdge_HasWallsDownToTheBottom()
+        {
+            // Край мира: снаружи соседа нет, поэтому у крайних столбцов стенка до дна мира, сквозь край ничего не видно.
+            var world = Flat(3 * H + 8);
+            var mesh = new ChunkMeshData();
+            ChunkMesher.Build(world, Vector3Int.zero, mesh);
+
+            foreach (var (normal, coordinate, edge) in new[] { (Vector3.left, 0, 0f), (Vector3.right, 0, 16f), (Vector3.back, 2, 0f), (Vector3.forward, 2, 16f) })
+            {
+                float area = 0f, low = float.MaxValue, high = float.MinValue;
+                for (var m = 0; m < mesh.Triangles.Length; m++)
+                for (var t = 0; t < mesh.Triangles[m].Count; t += 3)
+                {
+                    var a = mesh.Vertices[mesh.Triangles[m][t]];
+                    var b = mesh.Vertices[mesh.Triangles[m][t + 1]];
+                    var c = mesh.Vertices[mesh.Triangles[m][t + 2]];
+                    if (mesh.Normals[mesh.Triangles[m][t]] != normal || Mathf.Abs(a[coordinate] - edge) > 1e-4f)
+                        continue;
+                    area += Vector3.Cross(b - a, c - a).magnitude * 0.5f;
+                    low = Mathf.Min(low, a.y, b.y, c.y);
+                    high = Mathf.Max(high, a.y, b.y, c.y);
+                }
+                Assert.That(area, Is.EqualTo(16f * (3f + 8f / H)).Within(1e-3f), $"стенка {normal}");
+                Assert.That(low, Is.EqualTo(0f).Within(1e-4f), $"стенка {normal} до дна");
+                Assert.That(high, Is.EqualTo(3f + 8f / H).Within(1e-4f), $"стенка {normal} до поверхности");
+            }
         }
 
         [Test]

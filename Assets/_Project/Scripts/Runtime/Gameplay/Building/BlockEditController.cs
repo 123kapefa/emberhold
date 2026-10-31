@@ -25,6 +25,8 @@ namespace Emberhold.Gameplay.Building
         DigOrder,
         /// <summary>Поддон 2×2 для ресурсов: ставится сразу и бесплатно, повторный клик убирает.</summary>
         Pallet,
+        /// <summary>Чертёж костра: рабочие приносят поленья и ставят новый костёр на блок под курсором.</summary>
+        Campfire,
     }
 
     /// <summary>
@@ -35,6 +37,7 @@ namespace Emberhold.Gameplay.Building
     /// 4 — «Чертёж» и 5 — «Поручить копать»: то же самое делают рабочие (<see cref="WorkerCrew"/>);
     /// клик инструментом 5 по дереву поручает его срубить; повторный клик по тому же месту снимает чертёж или приказ.
     /// 6 — «Поддон»: ставит поддон 2×2 на землю под курсором (блок под курсором — его ближний угол) или убирает стоящий там.
+    /// 7 — «Костёр»: чертёж костра на блоке под курсором (клетка над ним должна быть в свету); строят его рабочие.
     /// При стройке и чертеже G — следующая форма, T — материал, щелчок ПКМ — поворот, [ и ] — высота полублока.
     /// ПКМ с перетаскиванием по-прежнему вращает камеру: поворот блока срабатывает, только если мышь
     /// между нажатием и отпусканием почти не сдвинулась. Камера занимает ПКМ (удержание), СКМ, колесо
@@ -73,6 +76,7 @@ namespace Emberhold.Gameplay.Building
         private InputAction toolBlueprint;
         private InputAction toolDigOrder;
         private InputAction toolPallet;
+        private InputAction toolCampfire;
         private InputAction nextForm;
         private InputAction nextMaterial;
         private InputAction rotate;
@@ -103,6 +107,7 @@ namespace Emberhold.Gameplay.Building
         private const string DarkDigMessage = "Темно, сюда не копать";
         private const string DarkBuildMessage = "Темно, здесь не построить";
         private const string UnbreakableMessage = "Не копается";
+        private const string StumpMessage = "Мешает пень: сначала выкорчуй его (инструмент 5)";
         private const string PalletBlockedMessage = "Поддону нужна ровная свободная площадка 2 на 2 в свете костра";
 
         private BlockGhost ghost;
@@ -117,6 +122,9 @@ namespace Emberhold.Gameplay.Building
 
         /// <summary>Дерево под курсором при инструменте 5, если оно ближе блока.</summary>
         public TreeStand HoveredTree { get; private set; }
+
+        /// <summary>Пень под курсором при инструменте 5, если он ближе блока и дерева.</summary>
+        public TreeStump HoveredStump { get; private set; }
 
         /// <summary>Что ставит инструмент «Строить».</summary>
         public BuildSelection Selection { get; } = new();
@@ -184,6 +192,7 @@ namespace Emberhold.Gameplay.Building
             toolBlueprint = map.FindAction("ToolBlueprint", true);
             toolDigOrder = map.FindAction("ToolDigOrder", true);
             toolPallet = map.FindAction("ToolPallet", true);
+            toolCampfire = map.FindAction("ToolCampfire");
             nextForm = map.FindAction("NextForm", true);
             nextMaterial = map.FindAction("NextMaterial", true);
             rotate = map.FindAction("Rotate", true);
@@ -231,15 +240,23 @@ namespace Emberhold.Gameplay.Building
                 Tool = BlockTool.DigOrder;
             if (workers != null && toolPallet.WasPressedThisFrame())
                 Tool = BlockTool.Pallet;
+            if (workers != null && workers.BuildsCampfires && toolCampfire != null && toolCampfire.WasPressedThisFrame())
+                Tool = BlockTool.Campfire;
             if (PlacesBlocks)
                 ReadBuildInput();
 
             HoveredTree = PickTree(point.ReadValue<Vector2>());
-            Hovered = HoveredTree == null ? Pick(point.ReadValue<Vector2>()) : null;
+            HoveredStump = HoveredTree == null ? PickStump(point.ReadValue<Vector2>()) : null;
+            Hovered = HoveredTree == null && HoveredStump == null ? Pick(point.ReadValue<Vector2>()) : null;
             UpdatePlan();
             if (HoveredTree is { } tree && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
                 if (!ApplyToTree(tree))
+                    ShowBlockedMessage(DarkDigMessage);
+            }
+            else if (HoveredStump is { } stump && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
+            {
+                if (!ApplyToStump(stump))
                     ShowBlockedMessage(DarkDigMessage);
             }
             else if (Hovered is { } palletHit && Tool == BlockTool.Pallet && use.WasPressedThisFrame() && !IsCameraDragging()
@@ -252,6 +269,8 @@ namespace Emberhold.Gameplay.Building
             {
                 if (IsUnbreakable(hit))
                     ShowBlockedMessage(UnbreakableMessage);
+                else if (IsHeldByStump(hit))
+                    ShowBlockedMessage(StumpMessage);
                 else if (!CanApply(hit))
                     ShowBlockedMessage(DarkMessage);
                 Apply(hit);
@@ -318,7 +337,7 @@ namespace Emberhold.Gameplay.Building
         public bool Apply(BlockHit hit)
         {
             falls.Clear();
-            if (IsUnbreakable(hit) || !CanApply(hit))
+            if (IsUnbreakable(hit) || IsHeldByStump(hit) || !CanApply(hit))
                 return false;
 
             Vector3Int changed;
@@ -349,6 +368,8 @@ namespace Emberhold.Gameplay.Building
                     return workers != null && workers.ToggleDig(hit.Block);
                 case BlockTool.Pallet:
                     return ApplyPallet(hit);
+                case BlockTool.Campfire:
+                    return workers != null && workers.ToggleCampfire(hit.Block + Vector3Int.up);
                 default:
                     return false;
             }
@@ -369,16 +390,17 @@ namespace Emberhold.Gameplay.Building
             var origin = hit.Block + Vector3Int.up;
             if (workers.Pallets.At(origin) is { } existing)
                 return workers.RemovePallet(existing);
-            return PalletInLight(origin) && workers.TogglePallet(origin);
+            return PalletAllowed(origin) && workers.TogglePallet(origin);
         }
 
-        /// <summary>Все клетки площадки поддона с углом origin освещены.</summary>
-        private bool PalletInLight(Vector3Int origin)
+        /// <summary>Все клетки площадки поддона с углом origin освещены и на них нет пней.</summary>
+        private bool PalletAllowed(Vector3Int origin)
         {
             for (var dz = 0; dz < Pallet.Size; dz++)
             for (var dx = 0; dx < Pallet.Size; dx++)
             {
-                if (!CanEdit(origin + new Vector3Int(dx, 0, dz)))
+                var cell = origin + new Vector3Int(dx, 0, dz);
+                if (!CanEdit(cell) || forest != null && forest.Forest is { } trees && trees.StumpAt(cell) != null)
                     return false;
             }
             return true;
@@ -396,6 +418,17 @@ namespace Emberhold.Gameplay.Building
             if (!CanEdit(tree.Cell) && order is not { Kind: WorkKind.Chop })
                 return false;
             return workers.ToggleChop(tree);
+        }
+
+        /// <summary>Инструмент 5 по пню: поручить выкорчевать или снять приказ. Поручить можно только в свете, снять — везде.</summary>
+        public bool ApplyToStump(TreeStump stump)
+        {
+            if (workers == null || stump == null || Tool != BlockTool.DigOrder)
+                return false;
+            var order = workers.Orders.At(stump.Cell);
+            if (!CanEdit(stump.Cell) && order is not { Kind: WorkKind.Chop })
+                return false;
+            return workers.ToggleUproot(stump);
         }
 
         /// <summary>
@@ -425,9 +458,20 @@ namespace Emberhold.Gameplay.Building
             Tool is BlockTool.Dig or BlockTool.Remove or BlockTool.DigOrder
             && !BlockMaterials.IsBreakable(worldView.World.GetBlock(hit.Block).Material);
 
-        /// <summary>Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, иначе — блок под курсором.</summary>
-        private Vector3Int TargetCell(BlockHit hit) =>
-            PlacesBlocks && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p) ? p.Cell : hit.Block;
+        /// <summary>Клетку, которую меняет инструмент, держит пень: в ней пень (не поставить) или он на ней (не выкопать).</summary>
+        private bool IsHeldByStump(BlockHit hit) =>
+            Tool != BlockTool.Pallet && forest != null && forest.Forest is { } trees && trees.BlocksEdit(TargetCell(hit));
+
+        /// <summary>
+        /// Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, у костра — клетка над блоком
+        /// под курсором, иначе — блок под курсором.
+        /// </summary>
+        private Vector3Int TargetCell(BlockHit hit)
+        {
+            if (Tool == BlockTool.Campfire)
+                return hit.Block + Vector3Int.up;
+            return PlacesBlocks && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p) ? p.Cell : hit.Block;
+        }
 
         /// <summary>
         /// Инструмент можно применить: клетка в свете. Чертёж или приказ, оставшийся в темноте (костёр погас
@@ -440,7 +484,8 @@ namespace Emberhold.Gameplay.Building
                 return true;
             var order = workers != null ? workers.Orders.At(cell) : null;
             return order != null && (Tool == BlockTool.Blueprint && order.Kind == WorkKind.Build
-                                     || Tool == BlockTool.DigOrder && order.Kind == WorkKind.Dig);
+                                     || Tool == BlockTool.DigOrder && order.Kind == WorkKind.Dig
+                                     || Tool == BlockTool.Campfire && order.Kind == WorkKind.Campfire);
         }
 
         /// <summary>
@@ -456,10 +501,14 @@ namespace Emberhold.Gameplay.Building
         {
             if (HoveredTree is { } tree)
                 return CanEdit(tree.Cell) || workers != null && workers.Orders.At(tree.Cell) is { Kind: WorkKind.Chop } ? null : DarkDigMessage;
+            if (HoveredStump is { } stump)
+                return CanEdit(stump.Cell) || workers != null && workers.Orders.At(stump.Cell) is { Kind: WorkKind.Chop } ? null : DarkDigMessage;
             if (Hovered is not { } hit)
                 return null;
             if (IsUnbreakable(hit))
                 return UnbreakableMessage;
+            if (IsHeldByStump(hit))
+                return StumpMessage;
             return CanApply(hit) ? null : DarkMessage;
         }
 
@@ -475,6 +524,21 @@ namespace Emberhold.Gameplay.Building
                 && ground.distance < distance)
                 return null;
             return tree;
+        }
+
+        /// <summary>Пень под курсором при инструменте 5, если луч попадает в него раньше, чем в землю.</summary>
+        private TreeStump PickStump(Vector2 screenPosition)
+        {
+            if (forest == null || workers == null || Tool != BlockTool.DigOrder)
+                return null;
+            var ray = targetCamera.ScreenPointToRay(screenPosition);
+            if (!forest.RaycastStump(ray, settings.MaxRayDistance, out var stump, out var distance))
+                return null;
+            // Коробка пня выше самого пня, поэтому землю впереди пропускаем с запасом.
+            if (Physics.Raycast(ray, out var ground, settings.MaxRayDistance, settings.GroundMask, QueryTriggerInteraction.Ignore)
+                && ground.distance + 0.6f < distance)
+                return null;
+            return stump;
         }
 
         /// <summary>Блок под точкой экрана: по треугольнику меша, с поправкой на скос над ним (<see cref="BlockPicking.PreferSlopeAbove"/>).</summary>
@@ -525,7 +589,14 @@ namespace Emberhold.Gameplay.Building
         {
             if (HoveredTree is { } tree)
             {
-                ShowTreeOutline(tree);
+                var (treeMin, treeMax) = forest.LocalBounds(tree);
+                ShowOrderOutline(tree.Cell, treeMin, treeMax);
+                return;
+            }
+            if (HoveredStump is { } stump)
+            {
+                var (stumpMin, stumpMax) = forest.LocalBounds(stump);
+                ShowOrderOutline(stump.Cell, stumpMin, stumpMax);
                 return;
             }
             if (Tool == BlockTool.Pallet && Hovered is { } palletHit)
@@ -556,12 +627,13 @@ namespace Emberhold.Gameplay.Building
             }
 
             PlaceInWorld(outline.transform, cell);
-            var color = !CanEdit(cell) || IsUnbreakable(hit) ? settings.BlockedColor : Tool switch
+            var color = !CanEdit(TargetCell(hit)) || IsUnbreakable(hit) || IsHeldByStump(hit) ? settings.BlockedColor : Tool switch
             {
                 BlockTool.Dig => settings.DigColor,
                 BlockTool.Build => settings.BuildColor,
                 BlockTool.Blueprint => settings.BlueprintColor,
                 BlockTool.DigOrder => settings.DigOrderColor,
+                BlockTool.Campfire => settings.BlueprintColor,
                 _ => settings.RemoveColor,
             };
             outlineProperties.SetColor(BaseColorId, color);
@@ -569,10 +641,9 @@ namespace Emberhold.Gameplay.Building
             outline.SetActive(true);
         }
 
-        /// <summary>Рамка вокруг дерева под курсором: цвет приказа, вне света — запрета.</summary>
-        private void ShowTreeOutline(TreeStand tree)
+        /// <summary>Рамка вокруг дерева или пня под курсором (min..max в долях клетки cell): цвет приказа, вне света — запрета.</summary>
+        private void ShowOrderOutline(Vector3Int cell, Vector3 min, Vector3 max)
         {
-            var (min, max) = forest.LocalBounds(tree);
             // Рамку дерева строим каждый кадр: деревьев под курсором немного, а форма блока потом перестроится заново.
             outlineShape = null;
             BlockOutlineMesh.Build(min, max, Vector3Int.zero, settings.OutlinePadding, outlineVertices, outlineIndices);
@@ -580,8 +651,8 @@ namespace Emberhold.Gameplay.Building
             outlineMesh.SetVertices(outlineVertices);
             outlineMesh.SetIndices(outlineIndices, MeshTopology.Lines, 0);
             outlineMesh.RecalculateBounds();
-            PlaceInWorld(outline.transform, tree.Cell);
-            outlineProperties.SetColor(BaseColorId, CanEdit(tree.Cell) ? settings.DigOrderColor : settings.BlockedColor);
+            PlaceInWorld(outline.transform, cell);
+            outlineProperties.SetColor(BaseColorId, CanEdit(cell) ? settings.DigOrderColor : settings.BlockedColor);
             outlineRenderer.SetPropertyBlock(outlineProperties);
             outline.SetActive(true);
         }
@@ -604,7 +675,7 @@ namespace Emberhold.Gameplay.Building
             outlineMesh.SetIndices(outlineIndices, MeshTopology.Lines, 0);
             outlineMesh.RecalculateBounds();
             PlaceInWorld(outline.transform, origin);
-            var canPlace = workers != null && workers.Pallets != null && PalletInLight(origin)
+            var canPlace = workers != null && workers.Pallets != null && PalletAllowed(origin)
                            && workers.Pallets.CanPlace(worldView.World, origin);
             var color = existing != null ? settings.RemoveColor : canPlace ? settings.BlueprintColor : settings.BlockedColor;
             outlineProperties.SetColor(BaseColorId, color);
@@ -676,10 +747,12 @@ namespace Emberhold.Gameplay.Building
                 BlockTool.Build => "Строить",
                 BlockTool.Blueprint => "Чертёж",
                 BlockTool.Pallet => "Поддон",
+                BlockTool.Campfire => "Костёр",
                 _ => "Поручить копать и рубить",
             };
             var keys = workers != null
-                ? "1 — копать, 2 — убрать сразу, 3 — строить сразу, 4 — чертёж, 5 — поручить копать или рубить дерево, 6 — поддон, ЛКМ — применить"
+                ? "1 — копать, 2 — убрать сразу, 3 — строить сразу, 4 — чертёж, 5 — поручить копать или рубить дерево, 6 — поддон" +
+                  (workers.BuildsCampfires ? ", 7 — костёр" : "") + ", ЛКМ — применить"
                 : "1 — копать, 2 — убрать сразу, 3 — строить, ЛКМ — применить";
             GUI.Label(new Rect(10, 10, 900, 22), $"Инструмент: {name}   ({keys})");
             var message = HoverMessage() ?? (Time.unscaledTime < blockedMessageUntil ? blockedMessage : null);

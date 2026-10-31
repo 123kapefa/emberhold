@@ -13,10 +13,15 @@ namespace Emberhold.Gameplay.Workers
         Build,
         /// <summary>Приказ копать: рабочий разбивает блок ударами.</summary>
         Dig,
-        /// <summary>Приказ рубить: рабочий рубит дерево ударами, поленья падают у основания.</summary>
+        /// <summary>
+        /// Приказ рубить: рабочий рубит дерево ударами, поленья падают у основания. Тот же приказ корчует пень
+        /// (<see cref="WorkOrder.Stump"/>).
+        /// </summary>
         Chop,
         /// <summary>Подбросить топливо: рабочий приносит полено и кладёт его в огонь.</summary>
         Fuel,
+        /// <summary>Чертёж костра: рабочие приносят поленья и ставят новый костёр, пустой, без топлива.</summary>
+        Campfire,
     }
 
     /// <summary>Куда рабочие носят топливо (костёр). Отдельно от LightSource, чтобы рабочих проверяли без сцены.</summary>
@@ -66,6 +71,9 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Дерево под приказом рубить, иначе null.</summary>
         public TreeStand Tree { get; internal set; }
 
+        /// <summary>Пень под приказом выкорчевать (вид задачи — <see cref="WorkKind.Chop"/>), иначе null.</summary>
+        public TreeStump Stump { get; internal set; }
+
         /// <summary>Куда нести топливо (для <see cref="WorkKind.Fuel"/>), иначе null.</summary>
         public IFuelTarget FuelTarget { get; internal set; }
 
@@ -77,7 +85,7 @@ namespace Emberhold.Gameplay.Workers
     }
 
     /// <summary>
-    /// Общий список задач рабочих: чертежи, приказы копать и рубить, топливо для огня; не больше одной задачи на клетку.
+    /// Общий список задач рабочих: чертежи блоков и костров, приказы копать и рубить, топливо для огня; не больше одной задачи на клетку.
     /// Рабочие сами берут ближайшую свободную. Задача, которую больше нельзя выполнить (клетку заняли,
     /// блок уже выкопали), убирается в <see cref="Prune"/>.
     /// </summary>
@@ -124,6 +132,14 @@ namespace Emberhold.Gameplay.Workers
             return Add(new WorkOrder(WorkKind.Chop, tree.Cell, Block.Air, false, null, 0) { Tree = tree });
         }
 
+        /// <summary>Поручить выкорчевать пень. Null, если клетка пня уже занята задачей.</summary>
+        public WorkOrder AddUproot(TreeStump stump)
+        {
+            if (stump == null || !stump.IsPresent || byCell.ContainsKey(stump.Cell))
+                return null;
+            return Add(new WorkOrder(WorkKind.Chop, stump.Cell, Block.Air, false, null, 0) { Stump = stump });
+        }
+
         /// <summary>
         /// Поручить принести count единиц топлива itemId в огонь target, стоящий в клетке cell.
         /// Null, если клетка уже занята задачей.
@@ -133,6 +149,17 @@ namespace Emberhold.Gameplay.Workers
             if (target == null || string.IsNullOrEmpty(itemId) || count <= 0 || byCell.ContainsKey(cell))
                 return null;
             return Add(new WorkOrder(WorkKind.Fuel, cell, Block.Air, false, itemId, count) { FuelTarget = target });
+        }
+
+        /// <summary>
+        /// Поставить чертёж костра в пустой клетке над землёй; cost — сколько поленьев принести на постройку.
+        /// Null, если клетка уже занята задачей.
+        /// </summary>
+        public WorkOrder AddCampfire(Vector3Int cell, ItemDrop cost)
+        {
+            if (string.IsNullOrEmpty(cost.ItemId) || cost.Count <= 0 || byCell.ContainsKey(cell))
+                return null;
+            return Add(new WorkOrder(WorkKind.Campfire, cell, Block.Air, false, cost.ItemId, cost.Count));
         }
 
         /// <summary>Отменить задачу (игрок передумал или её нельзя выполнить).</summary>
@@ -164,22 +191,33 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>
         /// Можно ли ещё выполнить задачу: чертёж — клетка свободна (или там тот же неполный блок, который досыпаем),
-        /// приказ копать — блок на месте, приказ рубить — дерево стоит. Топливо носить можно всегда.
+        /// приказ копать — блок на месте, приказ рубить — дерево или пень стоит, костёр — клетка пуста, а под ней земля.
+        /// Топливо носить можно всегда.
         /// </summary>
         public static bool IsValid(VoxelWorld world, WorkOrder order)
         {
             if (order.Kind == WorkKind.Fuel)
                 return true;
             if (order.Kind == WorkKind.Chop)
-                return order.Tree.IsStanding;
+                return order.Stump?.IsPresent ?? order.Tree.IsStanding;
             if (!world.IsInsideBlocks(order.Cell))
                 return false;
             var current = world.GetBlock(order.Cell);
+            if (order.Kind == WorkKind.Campfire)
+                return CanHoldCampfire(world, order.Cell);
             if (order.Kind == WorkKind.Dig)
                 return !current.IsAir && BlockMaterials.IsBreakable(current.Material);
             if (!order.FillsExisting)
                 return current.IsAir;
             return !current.IsAir && current.Material == order.Block.Material && !current.Shape.IsCatalog && !current.Shape.IsFull;
+        }
+
+        /// <summary>Костёр может стоять в клетке: она пуста, а под ней блок, на который он встанет.</summary>
+        public static bool CanHoldCampfire(VoxelWorld world, Vector3Int cell)
+        {
+            var below = cell + Vector3Int.down;
+            return world.IsInsideBlocks(cell) && world.IsInsideBlocks(below)
+                && world.GetBlock(cell).IsAir && !world.GetBlock(below).IsAir;
         }
 
         private WorkOrder Add(WorkOrder order)

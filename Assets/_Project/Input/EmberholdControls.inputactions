@@ -1392,6 +1392,15 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "ToolCampfire",
+                    "type": "Button",
+                    "id": "8716e0bc-1626-4725-b6d0-f91ed030213d",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "NextForm",
                     "type": "Button",
                     "id": "2a0d6eda-0503-4fee-b9d3-28b1d3363070",
@@ -1523,6 +1532,17 @@
                     "processors": "",
                     "groups": "Keyboard&Mouse",
                     "action": "ToolPallet",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "1d9793ee-9590-41c8-80ae-ae80c99ee856",
+                    "path": "<Keyboard>/7",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "ToolCampfire",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
