@@ -90,24 +90,28 @@ namespace Emberhold.Tests.PlayMode.Trees
 
             var view = Object.FindAnyObjectByType<GroundCoverView>();
             Assert.That(view.ThinningLevel, Is.EqualTo(GroundCoverThinning.Steps), "У земли видна вся мелочь");
-            Assert.That(view.ShownRegions, Is.GreaterThan(0));
+            Assert.That(view.VisibleRegions, Is.GreaterThan(0));
 
             // Камеру ведём руками: риг иначе вернёт её на место.
             foreach (var rig in Object.FindObjectsByType<CameraRigController>())
                 rig.enabled = false;
             var camera = Camera.main.transform;
             var start = camera.position;
+            var visible = view.VisibleRegions;
+            var builds = view.Builds;
             camera.position = start + Vector3.up * 400f;
             yield return null;
             yield return null;
             Assert.That(view.ThinningLevel, Is.EqualTo(0), "Издалека мелочь скрыта");
-            Assert.That(view.ShownRegions, Is.EqualTo(0), "И её участки убраны");
+            Assert.That(view.VisibleRegions, Is.EqualTo(0), "Ни один участок не рисуется");
 
             camera.position = start;
-            for (var i = 0; i < 60 && view.ShownRegions == 0; i++)
-                yield return null;
+            yield return null;
+            yield return null;
             Assert.That(view.ThinningLevel, Is.EqualTo(GroundCoverThinning.Steps), "Вернулись — мелочь снова вся");
-            Assert.That(view.ShownRegions, Is.GreaterThan(0), "И участки снова нарисованы");
+            Assert.That(view.VisibleRegions, Is.EqualTo(visible), "И все участки снова нарисованы");
+            // #151: смена ступени не пересобирает сетки, только прячет и показывает готовые части.
+            Assert.That(view.Builds, Is.EqualTo(builds), "Участки не пересобирались");
         }
 
         [UnityTest]
