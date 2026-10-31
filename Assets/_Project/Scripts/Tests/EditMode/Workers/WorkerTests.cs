@@ -224,19 +224,38 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
-        public void Orders_DigBelowAnotherDigWaits()
+        public void Worker_DigBelowReachableDigWaits()
         {
             var top = orders.AddDig(new Vector3Int(12, Ground - 1, 12));
             var below = new Vector3Int(12, Ground - 2, 12);
             var belowNeighbour = new Vector3Int(13, Ground - 2, 12);
             var belowFar = new Vector3Int(14, Ground - 2, 12);
+            var context = new WorkerContext(world, orders, items, damage, new BlockStability(), settings, null);
+            context.Flood.Run(context.Surface, new Vector2Int(9, 9), context.IsLit);
 
-            Assert.That(orders.HasDigAbove(below), Is.True, "Над блоком приказ копать");
-            Assert.That(orders.HasDigAbove(belowNeighbour), Is.True, "Приказ копать над соседним столбцом");
-            Assert.That(orders.HasDigAbove(belowFar), Is.False, "Через столбец уже не мешает");
+            Assert.That(context.HasReachableDigAbove(below), Is.True, "Над блоком приказ копать");
+            Assert.That(context.HasReachableDigAbove(belowNeighbour), Is.True, "Приказ копать над соседним столбцом");
+            Assert.That(context.HasReachableDigAbove(belowFar), Is.False, "Через столбец уже не мешает");
 
             orders.Complete(top);
-            Assert.That(orders.HasDigAbove(below), Is.False);
+            Assert.That(context.HasReachableDigAbove(below), Is.False);
+        }
+
+        [Test]
+        public void Worker_DigsTallMarkedWallFromBelow()
+        {
+            // Стена в 6 блоков, приказ на всю высоту: верх не достать, поэтому копают низ, а верх осыпается.
+            var column = new Vector2Int(12, 12);
+            for (var y = Ground; y < Ground + 6; y++)
+            {
+                world.SetBlock(new Vector3Int(column.x, y, column.y), Block.Full(BlockMaterials.Dirt));
+                orders.AddDig(new Vector3Int(column.x, y, column.y));
+            }
+            var worker = Spawn(new Vector2Int(9, 12));
+
+            Run(120f, () => damage.Taken(new Vector3Int(column.x, Ground, column.y)) > 0f, worker);
+
+            Assert.That(worker.Order, Is.Not.Null, "Рабочий взялся за стену, а не стоит");
         }
 
         [Test]
