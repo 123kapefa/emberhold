@@ -168,7 +168,15 @@ namespace Emberhold.CameraRig
             transform.position = state.Focus;
             if (targetCamera == null)
                 return;
-            targetCamera.transform.SetPositionAndRotation(state.CameraPosition, state.Rotation);
+            // Сама поза рига не меняется: подъезд и подъём над землёй только для камеры в этом кадре.
+            var desired = state.CameraPosition;
+            var position = CameraTerrainClearance.Resolve(state.Focus, desired, settings.GroundMask,
+                settings.CameraCollisionRadius, settings.CameraClearance, settings.GroundProbeHeight);
+            var rotation = state.Rotation;
+            var toFocus = state.Focus - position;
+            if ((position - desired).sqrMagnitude > 1e-6f && toFocus.sqrMagnitude > 1e-6f)
+                rotation = Quaternion.LookRotation(toFocus);
+            targetCamera.transform.SetPositionAndRotation(position, rotation);
         }
 
         private void OnDrawGizmosSelected()

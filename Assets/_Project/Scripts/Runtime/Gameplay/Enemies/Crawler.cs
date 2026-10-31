@@ -154,6 +154,60 @@ namespace Emberhold.Gameplay.Enemies
             return crawler != null && crawler.IsAlive;
         }
 
+        /// <summary>Радиус щелчка «рядом с ползуном», в долях высоты экрана: на Retina и в маленьком окне он одинаков на глаз.</summary>
+        public const float PickRadiusScreenFraction = 0.035f;
+
+        /// <summary>
+        /// Ползун под точкой экрана или рядом с ней (#147): сначала точное попадание лучом, иначе ближайший живой
+        /// ползун, чей центр на экране не дальше <paramref name="radiusPixels"/> от точки и не заслонён землёй.
+        /// Строительство в этот щелчок блок не трогает, а <see cref="CrawlerStrike"/> бьёт этого ползуна.
+        /// </summary>
+        public static bool TryPickNear(UnityEngine.Camera camera, Vector2 screenPoint, float maxDistance, float radiusPixels, out Crawler crawler)
+        {
+            crawler = null;
+            if (camera == null)
+                return false;
+            if (TryPick(camera.ScreenPointToRay(screenPoint), maxDistance, out crawler))
+                return true;
+            crawler = null;
+            if (radiusPixels <= 0f)
+                return false;
+
+            var origin = camera.transform.position;
+            var best = radiusPixels * radiusPixels;
+            foreach (var candidate in FindObjectsByType<Crawler>(FindObjectsSortMode.None))
+            {
+                if (!candidate.IsAlive)
+                    continue;
+                var center = candidate.PickCenter;
+                var screen = camera.WorldToScreenPoint(center);
+                if (screen.z <= 0f || screen.z > maxDistance)
+                    continue;
+                var d = ((Vector2)screen - screenPoint).sqrMagnitude;
+                if (d > best || !candidate.IsVisibleFrom(origin, center))
+                    continue;
+                best = d;
+                crawler = candidate;
+            }
+            return crawler != null;
+        }
+
+        /// <summary>Точка, по которой ползуна ищут на экране: центр его тела.</summary>
+        private Vector3 PickCenter => body != null && body.enabled ? body.bounds.center : transform.position;
+
+        /// <summary>Между камерой и ползуном нет земли или другого препятствия (кроме самого ползуна).</summary>
+        private bool IsVisibleFrom(Vector3 origin, Vector3 center)
+        {
+            var toCenter = center - origin;
+            var distance = toCenter.magnitude;
+            if (distance <= 0.001f)
+                return true;
+            if (!Physics.Raycast(origin, toCenter / distance, out var hit, distance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                return true;
+            // Луч упёрся в самого ползуна или в препятствие уже у его тела.
+            return hit.collider.GetComponentInParent<Crawler>() == this || hit.distance >= distance - 0.5f;
+        }
+
         /// <summary>Ближайший горящий огонь; если все погасли — прежняя цель (ползун сидит у погасшего костра).</summary>
         private void ChooseTarget()
         {

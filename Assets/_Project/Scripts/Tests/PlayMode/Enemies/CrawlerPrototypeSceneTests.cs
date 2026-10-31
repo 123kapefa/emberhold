@@ -190,6 +190,43 @@ namespace Emberhold.Tests.PlayMode.Enemies
             Assert.That(look.Rig.Pose.Recoil, Is.GreaterThan(0f), "От удара отшатнулся");
         }
 
+        [UnityTest]
+        public IEnumerator Crawler_PickedByClickNearIt_NotFarAway()
+        {
+            ToNight();
+            var crawler = SpawnCrawler();
+            Physics.SyncTransforms();
+            yield return null;
+
+            // Камера прямо над ползуном смотрит вниз.
+            var cameraObject = new GameObject("Pick Test Camera");
+            try
+            {
+                var camera = cameraObject.AddComponent<UnityEngine.Camera>();
+                var bounds = crawler.GetComponent<Collider>().bounds;
+                camera.transform.SetPositionAndRotation(bounds.center + Vector3.up * 12f, Quaternion.LookRotation(Vector3.down, Vector3.forward));
+                var center = (Vector2)camera.WorldToScreenPoint(bounds.center);
+                var edge = (Vector2)camera.WorldToScreenPoint(bounds.center + Vector3.right * bounds.extents.magnitude);
+                var size = (edge - center).magnitude;
+                Assert.That(size, Is.GreaterThan(1f), "Ползун виден на экране");
+
+                // Мимо тела, но рядом: точный луч промахивается, щелчок рядом попадает.
+                var near = center + Vector2.right * (size + 6f);
+                Assert.That(Crawler.TryPick(camera.ScreenPointToRay(near), 100f, out _), Is.False, "Луч проходит мимо тела");
+                Assert.That(Crawler.TryPickNear(camera, near, 100f, size + 16f, out var picked), Is.True, "Щелчок рядом засчитан");
+                Assert.That(picked, Is.EqualTo(crawler));
+                Assert.That(Crawler.TryPickNear(camera, center, 100f, 0f, out picked), Is.True, "Точное попадание");
+                Assert.That(picked, Is.EqualTo(crawler));
+
+                var far = center + Vector2.right * (size + 40f);
+                Assert.That(Crawler.TryPickNear(camera, far, 100f, size + 16f, out _), Is.False, "Далеко от ползуна не засчитан");
+            }
+            finally
+            {
+                Object.Destroy(cameraObject);
+            }
+        }
+
         private Crawler SpawnCrawler()
         {
             Random.InitState(SpawnSeed);
