@@ -76,6 +76,19 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Куда рабочий сейчас идёт; пустой, если стоит.</summary>
         public IReadOnlyList<Vector2Int> Path => path;
 
+        /// <summary>
+        /// Оставшийся путь точками в координатах мира блоков: от того места, где рабочий стоит, через ещё не пройденные столбцы
+        /// до конца пути. Если рабочий не идёт, в into ничего не добавляется. Только читает, для подписи и линии пути.
+        /// </summary>
+        public void RemainingRoute(List<Vector3> into)
+        {
+            if (pathIndex >= path.Count)
+                return;
+            into.Add(Position);
+            for (var i = pathIndex; i < path.Count; i++)
+                into.Add(context.Surface.StandPoint(path[i]));
+        }
+
         public void Tick(float deltaTime)
         {
             if (Order != null && !context.Orders.Contains(Order))
