@@ -37,6 +37,7 @@ namespace Emberhold.Gameplay.Workers
         private Material lineMaterial;
         private float height;
         private GUIStyle labelStyle;
+        private MaterialPropertyBlock properties;
 
         /// <summary>Связать с отрядом: space — мир блоков, material — Unlit-материал линий (цвет через _BaseColor), height — рост рабочего.</summary>
         public void Bind(WorkerCrew crew, Transform space, Material material, float height)
@@ -104,7 +105,7 @@ namespace Emberhold.Gameplay.Workers
                 indices.Add(k);
             }
             var renderer = route.GetComponent<MeshRenderer>();
-            var properties = new MaterialPropertyBlock();
+            properties ??= new MaterialPropertyBlock();
             properties.SetColor(BaseColorId, ColorOf(WorkerStatus.Activity(worker)));
             renderer.SetPropertyBlock(properties);
             var mesh = route.GetComponent<MeshFilter>().sharedMesh;
