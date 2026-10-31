@@ -27,6 +27,8 @@ namespace Emberhold.Gameplay.Building
         Pallet,
         /// <summary>Чертёж костра: рабочие приносят поленья и ставят новый костёр на блок под курсором.</summary>
         Campfire,
+        /// <summary>Без инструмента (Esc или 0): ЛКМ только бьёт ползунов и ничего не меняет в мире.</summary>
+        None,
     }
 
     /// <summary>
@@ -38,6 +40,8 @@ namespace Emberhold.Gameplay.Building
     /// клик инструментом 5 по дереву поручает его срубить; повторный клик по тому же месту снимает чертёж или приказ.
     /// 6 — «Поддон»: ставит поддон 2×2 на землю под курсором (блок под курсором — его ближний угол) или убирает стоящий там.
     /// 7 — «Костёр»: чертёж костра на блоке под курсором (клетка над ним должна быть в свету); строят его рабочие.
+    /// Esc или 0 — без инструмента: блоки не подсвечиваются, ЛКМ только бьёт ползунов (<see cref="CrawlerStrike"/>).
+    /// Щелчок по ползуну или рядом с ним бьёт его в любом инструменте, блок за ним не меняется.
     /// При стройке и чертеже G — следующая форма, T — материал, щелчок ПКМ — поворот, [ и ] — высота полублока.
     /// ПКМ с перетаскиванием по-прежнему вращает камеру: поворот блока срабатывает, только если мышь
     /// между нажатием и отпусканием почти не сдвинулась. Камера занимает ПКМ (удержание), СКМ, колесо
@@ -77,6 +81,7 @@ namespace Emberhold.Gameplay.Building
         private InputAction toolDigOrder;
         private InputAction toolPallet;
         private InputAction toolCampfire;
+        private InputAction toolNone;
         private InputAction nextForm;
         private InputAction nextMaterial;
         private InputAction rotate;
@@ -193,6 +198,7 @@ namespace Emberhold.Gameplay.Building
             toolDigOrder = map.FindAction("ToolDigOrder", true);
             toolPallet = map.FindAction("ToolPallet", true);
             toolCampfire = map.FindAction("ToolCampfire");
+            toolNone = map.FindAction("ToolNone");
             nextForm = map.FindAction("NextForm", true);
             nextMaterial = map.FindAction("NextMaterial", true);
             rotate = map.FindAction("Rotate", true);
@@ -242,12 +248,14 @@ namespace Emberhold.Gameplay.Building
                 Tool = BlockTool.Pallet;
             if (workers != null && workers.BuildsCampfires && toolCampfire != null && toolCampfire.WasPressedThisFrame())
                 Tool = BlockTool.Campfire;
+            if (toolNone != null && toolNone.WasPressedThisFrame())
+                Tool = BlockTool.None;
             if (PlacesBlocks)
                 ReadBuildInput();
 
             HoveredTree = PickTree(point.ReadValue<Vector2>());
             HoveredStump = HoveredTree == null ? PickStump(point.ReadValue<Vector2>()) : null;
-            Hovered = HoveredTree == null && HoveredStump == null ? Pick(point.ReadValue<Vector2>()) : null;
+            Hovered = Tool != BlockTool.None && HoveredTree == null && HoveredStump == null ? Pick(point.ReadValue<Vector2>()) : null;
             UpdatePlan();
             if (HoveredTree is { } tree && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
@@ -320,13 +328,13 @@ namespace Emberhold.Gameplay.Building
             (cameraOrbitHold != null && cameraOrbitHold.IsPressed()) || (cameraPanHold != null && cameraPanHold.IsPressed());
 
         /// <summary>
-        /// Щелчок пришёлся по ползуну (его бьёт CrawlerStrike) или по кнопкам спаунера: блок за ними не трогаем.
+        /// Щелчок пришёлся по ползуну или рядом с ним (его бьёт CrawlerStrike) или по кнопкам спаунера: блок за ними не трогаем.
         /// </summary>
         private bool IsStrikingCrawler()
         {
             var pointer = point.ReadValue<Vector2>();
             return CrawlerSpawner.IsOverButtons(pointer)
-                || Crawler.TryPick(targetCamera.ScreenPointToRay(pointer), settings.MaxRayDistance, out _);
+                || Crawler.TryPickNear(targetCamera, pointer, settings.MaxRayDistance, Crawler.PickRadiusScreenFraction * Screen.height, out _);
         }
 
         /// <summary>
@@ -736,25 +744,38 @@ namespace Emberhold.Gameplay.Building
             cracks.SetActive(crackIndices.Count > 0);
         }
 
+        private GUIStyle hintStyle;
+
+        /// <summary>
+        /// Подсказка инструментов списком в левом верхнем углу: каждый инструмент своей строкой, выбранный выделен,
+        /// строки переносятся по ширине окна, чтобы ничего не уходило за край (#149). У костра — его цена (#150).
+        /// </summary>
         private void OnGUI()
         {
             if (map == null)
                 return;
-            var name = Tool switch
+            hintStyle ??= new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true };
+            var width = Mathf.Min(HintWidth, Screen.width - 20f);
+            GUILayout.BeginArea(new Rect(10f, 10f, width, Screen.height - 20f));
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label(Tool == BlockTool.None ? "Без инструмента: ЛКМ — бить ползунов" : $"Инструмент: {ToolName(Tool)}", hintStyle);
+            foreach (var (key, tool) in ToolKeys())
             {
-                BlockTool.Dig => "Копать",
-                BlockTool.Remove => "Убрать",
-                BlockTool.Build => "Строить",
-                BlockTool.Blueprint => "Чертёж",
-                BlockTool.Pallet => "Поддон",
-                BlockTool.Campfire => "Костёр",
-                _ => "Поручить копать и рубить",
-            };
-            var keys = workers != null
-                ? "1 — копать, 2 — убрать сразу, 3 — строить сразу, 4 — чертёж, 5 — поручить копать или рубить дерево, 6 — поддон" +
-                  (workers.BuildsCampfires ? ", 7 — костёр" : "") + ", ЛКМ — применить"
-                : "1 — копать, 2 — убрать сразу, 3 — строить, ЛКМ — применить";
-            GUI.Label(new Rect(10, 10, 900, 22), $"Инструмент: {name}   ({keys})");
+                var line = $"{key} — {ToolHint(tool)}";
+                GUILayout.Label(tool == Tool ? $"<b><color=#FFD34D>▶ {line}</color></b>" : $"   {line}", hintStyle);
+            }
+            GUILayout.Label(Tool == BlockTool.None ? "цифра — взять инструмент" : "Esc или 0 — без инструмента, ЛКМ — применить", hintStyle);
+            if (PlacesBlocks)
+            {
+                var form = BuildSelection.FormName(Selection.Form);
+                if (Selection.Form == BuildForm.Slab)
+                    form += $" {Selection.SlabHeight}/16";
+                GUILayout.Label($"{form}, {BuildSelection.MaterialName(Selection.Material)}, поворот {Selection.Rotation * 90}°", hintStyle);
+                GUILayout.Label("G — форма, T — материал, щелчок ПКМ — повернуть, [ ] — высота полублока", hintStyle);
+            }
+            GUILayout.EndVertical();
+            GUILayout.EndArea();
+
             var message = HoverMessage() ?? (Time.unscaledTime < blockedMessageUntil ? blockedMessage : null);
             if (message != null)
             {
@@ -763,14 +784,48 @@ namespace Emberhold.Gameplay.Building
                 var rect = new Rect(mouse.x + 16f, Screen.height - mouse.y - 8f, 360f, 24f);
                 GUI.Label(rect, message);
             }
-            if (!PlacesBlocks)
-                return;
-            var form = BuildSelection.FormName(Selection.Form);
-            if (Selection.Form == BuildForm.Slab)
-                form += $" {Selection.SlabHeight}/16";
-            GUI.Label(new Rect(10, 30, 700, 22),
-                $"{form}, {BuildSelection.MaterialName(Selection.Material)}, поворот {Selection.Rotation * 90}°   " +
-                "(G — форма, T — материал, щелчок ПКМ — повернуть, [ ] — высота полублока)");
         }
+
+        private const float HintWidth = 380f;
+
+        /// <summary>Клавиши инструментов, доступных в этой сцене.</summary>
+        private IEnumerable<(string key, BlockTool tool)> ToolKeys()
+        {
+            yield return ("1", BlockTool.Dig);
+            yield return ("2", BlockTool.Remove);
+            yield return ("3", BlockTool.Build);
+            if (workers == null)
+                yield break;
+            yield return ("4", BlockTool.Blueprint);
+            yield return ("5", BlockTool.DigOrder);
+            yield return ("6", BlockTool.Pallet);
+            if (workers.BuildsCampfires)
+                yield return ("7", BlockTool.Campfire);
+        }
+
+        private static string ToolName(BlockTool tool) => tool switch
+        {
+            BlockTool.Dig => "Копать",
+            BlockTool.Remove => "Убрать",
+            BlockTool.Build => "Строить",
+            BlockTool.Blueprint => "Чертёж",
+            BlockTool.DigOrder => "Поручить копать и рубить",
+            BlockTool.Pallet => "Поддон",
+            BlockTool.Campfire => "Костёр",
+            _ => "нет",
+        };
+
+        /// <summary>Строка инструмента в списке; у костра — что он стоит, например «костёр: 6 брёвен».</summary>
+        private string ToolHint(BlockTool tool) => tool switch
+        {
+            BlockTool.Dig => "копать",
+            BlockTool.Remove => "убрать сразу",
+            BlockTool.Build => "строить сразу",
+            BlockTool.Blueprint => "чертёж (строят рабочие)",
+            BlockTool.DigOrder => "поручить копать или рубить дерево",
+            BlockTool.Pallet => "поддон",
+            BlockTool.Campfire => workers != null && workers.CampfireCost is { } cost ? $"костёр: {CostLabel.Amount(cost)}" : "костёр",
+            _ => ToolName(tool),
+        };
     }
 }
