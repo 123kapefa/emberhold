@@ -32,3 +32,5 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 64
   groundProbeHeight: 200
+  cameraClearance: 1
+  cameraCollisionRadius: 0.5

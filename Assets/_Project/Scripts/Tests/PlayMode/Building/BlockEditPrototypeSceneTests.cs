@@ -158,6 +158,34 @@ namespace Emberhold.Tests.PlayMode.Building
         }
 
         [UnityTest]
+        public IEnumerator PrototypeScene_NoToolChangesNothing()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var editor = Object.FindAnyObjectByType<BlockEditController>();
+            var view = Object.FindAnyObjectByType<VoxelWorldView>();
+            Assert.That(Physics.Raycast(new Vector3(0.5f, 200f, 0.5f), Vector3.down, out var raycast, 400f, Layers.GroundMask), Is.True);
+            Assert.That(view.TryGetBlock(raycast.collider, raycast.triangleIndex, out var surface), Is.True);
+            var world = view.World;
+            var before = world.GetBlock(surface);
+            var above = world.GetBlock(surface + Vector3Int.up);
+
+            // Без инструмента (Esc) щелчок по блоку ничего не меняет: ни копает, ни строит.
+            editor.Tool = BlockTool.None;
+            Assert.That(editor.Apply(new BlockHit(surface, Vector3Int.up)), Is.False);
+            Assert.That(editor.Apply(new BlockHit(surface, Vector3Int.up)), Is.False);
+            yield return null;
+            Assert.That(world.GetBlock(surface), Is.EqualTo(before));
+            Assert.That(world.GetBlock(surface + Vector3Int.up), Is.EqualTo(above));
+            Assert.That(editor.Hovered, Is.Null, "Без инструмента блок под курсором не подсвечивается");
+
+            // Инструмент снова берётся: стройка снова ставит блок.
+            editor.Tool = BlockTool.Build;
+            Assert.That(editor.Apply(new BlockHit(surface, Vector3Int.up)), Is.True);
+        }
+
+        [UnityTest]
         public IEnumerator PrototypeScene_FallingBlockFliesDownWhileWorldIsAlreadyUpdated()
         {
             yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);

@@ -57,6 +57,8 @@ namespace Emberhold.Tests.PlayMode.Workers
             Assert.That(editor.Apply(hit), Is.True, $"Чертёж костра не поставился в {cell}");
             Assert.That(crew.Orders.At(cell)?.Kind, Is.EqualTo(WorkKind.Campfire));
             Assert.That(crew.Orders.At(cell).Needed, Is.EqualTo(6), "Костёр стоит 6 поленьев");
+            Assert.That(crew.CampfireCost, Is.EqualTo(new ItemDrop("wood", 6)), "Цену в подсказке берём из той же таблицы");
+            Assert.That(CostLabel.Amount(crew.CampfireCost.Value), Is.EqualTo("6 брёвен"));
             Assert.That(editor.Apply(hit), Is.True, "Повторный клик");
             Assert.That(crew.Orders.At(cell), Is.Null, "Повторный клик снимает чертёж");
             Assert.That(editor.Apply(hit), Is.True, "Чертёж снова");
