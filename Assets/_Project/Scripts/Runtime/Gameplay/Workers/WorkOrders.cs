@@ -108,6 +108,23 @@ namespace Emberhold.Gameplay.Workers
 
         public bool Contains(WorkOrder order) => order != null && At(order.Cell) == order;
 
+        /// <summary>
+        /// Над клеткой (в том же или соседнем столбце, на один-два блока выше) есть ещё не выкопанный приказ копать.
+        /// Такой блок рано копать: яму копают слоями сверху вниз, иначе рабочие роют колодцы у края,
+        /// между ними остаются гребни, а в яму с отвесными стенами в два блока уже не спуститься (#146).
+        /// </summary>
+        public bool HasDigAbove(Vector3Int cell)
+        {
+            for (var dy = 1; dy <= 2; dy++)
+            for (var dz = -1; dz <= 1; dz++)
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                if (byCell.TryGetValue(new Vector3Int(cell.x + dx, cell.y + dy, cell.z + dz), out var above) && above.Kind == WorkKind.Dig)
+                    return true;
+            }
+            return false;
+        }
+
         /// <summary>Поставить чертёж блока; cost — что он стоит (null — бесплатно). Null, если клетка уже занята задачей.</summary>
         public WorkOrder AddBuild(Vector3Int cell, Block block, bool fillsExisting, ItemDrop? cost)
         {

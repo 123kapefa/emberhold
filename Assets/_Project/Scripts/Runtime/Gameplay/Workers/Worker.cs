@@ -180,6 +180,7 @@ namespace Emberhold.Gameplay.Workers
                 if (order.Worker != null || order.Priority < bestPriority || !context.IsOrderLit(order)
                     || !WorkOrders.IsValid(context.World, order)
                     || order.Kind == WorkKind.Chop && context.Forest == null
+                    || order.Kind == WorkKind.Dig && context.Orders.HasDigAbove(order.Cell)
                     || !context.TryStandSpot(order.Cell, false, out var stand, out var cost))
                     continue;
                 var from = default(ItemSource);
