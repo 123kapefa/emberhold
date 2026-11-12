@@ -33,8 +33,12 @@ namespace Emberhold.Tests.PlayMode.Workers
             var zone = Object.FindAnyObjectByType<BuildZone>();
             var dropped = Object.FindAnyObjectByType<DroppedItemsView>();
 
-            // Двое рабочих стоят в свете костра.
-            Assert.That(crew.Workers, Has.Count.EqualTo(2));
+            // Стартовый состав (#161) стоит в свете костра: лесоруб, копатель, истопник и двое свободных — они и строят.
+            Assert.That(crew.Workers, Has.Count.EqualTo(5));
+            var roles = new WorkerRole[crew.Workers.Count];
+            for (var i = 0; i < roles.Length; i++)
+                roles[i] = crew.Workers[i].Role;
+            Assert.That(roles, Is.EqualTo(new[] { WorkerRole.Woodcutter, WorkerRole.Digger, WorkerRole.Stoker, WorkerRole.Free, WorkerRole.Free }));
             foreach (var worker in crew.Workers)
                 Assert.That(zone.Contains(view.transform.TransformPoint(worker.Position)), Is.True, $"Рабочий в темноте: {worker.Position}");
 

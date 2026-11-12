@@ -12,7 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c33f397df04c42d6b6c287e6037209a1, type: 3}
   m_Name: Workers
   m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Workers.WorkerSettings
-  count: 2
+  count: 5
+  startRoles:
+  - role: 1
+    count: 1
+  - role: 2
+    count: 1
+  - role: 4
+    count: 1
   moveSpeed: 2.5
   maxStep: 1
   searchLimit: 4096
@@ -24,6 +31,7 @@ MonoBehaviour:
   digHitSeconds: 1
   digHitDamage: 25
   fuelItemId: wood
+  logItemId: wood
   palletLimits:
   - itemId: wood
     count: 20
@@ -33,4 +41,5 @@ MonoBehaviour:
     count: 70
   defaultPalletLimit: 20
   idleSearchSeconds: 0.5
+  fireWaitDistance: 3
   hoodColor: {r: 0.26, g: 0.36, b: 0.3, a: 1}

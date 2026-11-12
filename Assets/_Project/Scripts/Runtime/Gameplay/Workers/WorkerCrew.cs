@@ -139,14 +139,7 @@ namespace Emberhold.Gameplay.Workers
         {
             Orders.Cancelled -= OnOrderCancelled;
             foreach (var visual in visuals)
-            {
-                if (visual.Body != null)
-                    Destroy(visual.Body.gameObject);
-                foreach (var mesh in visual.Meshes)
-                    Destroy(mesh);
-                if (visual.CarryShape != null)
-                    Destroy(visual.CarryShape.Mesh);
-            }
+                DestroyVisual(visual);
             DestroyLines(blueprintLines);
             DestroyLines(digLines);
             DestroyLines(darkBlueprintLines);
@@ -163,6 +156,7 @@ namespace Emberhold.Gameplay.Workers
             Orders.Prune(worldView.World);
             PrunePallets();
             UpdateFuelOrders();
+            UpdateFires();
             var deltaTime = Time.deltaTime;
             foreach (var worker in workers)
                 worker.Tick(deltaTime);
@@ -176,7 +170,12 @@ namespace Emberhold.Gameplay.Workers
             var deltaTime = Time.deltaTime;
             var night = dayNight != null && dayNight.IsNight;
             for (var i = 0; i < workers.Count; i++)
+            {
+                // Роль сменили: облик (капюшон, инструмент, снаряжение) строим заново сразу.
+                if (workers[i].Role != visuals[i].Look.Role)
+                    RebuildVisual(i);
                 Animate(workers[i], visuals[i], space, deltaTime, night);
+            }
             UpdateOrderLines();
         }
 
@@ -528,7 +527,23 @@ namespace Emberhold.Gameplay.Workers
                 droppedItems.Items.Drop(worldView.World, order.Cell, new ItemDrop(order.ItemId, order.Delivered));
         }
 
-        /// <summary>Рабочие встают кольцом в двух блоках от первого источника света (или от центра мира).</summary>
+        /// <summary>Горящие огни для рабочих без дела: они ждут у ближайшего.</summary>
+        private void UpdateFires()
+        {
+            context.Fires.Clear();
+            if (buildZone == null)
+                return;
+            foreach (var source in buildZone.Sources)
+            {
+                if (source != null && source.IsLit)
+                    context.Fires.Add(worldView.transform.InverseTransformPoint(source.transform.position));
+            }
+        }
+
+        /// <summary>
+        /// Рабочие встают кольцом в двух блоках от первого источника света (или от центра мира), роли — по стартовому
+        /// составу из настроек.
+        /// </summary>
         private void Spawn()
         {
             var world = worldView.World;
@@ -542,20 +557,40 @@ namespace Emberhold.Gameplay.Workers
                 var column = WalkSurface.ColumnOf(point);
                 column.x = Mathf.Clamp(column.x, 0, world.SizeInBlocks.x - 1);
                 column.y = Mathf.Clamp(column.y, 0, world.SizeInBlocks.z - 1);
-                workers.Add(new Worker(context, context.Surface.StandPoint(column)));
+                workers.Add(new Worker(context, context.Surface.StandPoint(column), settings.StartRole(i)));
                 // Сначала лицом к огню.
                 var yaw = Mathf.Atan2(center.x - point.x, center.z - point.z) * Mathf.Rad2Deg;
-                visuals.Add(CreateVisual(i, workers[i].Position, yaw));
+                visuals.Add(CreateVisual(i, workers[i].Role, workers[i].Position, yaw));
             }
         }
 
-        private WorkerVisual CreateVisual(int index, Vector3 position, float yaw)
+        /// <summary>Пересобрать облик рабочего под его нынешнюю роль; лицо, место и поворот прежние.</summary>
+        private void RebuildVisual(int index)
+        {
+            var old = visuals[index];
+            var rebuilt = CreateVisual(index, workers[index].Role, old.LastPosition, old.Yaw);
+            rebuilt.Speed = old.Speed;
+            DestroyVisual(old);
+            visuals[index] = rebuilt;
+        }
+
+        private static void DestroyVisual(WorkerVisual visual)
+        {
+            if (visual.Body != null)
+                Destroy(visual.Body.gameObject);
+            foreach (var mesh in visual.Meshes)
+                Destroy(mesh);
+            if (visual.CarryShape != null)
+                Destroy(visual.CarryShape.Mesh);
+        }
+
+        private WorkerVisual CreateVisual(int index, WorkerRole role, Vector3 position, float yaw)
         {
             var body = new GameObject($"Worker {index + 1}");
             body.transform.SetParent(transform, false);
             // Облик по номеру рабочего: у каждого свои кожа, волосы и рубаха. Части двигает анимация.
             // Коллайдеров нет: рабочий не мешает лучу выбора блока.
-            var look = settings.LookFor(index);
+            var look = settings.LookFor(index, role);
             var meshes = WorkerMeshBuilder.BuildParts(look, settings.Height, body.name);
             var parts = new Transform[meshes.Length];
             var skins = new WorkerSkin[meshes.Length];

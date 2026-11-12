@@ -24,14 +24,17 @@ namespace Emberhold.Gameplay.Workers
         /// Если задачу отменили раньше, ноша падает у ног.
         /// </summary>
         Putting,
+        /// <summary>Подходящей задачи нет: идёт ждать к ближайшему огню. По дороге продолжает искать задачу.</summary>
+        ToFire,
     }
 
     /// <summary>
-    /// Рабочий: сам берёт свободную задачу из <see cref="WorkOrders"/> — сначала самую важную (топливо для огня),
+    /// Рабочий: сам берёт свободную задачу своей роли (<see cref="WorkerRoles"/>) из <see cref="WorkOrders"/> — сначала самую важную (топливо для огня),
     /// среди равных ближайшую. Для чертежа приносит ресурс из ближайшей кучки и ставит блок (или костёр), для топлива приносит
     /// полено и кладёт в огонь (за ходку — одна единица ресурса, положить её — PutSeconds), для приказа копать бьёт блок через <see cref="Emberhold.World.Editing.BlockDamage"/>,
     /// для приказа рубить бьёт дерево; один удар за анимацию копки. Ресурс для задачи берёт из кучки на земле или с поддона, что ближе.
-    /// Когда свободных задач нет, относит ничейные кучки на поддоны (<see cref="Pallets"/>), тоже по одной единице за ходку.
+    /// Когда свободных задач нет, относит ничейные кучки на поддоны (<see cref="Pallets"/>), тоже по одной единице за ходку:
+    /// лесоруб — поленья, копатель — остальную добычу, свободный — всё. Если и носить нечего, идёт ждать к ближайшему огню.
     /// Ходит и работает только на освещённых столбцах; если свет ушёл из-под ног, бросает задачу и ношу и уходит к ближайшему свету.
     /// Чистая логика: положение — в координатах мира блоков, вид рисует <see cref="WorkerCrew"/>.
     /// </summary>
@@ -51,10 +54,32 @@ namespace Emberhold.Gameplay.Workers
         private Pallet haulTo;
         private string haulItemId;
 
-        public Worker(WorkerContext context, Vector3 position)
+        private WorkerRole role;
+
+        public Worker(WorkerContext context, Vector3 position, WorkerRole role = WorkerRole.Free)
         {
             this.context = context;
             Position = position;
+            this.role = role;
+        }
+
+        /// <summary>
+        /// Роль: какую работу рабочий берёт. Меняется во время игры; задачу или ношу на поддон, которые новой роли
+        /// не положены, рабочий сразу бросает (ноша падает у ног).
+        /// </summary>
+        public WorkerRole Role
+        {
+            get => role;
+            set
+            {
+                if (role == value)
+                    return;
+                role = value;
+                if (Order != null && !WorkerRoles.Takes(role, Order.Kind)
+                    || haulItemId != null && !WorkerRoles.Hauls(role, haulItemId, context.Settings.LogItemId))
+                    Abandon();
+                timer = 0f;
+            }
         }
 
         /// <summary>Где стоит рабочий: точка на верхе столбца в координатах мира блоков.</summary>
@@ -138,9 +163,21 @@ namespace Emberhold.Gameplay.Workers
                     if (timer <= 0f)
                     {
                         timer = context.Settings.IdleSearchSeconds;
-                        if (!TryTakeOrder())
-                            TryHaul();
+                        if (!TryTakeOrder() && !TryHaul())
+                            TryGoToFire();
                     }
+                    break;
+                case WorkerState.ToFire:
+                    // По дороге к огню задача могла появиться: тогда идём к ней.
+                    timer -= deltaTime;
+                    if (timer <= 0f)
+                    {
+                        timer = context.Settings.IdleSearchSeconds;
+                        if (TryTakeOrder() || TryHaul())
+                            break;
+                    }
+                    if (Walk(deltaTime))
+                        OnArrived();
                     break;
                 case WorkerState.ToPile:
                 case WorkerState.ToSite:
@@ -194,7 +231,7 @@ namespace Emberhold.Gameplay.Workers
             var bestFill = float.PositiveInfinity;
             foreach (var order in context.Orders.Orders)
             {
-                if (order.Worker != null || order.Priority < bestPriority || !context.IsOrderLit(order)
+                if (order.Worker != null || !WorkerRoles.Takes(role, order.Kind) || order.Priority < bestPriority || !context.IsOrderLit(order)
                     || !WorkOrders.IsValid(context.World, order)
                     || order.Kind == WorkKind.Chop && context.Forest == null
                     || order.Kind == WorkKind.Dig && context.HasReachableDigAbove(order.Cell)
@@ -230,28 +267,55 @@ namespace Emberhold.Gameplay.Workers
             return true;
         }
 
-        /// <summary>Задач нет: пойти за ничейной кучкой, чтобы отнести одну её единицу на поддон.</summary>
-        private void TryHaul()
+        /// <summary>
+        /// Задач нет: пойти за ничейной кучкой, которую носит эта роль, чтобы отнести одну её единицу на поддон.
+        /// false — носить нечего.
+        /// </summary>
+        private bool TryHaul()
         {
             if (context.Pallets.All.Count == 0 || context.Items.Items.Count == 0)
-                return;
+                return false;
             context.Flood.Run(context.Surface, Column, context.IsLit);
-            if (!context.TryFindHaul(out var pile, out var pallet, out var stand) || !context.Pallets.Reserve(pallet, pile.Drop.ItemId))
-                return;
+            if (!context.TryFindHaul(role, out var pile, out var pallet, out var stand) || !context.Pallets.Reserve(pallet, pile.Drop.ItemId))
+                return false;
             haulPile = pile;
             haulTo = pallet;
             haulItemId = pile.Drop.ItemId;
             context.HaulClaims[pile] = context.HaulClaims.TryGetValue(pile, out var claimed) ? claimed + 1 : 1;
             source = new ItemSource(pile, null);
             WalkTo(stand, WorkerState.ToPile);
+            return true;
         }
+
+        /// <summary>
+        /// Делать нечего: если ближайший горящий огонь дальше <see cref="WorkerSettings.FireWaitDistance"/>, пойти к нему
+        /// и встать рядом, на ближайшем по пути столбце не дальше этого расстояния (но не в самом огне).
+        /// </summary>
+        private void TryGoToFire()
+        {
+            var wait = context.Settings.FireWaitDistance;
+            if (!context.TryNearestFire(Position, out var fire)
+                || FlatDistance(Position, fire) <= wait)
+                return;
+            context.Flood.Run(context.Surface, Column, context.IsLit);
+            if (!context.Flood.TryNearest(column =>
+                {
+                    var d = FlatDistance(new Vector3(column.x + 0.5f, 0f, column.y + 0.5f), fire);
+                    return d >= 1f && d <= wait;
+                }, out var spot))
+                return;
+            WalkTo(spot, WorkerState.ToFire);
+        }
+
+        private static float FlatDistance(Vector3 a, Vector3 b) => new Vector2(a.x - b.x, a.z - b.z).magnitude;
 
         /// <summary>Есть свободная задача, которую можно начать: ресурс для неё где-то лежит, на земле или на поддоне.</summary>
         private bool HasFreeOrder()
         {
             foreach (var order in context.Orders.Orders)
             {
-                if (order.Worker == null && context.IsOrderLit(order) && (!order.NeedsItems || context.HasItem(order.ItemId)))
+                if (order.Worker == null && WorkerRoles.Takes(role, order.Kind) && context.IsOrderLit(order)
+                    && (!order.NeedsItems || context.HasItem(order.ItemId)))
                     return true;
             }
             return false;
