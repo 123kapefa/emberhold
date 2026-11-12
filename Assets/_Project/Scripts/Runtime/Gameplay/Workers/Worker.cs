@@ -27,8 +27,9 @@ namespace Emberhold.Gameplay.Workers
     }
 
     /// <summary>
-    /// Рабочий: сам берёт свободную задачу из <see cref="WorkOrders"/> — сначала самую важную (топливо для огня),
-    /// среди равных ближайшую. Для чертежа приносит ресурс из ближайшей кучки и ставит блок (или костёр), для топлива приносит
+    /// Рабочий: сам берёт свободную задачу из <see cref="WorkOrders"/> — сначала самого высокого уровня
+    /// (<see cref="OrderPriority"/>: срочный, высокий — по умолчанию топливо для огня, обычный), среди равных ближайшую.
+    /// Срочный приказ может снять его с несрочной работы (<see cref="Answer"/>). Для чертежа приносит ресурс из ближайшей кучки и ставит блок (или костёр), для топлива приносит
     /// полено и кладёт в огонь (за ходку — одна единица ресурса, положить её — PutSeconds), для приказа копать бьёт блок через <see cref="Emberhold.World.Editing.BlockDamage"/>,
     /// для приказа рубить бьёт дерево; один удар за анимацию копки. Ресурс для задачи берёт из кучки на земле или с поддона, что ближе.
     /// Когда свободных задач нет, относит ничейные кучки на поддоны (<see cref="Pallets"/>), тоже по одной единице за ходку.
@@ -180,10 +181,46 @@ namespace Emberhold.Gameplay.Workers
             State = WorkerState.Idle;
         }
 
-        /// <summary>Взять самую важную, а среди равных ближайшую свободную задачу. false — брать нечего.</summary>
-        private bool TryTakeOrder()
+        /// <summary>
+        /// Подходит ли рабочему приказ. Пока любому любой; фильтр по роли (#161) встаёт сюда — его проверяют и обычный выбор задачи,
+        /// и вызов на срочный приказ (<see cref="UrgentCall"/>).
+        /// </summary>
+        public bool Suits(WorkOrder order) => true;
+
+        /// <summary>
+        /// Можно ли снять рабочего на срочный приказ: он в свету и не убегает от темноты, сам срочным не занят, приказ ему подходит.
+        /// Свободного, носильщика и занятого обычной или высокой задачей — можно.
+        /// </summary>
+        public bool CanAnswer(WorkOrder urgent) =>
+            State != WorkerState.Fleeing && context.IsLit(Column) && Order?.Priority != OrderPriority.Urgent && Suits(urgent);
+
+        /// <summary>
+        /// Сколько рабочему идти до свободной задачи (с заходом за ресурсом, если он нужен) от того места, где он стоит;
+        /// бесконечность — взять её он не может.
+        /// </summary>
+        public float CostTo(WorkOrder order)
         {
-            if (!HasFreeOrder())
+            context.Flood.Run(context.Surface, Column, context.IsLit);
+            return TryPlan(order, out _, out _, out var cost) ? cost : float.PositiveInfinity;
+        }
+
+        /// <summary>
+        /// Бросить то, что делает (ноша падает у ног, брошенная задача остаётся другим), и идти на приказ order.
+        /// false — взять его не вышло: рабочий свободен и сам ищет работу.
+        /// </summary>
+        public bool Answer(WorkOrder order)
+        {
+            Abandon();
+            timer = 0f;
+            return TryTakeOrder(order);
+        }
+
+        /// <summary>
+        /// Взять самую важную, а среди равных ближайшую свободную задачу; only — только эту. false — брать нечего.
+        /// </summary>
+        private bool TryTakeOrder(WorkOrder only = null)
+        {
+            if (only == null && !HasFreeOrder())
                 return false;
             context.Flood.Run(context.Surface, Column, context.IsLit);
             WorkOrder best = null;
@@ -194,27 +231,15 @@ namespace Emberhold.Gameplay.Workers
             var bestFill = float.PositiveInfinity;
             foreach (var order in context.Orders.Orders)
             {
-                if (order.Worker != null || order.Priority < bestPriority || !context.IsOrderLit(order)
-                    || !WorkOrders.IsValid(context.World, order)
-                    || order.Kind == WorkKind.Chop && context.Forest == null
-                    || order.Kind == WorkKind.Dig && context.HasReachableDigAbove(order.Cell)
-                    || !context.TryStandSpot(order.Cell, false, out var stand, out var cost))
+                var priority = (int)order.Priority;
+                if (only != null && order != only || priority < bestPriority || !TryPlan(order, out var from, out var stand, out var cost))
                     continue;
-                var from = default(ItemSource);
-                if (order.NeedsItems)
-                {
-                    from = context.NearestSource(order.ItemId, out stand, out var toPile);
-                    if (from.IsNone)
-                        continue;
-                    // Путь от кучки или поддона до чертежа оцениваем по прямой: точный разлив для каждой пары дорог.
-                    cost = toPile + Vector2.Distance(from.Column, new Vector2(order.Cell.x, order.Cell.z));
-                }
                 // Среди огней сначала самый пустой; почти равные по топливу — ближайший.
                 var fill = order.FuelTarget?.FuelFill ?? 0f;
-                if (order.Priority == bestPriority && (fill > bestFill + FillTolerance || fill >= bestFill - FillTolerance && cost >= bestCost))
+                if (priority == bestPriority && (fill > bestFill + FillTolerance || fill >= bestFill - FillTolerance && cost >= bestCost))
                     continue;
                 best = order;
-                bestPriority = order.Priority;
+                bestPriority = priority;
                 bestFill = fill;
                 bestSource = from;
                 bestStand = stand;
@@ -227,6 +252,33 @@ namespace Emberhold.Gameplay.Workers
             best.Worker = this;
             source = bestSource;
             WalkTo(bestStand, !bestSource.IsNone ? WorkerState.ToPile : WorkerState.ToSite);
+            return true;
+        }
+
+        /// <summary>
+        /// Можно ли по последнему разливу взять свободную задачу: откуда начать (кучка или поддон, если нужен ресурс),
+        /// куда идти первым делом и сколько всего идти.
+        /// </summary>
+        private bool TryPlan(WorkOrder order, out ItemSource from, out Vector2Int stand, out float cost)
+        {
+            from = default;
+            if (order.Worker != null || !Suits(order) || !context.IsOrderLit(order)
+                || !WorkOrders.IsValid(context.World, order)
+                || order.Kind == WorkKind.Chop && context.Forest == null
+                || order.Kind == WorkKind.Dig && context.HasReachableDigAbove(order.Cell)
+                || !context.TryStandSpot(order.Cell, false, out stand, out cost))
+            {
+                stand = default;
+                cost = float.PositiveInfinity;
+                return false;
+            }
+            if (!order.NeedsItems)
+                return true;
+            from = context.NearestSource(order.ItemId, out stand, out var toPile);
+            if (from.IsNone)
+                return false;
+            // Путь от кучки или поддона до чертежа оцениваем по прямой: точный разлив для каждой пары дорог.
+            cost = toPile + Vector2.Distance(from.Column, new Vector2(order.Cell.x, order.Cell.z));
             return true;
         }
 

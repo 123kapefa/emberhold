@@ -1410,6 +1410,15 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "RaisePriority",
+                    "type": "Button",
+                    "id": "347c621f-bf78-4163-b770-acf38184ce6e",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "NextForm",
                     "type": "Button",
                     "id": "2a0d6eda-0503-4fee-b9d3-28b1d3363070",
@@ -1574,6 +1583,28 @@
                     "processors": "",
                     "groups": "Keyboard&Mouse",
                     "action": "ToolNone",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "09a73540-1764-46b9-b090-a93041481121",
+                    "path": "<Keyboard>/leftShift",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "RaisePriority",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "6aa7f6a6-f2fd-4be9-8178-c6c45dd49cc1",
+                    "path": "<Keyboard>/rightShift",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "RaisePriority",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
