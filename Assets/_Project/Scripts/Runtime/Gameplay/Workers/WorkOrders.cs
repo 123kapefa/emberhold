@@ -24,6 +24,17 @@ namespace Emberhold.Gameplay.Workers
         Campfire,
     }
 
+    /// <summary>
+    /// Уровень приказа: сначала рабочие берут срочные, потом высокие, потом обычные. Срочный приказ ещё и снимает
+    /// ближайшего рабочего с несрочной работы (<see cref="UrgentCall"/>). Порядок значений — порядок важности.
+    /// </summary>
+    public enum OrderPriority
+    {
+        Normal,
+        High,
+        Urgent,
+    }
+
     /// <summary>Куда рабочие носят топливо (костёр). Отдельно от LightSource, чтобы рабочих проверяли без сцены.</summary>
     public interface IFuelTarget
     {
@@ -51,7 +62,11 @@ namespace Emberhold.Gameplay.Workers
             FillsExisting = fillsExisting;
             ItemId = itemId;
             Needed = needed;
+            Priority = DefaultPriority(kind);
         }
+
+        /// <summary>С каким уровнем приказ ставится: кормить огонь — высокий, остальное — обычный.</summary>
+        public static OrderPriority DefaultPriority(WorkKind kind) => kind == WorkKind.Fuel ? OrderPriority.High : OrderPriority.Normal;
 
         public WorkKind Kind { get; }
         public Vector3Int Cell { get; }
@@ -80,8 +95,8 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Куда нести топливо (для <see cref="WorkKind.Fuel"/>), иначе null.</summary>
         public IFuelTarget FuelTarget { get; internal set; }
 
-        /// <summary>Чем больше, тем раньше рабочие берут задачу: огонь важнее стройки и копки.</summary>
-        public int Priority => Kind == WorkKind.Fuel ? 1 : 0;
+        /// <summary>Уровень приказа: чем выше, тем раньше рабочие берут задачу. Меняет <see cref="WorkOrders.RaisePriority"/>.</summary>
+        public OrderPriority Priority { get; internal set; }
 
         /// <summary>Рабочий, который делает задачу, или null.</summary>
         public Worker Worker { get; internal set; }
@@ -171,6 +186,17 @@ namespace Emberhold.Gameplay.Workers
             if (!Remove(order))
                 return false;
             Cancelled?.Invoke(order);
+            return true;
+        }
+
+        /// <summary>
+        /// Поднять уровень приказа по кругу: обычный → высокий → срочный → обычный. false — такой задачи нет.
+        /// </summary>
+        public bool RaisePriority(WorkOrder order)
+        {
+            if (!Contains(order))
+                return false;
+            order.Priority = order.Priority == OrderPriority.Urgent ? OrderPriority.Normal : order.Priority + 1;
             return true;
         }
 

@@ -87,6 +87,7 @@ namespace Emberhold.Gameplay.Workers
         private GameObject palletLines;
         private int shownOrdersVersion = -1;
         private int shownPalletsVersion = -1;
+        private float urgentTimer;
         private GUIStyle palletLabelStyle;
 
         /// <summary>Чертежи и приказы копать.</summary>
@@ -166,6 +167,13 @@ namespace Emberhold.Gameplay.Workers
             var deltaTime = Time.deltaTime;
             foreach (var worker in workers)
                 worker.Tick(deltaTime);
+            // Срочные приказы снимают ближайшего рабочего с несрочной работы; искать так же часто, как свободный ищет задачу.
+            urgentTimer -= deltaTime;
+            if (urgentTimer <= 0f)
+            {
+                urgentTimer = settings.IdleSearchSeconds;
+                UrgentCall.Dispatch(Orders, workers);
+            }
         }
 
         private void LateUpdate()
@@ -699,7 +707,8 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Подписи над поддонами (что лежит и сколько из скольких) и над чертежами костров (сколько брёвен уже принесли, #150).
+        /// Подписи над поддонами (что лежит и сколько из скольких), над чертежами костров (сколько брёвен уже принесли, #150)
+        /// и над приказами высокого и срочного уровня (#163).
         /// </summary>
         private void OnGUI()
         {
@@ -714,8 +723,14 @@ namespace Emberhold.Gameplay.Workers
                     PalletLabel.Text(pallet, Pallets.Capacity(pallet.ItemId)));
             foreach (var order in Orders.Orders)
             {
+                var text = PriorityLabel.Text(order);
                 if (order.Kind == WorkKind.Campfire && order.ItemId != null)
-                    DrawLabel(camera, order.Cell + new Vector3(0.5f, 1.3f, 0.5f), CostLabel.Progress(order.ItemId, order.Delivered, order.Needed));
+                {
+                    var progress = CostLabel.Progress(order.ItemId, order.Delivered, order.Needed);
+                    text = text != null ? $"{text} · {progress}" : progress;
+                }
+                if (text != null)
+                    DrawLabel(camera, order.Cell + new Vector3(0.5f, 1.3f, 0.5f), text);
             }
         }
 
