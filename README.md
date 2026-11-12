@@ -58,3 +58,17 @@ public static class GameEvents
     private static void ResetStatics() => NightStarted = null;
 }
 ```
+
+## Тесты и плейтест на Маке
+
+Unity на Маке запускается строго по одному. Тесты ветки гоняются командой из основной папки:
+
+```bash
+Tools/unity-tests.sh <ветка> --name <номер карточки>
+Tools/unity-tests.sh --status <номер карточки>
+```
+
+Прогон идёт в служебной папке `.worktrees/unity-tests` (одна на все прогоны, в `.gitignore`),
+итог пишется в `Logs/unity-tests/<имя>/summary.txt`. Поиграть в ветку:
+`Tools/unity-tests.sh --playtest <ветка>` ставит `.worktrees/playtest`, её открывают в Unity Hub.
+Рядом с проектом, в `~/Documents/projects`, скрипт ничего не создаёт.

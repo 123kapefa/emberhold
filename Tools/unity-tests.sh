@@ -2,14 +2,17 @@
 # Прогон тестов Unity (EditMode и PlayMode) для ветки на Маке, по одному на все треды.
 #
 #   Tools/unity-tests.sh <ветка> [--name ИМЯ] [--modes "EditMode PlayMode"] [--timeout МИНУТ] [--wait]
+#   Tools/unity-tests.sh --playtest <ветка>
 #   Tools/unity-tests.sh --status [ИМЯ]
 #   Tools/unity-tests.sh --help
 #
 # Что делает:
-#   1. Готовит worktree ../emberhold-wt-<ИМЯ> на свежем origin/<ветка> (detached, с git lfs pull).
-#      Если в worktree есть незакоммиченные правки или в нём открыт Unity, останавливается.
-#   2. Ждёт общий замок /tmp/emberhold-unity.lock (проверка раз в 30 секунд). В замок пишет
+#   1. Ждёт общий замок /tmp/emberhold-unity.lock (проверка раз в 30 секунд). В замок пишет
 #      owner, pid и unity_pid. Брошенный замок (процесс-владелец и его Unity мертвы) снимает сам.
+#   2. Ставит служебный worktree .worktrees/unity-tests основной папки на свежий origin/<ветка>
+#      (detached, с git lfs pull). Папка одна на все прогоны, Library Unity в ней сохраняется.
+#      Правки, которые Unity сам пересохраняет при открытии, сбрасываются (их diff — discarded.diff).
+#      Если в worktree открыт Unity, останавливается.
 #   3. Гоняет режимы в batchmode по очереди, каждый не дольше --timeout минут (по умолчанию 40).
 #   4. Снимает замок (и при ошибке, и при Ctrl+C) и пишет итог в
 #      Logs/unity-tests/<ИМЯ>/summary.txt основной папки проекта.
@@ -17,13 +20,15 @@
 # По умолчанию уходит в фон и сразу возвращает управление: сессии ждать не нужно.
 # Ход прогона: Logs/unity-tests/<ИМЯ>/status, итог: summary.txt, вывод скрипта: run.log.
 # --wait — работать в этом терминале до конца.
+# --playtest — только поставить .worktrees/playtest на свежий origin/<ветка>, чтобы открыть его
+#   в Unity Hub и поиграть. Тесты не гоняет и замок не берёт; если там открыт Unity, останавливается.
 
 set -u
 
 LOCK=/tmp/emberhold-unity.lock
 POLL=${EMBERHOLD_POLL:-30}
 
-usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; }
 
 die() { echo "unity-tests: $*" >&2; exit 2; }
 
@@ -34,11 +39,12 @@ COMMON=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev
 [ -n "$COMMON" ] && ROOT=$(dirname "$COMMON")
 RESULTS_ROOT="$ROOT/Logs/unity-tests"
 
-BRANCH=""; NAME=""; MODES="EditMode PlayMode"; TIMEOUT_MIN=40; WAIT=0; FOREGROUND=0; STATUS=0
+BRANCH=""; NAME=""; MODES="EditMode PlayMode"; TIMEOUT_MIN=40; WAIT=0; FOREGROUND=0; STATUS=0; PLAYTEST=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --status) STATUS=1 ;;
+    --playtest) PLAYTEST=1 ;;
     --name) NAME="${2:-}"; shift ;;
     --modes) MODES="${2:-}"; shift ;;
     --timeout) TIMEOUT_MIN="${2:-}"; shift ;;
@@ -80,7 +86,58 @@ fi
 case "$TIMEOUT_MIN" in ''|*[!0-9]*) die "--timeout должен быть числом минут" ;; esac
 [ -n "$NAME" ] || NAME=$(echo "$BRANCH" | sed 's#^claude/##; s#[^A-Za-z0-9._-]#-#g')
 OUT="$RESULTS_ROOT/$NAME"
-WT="$(dirname "$ROOT")/emberhold-wt-$NAME"
+# Служебные worktree живут внутри основной папки (.worktrees в .gitignore), а не рядом с ней.
+WT="$ROOT/.worktrees/unity-tests"
+
+# Сетевые команды повторяем: разовый сбой SSL до github.com не должен ронять прогон.
+retry() {
+  local delay
+  for delay in ${EMBERHOLD_RETRY_DELAYS:-2 4 8 16}; do
+    "$@" && return 0
+    echo "Не вышло: $*. Повтор через $delay с."
+    sleep "$delay"
+  done
+  "$@"
+}
+
+# Ставит $WT на свежий origin/$BRANCH. Вызывающий задаёт fail; в $OUT кладёт discarded.diff,
+# если пришлось сбросить правки (обычно это файлы, которые Unity пересохраняет при открытии).
+prepare_worktree() {
+  retry git -C "$ROOT" fetch -q origin "$BRANCH" || fail "git fetch origin $BRANCH не удался"
+  TARGET=$(git -C "$ROOT" rev-parse "refs/remotes/origin/$BRANCH") || fail "нет ветки origin/$BRANCH"
+  # В этом worktree не должен быть открыт Unity (редактор держит папку).
+  if pgrep -if -- "-projectpath $WT" >/dev/null; then
+    fail "В $WT уже открыт Unity. Закройте его и запустите снова."
+  fi
+  if [ -d "$WT" ]; then
+    local dirty
+    dirty=$(git -C "$WT" status --porcelain --untracked-files=no)
+    if [ -n "$dirty" ]; then
+      git -C "$WT" diff > "$OUT/discarded.diff"
+      echo "Сбрасываю правки в $WT (diff: $OUT/discarded.diff):"
+      echo "$dirty"
+    fi
+    GIT_LFS_SKIP_SMUDGE=1 git -C "$WT" checkout -q -f --detach "$TARGET" || fail "git checkout в $WT не удался"
+  else
+    git -C "$ROOT" worktree prune
+    mkdir -p "$(dirname "$WT")" || fail "не создать $(dirname "$WT")"
+    GIT_LFS_SKIP_SMUDGE=1 git -C "$ROOT" worktree add -q --detach "$WT" "$TARGET" || fail "git worktree add $WT не удался"
+  fi
+  retry git -C "$WT" lfs pull || fail "git lfs pull в $WT не удался"
+  COMMIT=$(git -C "$WT" rev-parse --short HEAD)
+}
+
+# Папка для плейтеста: только worktree, без замка и тестов, сразу в этом терминале.
+if [ "$PLAYTEST" = 1 ]; then
+  WT="$ROOT/.worktrees/playtest"
+  OUT="$ROOT/Logs/playtest"
+  mkdir -p "$OUT" || die "не создать $OUT"
+  rm -f "$OUT/discarded.diff"
+  fail() { echo "unity-tests: $*" >&2; exit 1; }
+  prepare_worktree
+  echo "Плейтест: $WT на $BRANCH @ $COMMIT. Откройте эту папку в Unity Hub."
+  exit 0
+fi
 
 # Запуск в фоне: перезапускаем себя в новой сессии, чтобы прогон пережил закрытие терминала.
 if [ "$WAIT" = 0 ] && [ "$FOREGROUND" = 0 ]; then
@@ -98,7 +155,7 @@ if [ "$WAIT" = 0 ] && [ "$FOREGROUND" = 0 ]; then
 fi
 
 mkdir -p "$OUT" || die "не создать $OUT"
-rm -f "$OUT/summary.txt"
+rm -f "$OUT/summary.txt" "$OUT/discarded.diff"
 status() { echo "$* $(date '+%F %T')" > "$OUT/status"; echo "[$(date '+%T')] $*"; }
 
 UNITY_PID=""
@@ -117,41 +174,8 @@ trap 'exit 130' INT TERM HUP
 
 fail() { status "failed"; echo "$*" | tee "$OUT/summary.txt"; exit 1; }
 
-# Сетевые команды повторяем: разовый сбой SSL до github.com не должен ронять прогон.
-retry() {
-  local delay
-  for delay in ${EMBERHOLD_RETRY_DELAYS:-2 4 8 16}; do
-    "$@" && return 0
-    echo "Не вышло: $*. Повтор через $delay с."
-    sleep "$delay"
-  done
-  "$@"
-}
-
-# 1. Worktree.
-status "preparing worktree"
-retry git -C "$ROOT" fetch -q origin "$BRANCH" || fail "git fetch origin $BRANCH не удался"
-TARGET=$(git -C "$ROOT" rev-parse "refs/remotes/origin/$BRANCH") || fail "нет ветки origin/$BRANCH"
-if [ -d "$WT" ]; then
-  [ -z "$(git -C "$WT" status --porcelain --untracked-files=no)" ] \
-    || fail "В $WT есть незакоммиченные правки, прогон остановлен. Разберитесь с ними вручную."
-  GIT_LFS_SKIP_SMUDGE=1 git -C "$WT" checkout -q --detach "$TARGET" || fail "git checkout в $WT не удался"
-else
-  GIT_LFS_SKIP_SMUDGE=1 git -C "$ROOT" worktree add -q --detach "$WT" "$TARGET" || fail "git worktree add $WT не удался"
-fi
-retry git -C "$WT" lfs pull || fail "git lfs pull в $WT не удался"
-COMMIT=$(git -C "$WT" rev-parse --short HEAD)
-
-VERSION=$(sed -n 's/^m_EditorVersion: *//p' "$WT/ProjectSettings/ProjectVersion.txt")
-UNITY="${UNITY_PATH:-/Applications/Unity/Hub/Editor/$VERSION/Unity.app/Contents/MacOS/Unity}"
-[ -x "$UNITY" ] || fail "Не найден Unity $VERSION: $UNITY"
-
-# В этом worktree не должен быть открыт Unity (редактор держит папку).
-if pgrep -if -- "-projectpath $WT" >/dev/null; then
-  fail "В $WT уже открыт Unity. Закройте его и запустите прогон снова."
-fi
-
-# 2. Замок.
+# 1. Замок. Берём его до worktree: папка прогона одна на всех, готовить её можно только
+# тому, кто сейчас гоняет Unity.
 lock_is_stale() {
   local pid upid
   pid=$(lock_field pid); upid=$(lock_field unity_pid)
@@ -168,7 +192,7 @@ lock_is_stale() {
 while :; do
   if mkdir "$LOCK" 2>/dev/null; then
     HAVE_LOCK=1
-    echo "$NAME ($BRANCH @ $COMMIT)" > "$LOCK/owner"
+    echo "$NAME ($BRANCH)" > "$LOCK/owner"
     echo "$$" > "$LOCK/pid"
     date '+%F %T' > "$LOCK/started"
     break
@@ -181,6 +205,15 @@ while :; do
   status "waiting for lock: $(lock_field owner)"
   sleep "$POLL"
 done
+
+# 2. Worktree.
+status "preparing worktree"
+prepare_worktree
+echo "$NAME ($BRANCH @ $COMMIT)" > "$LOCK/owner"
+
+VERSION=$(sed -n 's/^m_EditorVersion: *//p' "$WT/ProjectSettings/ProjectVersion.txt")
+UNITY="${UNITY_PATH:-/Applications/Unity/Hub/Editor/$VERSION/Unity.app/Contents/MacOS/Unity}"
+[ -x "$UNITY" ] || fail "Не найден Unity $VERSION: $UNITY"
 
 # 3. Прогон режимов.
 run_mode() {
@@ -234,6 +267,7 @@ rm -rf "$LOCK"; HAVE_LOCK=0
   echo "Ветка $BRANCH @ $COMMIT, worktree $WT, $(date '+%F %T')"
   for MODE in $MODES; do summarize_mode "$MODE"; done
   [ -f "$OUT/summary.tmp" ] && cat "$OUT/summary.tmp"
+  [ -s "$OUT/discarded.diff" ] && echo "Перед прогоном сброшены правки в worktree: $OUT/discarded.diff"
   echo "Логи: $OUT"
 } > "$OUT/summary.txt"
 rm -f "$OUT/summary.tmp"
