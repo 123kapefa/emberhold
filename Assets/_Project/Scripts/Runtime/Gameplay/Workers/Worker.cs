@@ -388,7 +388,7 @@ namespace Emberhold.Gameplay.Workers
                 FetchItems();
                 return;
             }
-            if (source.Pile != null && !context.Items.Items.Contains(source.Pile))
+            if (source.Pile != null && !context.Items.Contains(source.Pile))
                 context.MinedBy.Remove(source.Pile);
             source = default;
             Carrying = taken;

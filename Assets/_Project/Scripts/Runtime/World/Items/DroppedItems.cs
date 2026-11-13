@@ -78,6 +78,9 @@ namespace Emberhold.World.Items
             return item;
         }
 
+        /// <summary>Лежит ли ещё кучка на земле.</summary>
+        public bool Contains(DroppedItem item) => items.Contains(item);
+
         /// <summary>Убрать предмет (например, его подобрал рабочий).</summary>
         public bool Remove(DroppedItem item)
         {
