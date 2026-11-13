@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Emberhold.World.Voxels;
 using UnityEngine;
@@ -42,6 +43,9 @@ namespace Emberhold.World.Items
 
         public IReadOnlyList<DroppedItem> Items => items;
 
+        /// <summary>Ресурс положен (выпал из блока, дерева или его бросили): кучка, в которой он оказался.</summary>
+        public event Action<DroppedItem> Dropped;
+
         /// <summary>Номер изменения: растёт, когда предмет появился, исчез или сдвинулся.</summary>
         public int Version { get; private set; }
 
@@ -65,10 +69,17 @@ namespace Emberhold.World.Items
             var item = new DroppedItem(drop, new Vector3(cell.x + 0.5f, RestHeight(world, cell), cell.z + 0.5f));
             Version++;
             if (TryMerge(item, out var pile))
+            {
+                Dropped?.Invoke(pile);
                 return pile;
+            }
             items.Add(item);
+            Dropped?.Invoke(item);
             return item;
         }
+
+        /// <summary>Лежит ли ещё кучка на земле.</summary>
+        public bool Contains(DroppedItem item) => items.Contains(item);
 
         /// <summary>Убрать предмет (например, его подобрал рабочий).</summary>
         public bool Remove(DroppedItem item)

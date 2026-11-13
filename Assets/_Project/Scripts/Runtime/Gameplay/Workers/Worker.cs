@@ -24,6 +24,8 @@ namespace Emberhold.Gameplay.Workers
         /// Если задачу отменили раньше, ноша падает у ног.
         /// </summary>
         Putting,
+        /// <summary>Подходящей задачи нет: идёт ждать к ближайшему огню. По дороге продолжает искать задачу.</summary>
+        ToFire,
     }
 
     /// <summary>
@@ -31,7 +33,11 @@ namespace Emberhold.Gameplay.Workers
     /// среди равных ближайшую. Для чертежа приносит ресурс из ближайшей кучки и ставит блок (или костёр), для топлива приносит
     /// полено и кладёт в огонь (за ходку — одна единица ресурса, положить её — PutSeconds), для приказа копать бьёт блок через <see cref="Emberhold.World.Editing.BlockDamage"/>,
     /// для приказа рубить бьёт дерево; один удар за анимацию копки. Ресурс для задачи берёт из кучки на земле или с поддона, что ближе.
-    /// Когда свободных задач нет, относит ничейные кучки на поддоны (<see cref="Pallets"/>), тоже по одной единице за ходку.
+    /// Взяв приказ, держится за его задание (<see cref="WorkAssignment"/>) и получает его класс (<see cref="Role"/>): следующие
+    /// приказы берёт только из этого задания, пока они есть и до них можно добраться; потом снова свободный.
+    /// Что выбил из блока или дерева, сам относит на поддоны (<see cref="Pallets"/>) раньше следующих приказов, по одной единице
+    /// за ходку, и держит класс, пока не отнесёт; если нести некуда — кучка становится ничейной. Ничейные кучки носит любой
+    /// свободный, когда задач нет. Если и носить нечего, идёт ждать к ближайшему огню.
     /// Ходит и работает только на освещённых столбцах; если свет ушёл из-под ног, бросает задачу и ношу и уходит к ближайшему свету.
     /// Чистая логика: положение — в координатах мира блоков, вид рисует <see cref="WorkerCrew"/>.
     /// </summary>
@@ -56,6 +62,18 @@ namespace Emberhold.Gameplay.Workers
             this.context = context;
             Position = position;
         }
+
+        /// <summary>Задание, за которое рабочий держится, или null — свободен.</summary>
+        public WorkAssignment Assignment { get; private set; }
+
+        /// <summary>
+        /// Класс рабочего: класс задания, пока в нём есть приказы; потом — класс добычи, пока он относит выбитое на поддон;
+        /// иначе свободный. По нему вид меняет облик.
+        /// </summary>
+        public WorkerRole Role => Assignment is { IsOver: false } assignment ? assignment.Role : minedRole;
+
+        // Класс, с которым выбита ещё не отнесённая добыча (копатель, лесоруб), или Free.
+        private WorkerRole minedRole;
 
         /// <summary>Где стоит рабочий: точка на верхе столбца в координатах мира блоков.</summary>
         public Vector3 Position { get; private set; }
@@ -138,9 +156,21 @@ namespace Emberhold.Gameplay.Workers
                     if (timer <= 0f)
                     {
                         timer = context.Settings.IdleSearchSeconds;
-                        if (!TryTakeOrder())
-                            TryHaul();
+                        if (!TryHaulMined() && !TryTakeOrder() && !TryHaul(null))
+                            TryGoToFire();
                     }
+                    break;
+                case WorkerState.ToFire:
+                    // По дороге к огню задача могла появиться: тогда идём к ней.
+                    timer -= deltaTime;
+                    if (timer <= 0f)
+                    {
+                        timer = context.Settings.IdleSearchSeconds;
+                        if (TryTakeOrder() || TryHaul(null))
+                            break;
+                    }
+                    if (Walk(deltaTime))
+                        OnArrived();
                     break;
                 case WorkerState.ToPile:
                 case WorkerState.ToSite:
@@ -184,7 +214,10 @@ namespace Emberhold.Gameplay.Workers
         private bool TryTakeOrder()
         {
             if (!HasFreeOrder())
+            {
+                LeaveAssignment();
                 return false;
+            }
             context.Flood.Run(context.Surface, Column, context.IsLit);
             WorkOrder best = null;
             var bestSource = default(ItemSource);
@@ -194,7 +227,7 @@ namespace Emberhold.Gameplay.Workers
             var bestFill = float.PositiveInfinity;
             foreach (var order in context.Orders.Orders)
             {
-                if (order.Worker != null || order.Priority < bestPriority || !context.IsOrderLit(order)
+                if (order.Worker != null || !CanJoin(order) || order.Priority < bestPriority || !context.IsOrderLit(order)
                     || !WorkOrders.IsValid(context.World, order)
                     || order.Kind == WorkKind.Chop && context.Forest == null
                     || order.Kind == WorkKind.Dig && context.HasReachableDigAbove(order.Cell)
@@ -222,7 +255,12 @@ namespace Emberhold.Gameplay.Workers
             }
 
             if (best == null)
+            {
+                // В своём задании сейчас делать нечего (темно, нет ресурса): отпускаем его, со следующего поиска — любые.
+                LeaveAssignment();
                 return false;
+            }
+            JoinAssignment(best.Assignment);
             Order = best;
             best.Worker = this;
             source = bestSource;
@@ -230,31 +268,97 @@ namespace Emberhold.Gameplay.Workers
             return true;
         }
 
-        /// <summary>Задач нет: пойти за ничейной кучкой, чтобы отнести одну её единицу на поддон.</summary>
-        private void TryHaul()
+        /// <summary>
+        /// Своя добыча на земле: отнести одну её единицу на поддон раньше приказов. Нести некуда — кучки становятся ничейными,
+        /// а рабочий снова свободен. false — своей добычи нет или её не отнести.
+        /// </summary>
+        private bool TryHaulMined()
+        {
+            if (minedRole == WorkerRole.Free)
+                return false;
+            if (context.HasMined(this) && TryHaul(this))
+                return true;
+            context.ForgetMined(this);
+            minedRole = WorkerRole.Free;
+            return false;
+        }
+
+        /// <summary>
+        /// Пойти за кучкой, чтобы отнести одну её единицу на поддон: miner — за своей добычей, null — за ничейной.
+        /// false — носить нечего.
+        /// </summary>
+        private bool TryHaul(Worker miner)
         {
             if (context.Pallets.All.Count == 0 || context.Items.Items.Count == 0)
-                return;
+                return false;
             context.Flood.Run(context.Surface, Column, context.IsLit);
-            if (!context.TryFindHaul(out var pile, out var pallet, out var stand) || !context.Pallets.Reserve(pallet, pile.Drop.ItemId))
-                return;
+            if (!context.TryFindHaul(miner, out var pile, out var pallet, out var stand) || !context.Pallets.Reserve(pallet, pile.Drop.ItemId))
+                return false;
             haulPile = pile;
             haulTo = pallet;
             haulItemId = pile.Drop.ItemId;
             context.HaulClaims[pile] = context.HaulClaims.TryGetValue(pile, out var claimed) ? claimed + 1 : 1;
             source = new ItemSource(pile, null);
             WalkTo(stand, WorkerState.ToPile);
+            return true;
         }
+
+        /// <summary>
+        /// Делать нечего: если ближайший горящий огонь дальше <see cref="WorkerSettings.FireWaitDistance"/>, пойти к нему
+        /// и встать рядом, на ближайшем по пути столбце не дальше этого расстояния (но не в самом огне).
+        /// </summary>
+        private void TryGoToFire()
+        {
+            var wait = context.Settings.FireWaitDistance;
+            if (!context.TryNearestFire(Position, out var fire)
+                || FlatDistance(Position, fire) <= wait)
+                return;
+            context.Flood.Run(context.Surface, Column, context.IsLit);
+            if (!context.Flood.TryNearest(column =>
+                {
+                    var d = FlatDistance(new Vector3(column.x + 0.5f, 0f, column.y + 0.5f), fire);
+                    return d >= 1f && d <= wait;
+                }, out var spot))
+                return;
+            WalkTo(spot, WorkerState.ToFire);
+        }
+
+        private static float FlatDistance(Vector3 a, Vector3 b) => new Vector2(a.x - b.x, a.z - b.z).magnitude;
 
         /// <summary>Есть свободная задача, которую можно начать: ресурс для неё где-то лежит, на земле или на поддоне.</summary>
         private bool HasFreeOrder()
         {
             foreach (var order in context.Orders.Orders)
             {
-                if (order.Worker == null && context.IsOrderLit(order) && (!order.NeedsItems || context.HasItem(order.ItemId)))
+                if (order.Worker == null && CanJoin(order) && context.IsOrderLit(order)
+                    && (!order.NeedsItems || context.HasItem(order.ItemId)))
                     return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Можно ли взять приказ: пока держит задание, в котором ещё есть приказы, — только из него; свободный — из любого
+        /// задания, где есть место ещё для одного человека.
+        /// </summary>
+        private bool CanJoin(WorkOrder order) => Assignment is { IsOver: false }
+            ? order.Assignment == Assignment
+            : order.Assignment.HasRoom;
+
+        private void JoinAssignment(WorkAssignment assignment)
+        {
+            if (Assignment == assignment)
+                return;
+            LeaveAssignment();
+            Assignment = assignment;
+            assignment.Join(this);
+        }
+
+        /// <summary>Отпустить задание: снова свободный.</summary>
+        private void LeaveAssignment()
+        {
+            Assignment?.Leave(this);
+            Assignment = null;
         }
 
         /// <summary>Найти кучку или поддон с ресурсом для своего чертежа и пойти туда; если ресурса нет — отпустить задачу.</summary>
@@ -284,6 +388,8 @@ namespace Emberhold.Gameplay.Workers
                 FetchItems();
                 return;
             }
+            if (source.Pile != null && !context.Items.Contains(source.Pile))
+                context.MinedBy.Remove(source.Pile);
             source = default;
             Carrying = taken;
             ReleaseClaim();
@@ -390,11 +496,13 @@ namespace Emberhold.Gameplay.Workers
             {
                 // Урон копится на дереве или пне, даже если рабочий уйдёт; срубленное дерево и выкорчеванный пень сами кладут поленья.
                 timer += context.Settings.DigHitSeconds;
+                context.Miner = this;
                 var done = Order.Stump != null
                     ? context.Forest.HitStump(context.World, Order.Stump, context.Settings.DigHitDamage)
                     : context.Forest.Hit(context.World, Order.Tree, context.Settings.DigHitDamage);
+                context.Miner = null;
                 if (done)
-                    Finish();
+                    FinishMining();
                 return;
             }
 
@@ -402,10 +510,13 @@ namespace Emberhold.Gameplay.Workers
             {
                 // Один удар за анимацию копки; снятые ХП остаются у блока, даже если рабочий уйдёт.
                 timer += context.Settings.DigHitSeconds;
-                if (!context.Damage.Hit(context.World, Order.Cell, context.Settings.DigHitDamage))
+                context.Miner = this;
+                var broken = context.Damage.Hit(context.World, Order.Cell, context.Settings.DigHitDamage);
+                context.Miner = null;
+                if (!broken)
                     return;
                 context.Settle(Order.Cell);
-                Finish();
+                FinishMining();
                 return;
             }
 
@@ -483,6 +594,14 @@ namespace Emberhold.Gameplay.Workers
                     context.HaulClaims[haulPile] = claimed - 1;
             }
             haulPile = null;
+        }
+
+        /// <summary>Блок выкопан или дерево срублено: если что-то выпало, класс держится, пока добыча не на поддоне.</summary>
+        private void FinishMining()
+        {
+            if (context.HasMined(this))
+                minedRole = WorkerRoles.For(Order.Kind);
+            Finish();
         }
 
         private void Finish()
