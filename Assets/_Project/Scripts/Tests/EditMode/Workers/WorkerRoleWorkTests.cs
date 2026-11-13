@@ -322,7 +322,9 @@ namespace Emberhold.Tests.EditMode.Workers
 
             Assert.That(pallet.Count, Is.EqualTo(2));
             Assert.That(storedBeforeSecondOrder, Is.EqualTo(1), "Первый камень отнесён до второго приказа");
-            Assert.That(classes, Is.EquivalentTo(new[] { WorkerRole.Free, WorkerRole.Digger }), "Всё задание — копатель");
+            Assert.That(classes, Is.EquivalentTo(new[] { WorkerRole.Digger }), "Всё задание, с ношей, — копатель");
+            Run(1f, () => false, worker);
+            Assert.That(worker.Role, Is.EqualTo(WorkerRole.Free), "Задание и добыча кончились — свободный");
         }
 
         [Test]
