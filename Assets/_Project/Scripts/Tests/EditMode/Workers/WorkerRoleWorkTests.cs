@@ -2,6 +2,7 @@ using System;
 using Emberhold.Gameplay.Workers;
 using Emberhold.World.Editing;
 using Emberhold.World.Items;
+using Emberhold.World.Trees;
 using Emberhold.World.Voxels;
 using NUnit.Framework;
 using UnityEngine;
@@ -9,7 +10,7 @@ using Object = UnityEngine.Object;
 
 namespace Emberhold.Tests.EditMode.Workers
 {
-    /// <summary>Роли задают работу (#161): кто какие задачи берёт, кто что носит на поддоны, где ждёт без дела.</summary>
+    /// <summary>Класс даёт задание (#161): какой класс у рабочего, сколько он держит задание, где ждёт без дела.</summary>
     public sealed class WorkerRoleWorkTests
     {
         private const float Step = 0.1f;
@@ -22,6 +23,8 @@ namespace Emberhold.Tests.EditMode.Workers
         private WorkerSettings settings;
         private Pallets pallets;
         private WorkerContext context;
+        private Forest forest;
+        private TreeSpecies birch;
 
         [SetUp]
         public void SetUp()
@@ -38,172 +41,294 @@ namespace Emberhold.Tests.EditMode.Workers
             damage.Destroyed += (block, destroyed) => items.OnBlockDestroyed(world, block, destroyed);
             settings = ScriptableObject.CreateInstance<WorkerSettings>();
             pallets = new Pallets(_ => 20);
-            context = new WorkerContext(world, orders, items, damage, new BlockStability(), settings, null, pallets: pallets);
+            forest = new Forest(items);
+            birch = TreeSpecies.Create("Берёза", 75f, 3);
+            context = new WorkerContext(world, orders, items, damage, new BlockStability(), settings, null, forest: forest, pallets: pallets);
         }
 
         [TearDown]
-        public void TearDown() => Object.DestroyImmediate(settings);
-
-        [Test]
-        public void Roles_TakeTheirWorkKinds()
+        public void TearDown()
         {
-            foreach (WorkKind kind in Enum.GetValues(typeof(WorkKind)))
-            {
-                Assert.That(WorkerRoles.Takes(WorkerRole.Free, kind), Is.True, $"Свободный берёт {kind}");
-                Assert.That(WorkerRoles.Takes(WorkerRole.Digger, kind), Is.EqualTo(kind == WorkKind.Dig), $"Копатель и {kind}");
-                Assert.That(WorkerRoles.Takes(WorkerRole.Woodcutter, kind), Is.EqualTo(kind == WorkKind.Chop), $"Лесоруб и {kind}");
-                Assert.That(WorkerRoles.Takes(WorkerRole.Builder, kind), Is.EqualTo(kind is WorkKind.Build or WorkKind.Campfire),
-                    $"Строитель и {kind}");
-                Assert.That(WorkerRoles.Takes(WorkerRole.Stoker, kind), Is.EqualTo(kind == WorkKind.Fuel), $"Истопник и {kind}");
-                foreach (var warrior in new[] { WorkerRole.Swordsman, WorkerRole.Archer, WorkerRole.Spearman })
-                    Assert.That(WorkerRoles.Takes(warrior, kind), Is.False, $"{warrior} работ не берёт");
-            }
-
-            Assert.That(WorkerRoles.Hauls(WorkerRole.Free, "stone", "wood"), Is.True);
-            Assert.That(WorkerRoles.Hauls(WorkerRole.Free, "wood", "wood"), Is.True);
-            Assert.That(WorkerRoles.Hauls(WorkerRole.Woodcutter, "wood", "wood"), Is.True);
-            Assert.That(WorkerRoles.Hauls(WorkerRole.Woodcutter, "stone", "wood"), Is.False);
-            Assert.That(WorkerRoles.Hauls(WorkerRole.Digger, "stone", "wood"), Is.True);
-            Assert.That(WorkerRoles.Hauls(WorkerRole.Digger, "wood", "wood"), Is.False);
-            Assert.That(WorkerRoles.Hauls(WorkerRole.Builder, "stone", "wood"), Is.False);
-            Assert.That(WorkerRoles.Hauls(WorkerRole.Stoker, "wood", "wood"), Is.False);
-            Assert.That(WorkerRoles.Hauls(WorkerRole.Swordsman, "stone", "wood"), Is.False);
+            Object.DestroyImmediate(settings);
+            Object.DestroyImmediate(birch);
         }
 
         [Test]
-        public void Digger_DigsAndLeavesBlueprint_BuilderBuildsAndLeavesDig()
+        public void Roles_ComeFromWorkKind()
         {
-            var (dig, build) = DigAndBuildOrders();
-            var digger = Spawn(new Vector2Int(9, 9), WorkerRole.Digger);
-            var builder = Spawn(new Vector2Int(9, 10), WorkerRole.Builder);
-
-            var diggerTookBuild = false;
-            var builderTookDig = false;
-            Run(30f, () =>
-            {
-                diggerTookBuild |= digger.Order == build;
-                builderTookDig |= builder.Order == dig;
-                return orders.Orders.Count == 0;
-            }, digger, builder);
-
-            Assert.That(orders.Orders, Is.Empty, "Обе задачи сделаны");
-            Assert.That(diggerTookBuild, Is.False, "Копатель не строит");
-            Assert.That(builderTookDig, Is.False, "Строитель не копает");
+            Assert.That(WorkerRoles.For(WorkKind.Dig), Is.EqualTo(WorkerRole.Digger));
+            Assert.That(WorkerRoles.For(WorkKind.Chop), Is.EqualTo(WorkerRole.Woodcutter));
+            Assert.That(WorkerRoles.For(WorkKind.Build), Is.EqualTo(WorkerRole.Builder));
+            Assert.That(WorkerRoles.For(WorkKind.Campfire), Is.EqualTo(WorkerRole.Builder));
+            Assert.That(WorkerRoles.For(WorkKind.Fuel), Is.EqualTo(WorkerRole.Stoker));
         }
 
         [Test]
-        public void Specialist_WithoutOwnWorkStaysIdle_FreeTakesAnything()
+        public void Worker_GetsClassOfTaskAndIsFreeAfterIt()
         {
-            DigAndBuildOrders();
-            var stoker = Spawn(new Vector2Int(9, 9), WorkerRole.Stoker);
-            var swordsman = Spawn(new Vector2Int(20, 20), WorkerRole.Swordsman);
-            var start = swordsman.Position;
+            var (dig, _) = DigAndBuildOrders();
+            orders.Cancel(orders.Orders[1]);
+            var worker = Spawn(new Vector2Int(9, 9));
+            Assert.That(worker.Role, Is.EqualTo(WorkerRole.Free), "Без задания — свободный");
 
-            Run(5f, () => false, stoker, swordsman);
-            Assert.That(stoker.Order, Is.Null, "У истопника нет задач топлива");
-            Assert.That(swordsman.Order, Is.Null, "Воин работ не берёт");
-            Assert.That(swordsman.State, Is.EqualTo(WorkerState.Idle));
-            Assert.That(swordsman.Position, Is.EqualTo(start), "Без огней ждёт, где стоит");
-
-            var free = Spawn(new Vector2Int(9, 10));
-            Assert.That(free.Role, Is.EqualTo(WorkerRole.Free), "По умолчанию рабочий свободный");
-            Run(30f, () => orders.Orders.Count == 0, stoker, swordsman, free);
-            Assert.That(orders.Orders, Is.Empty, "Свободный сделал и копку, и стройку");
-        }
-
-        [Test]
-        public void Stoker_CarriesFuel_BuilderDoesNot()
-        {
-            items.Drop(world, new Vector3Int(6, Ground, 6), new ItemDrop("wood", 2));
-            var fire = new Fire(4f, 0f);
-            var fuel = orders.AddFuel(new Vector3Int(14, Ground, 14), fire, "wood", 1);
-            var builder = Spawn(new Vector2Int(9, 9), WorkerRole.Builder);
-
-            Run(5f, () => false, builder);
-            Assert.That(builder.Order, Is.Null, "Строитель огонь не кормит");
-            Assert.That(fire.Amount, Is.Zero);
-
-            var stoker = Spawn(new Vector2Int(9, 10), WorkerRole.Stoker);
-            Run(30f, () => !orders.Contains(fuel), builder, stoker);
-            Assert.That(fire.Amount, Is.EqualTo(1f), "Истопник принёс полено");
-        }
-
-        [Test]
-        public void Haul_DiggerCarriesStone_WoodcutterCarriesLogs()
-        {
-            items.Drop(world, new Vector3Int(6, Ground, 6), new ItemDrop("stone", 2));
-            items.Drop(world, new Vector3Int(6, Ground, 12), new ItemDrop("wood", 2));
-            var first = pallets.Add(world, new Vector3Int(16, Ground, 6));
-            var second = pallets.Add(world, new Vector3Int(16, Ground, 12));
-            var digger = Spawn(new Vector2Int(9, 9), WorkerRole.Digger);
-            var builder = Spawn(new Vector2Int(9, 10), WorkerRole.Builder);
-
-            var diggerCarriedWood = false;
-            var builderHauled = false;
-            Run(60f, () =>
-            {
-                diggerCarriedWood |= digger.Carrying?.ItemId == "wood";
-                builderHauled |= builder.HaulTarget != null;
-                return Stored("stone") == 2;
-            }, digger, builder);
-
-            Assert.That(Stored("stone"), Is.EqualTo(2), "Копатель отнёс камень");
-            Assert.That(Stored("wood"), Is.Zero, "Поленья копатель не носит");
-            Assert.That(diggerCarriedWood, Is.False);
-            Assert.That(builderHauled, Is.False, "Строитель добычу на поддоны не носит");
-
-            var woodcutter = Spawn(new Vector2Int(9, 11), WorkerRole.Woodcutter);
-            Run(60f, () => Stored("wood") == 2, digger, builder, woodcutter);
-            Assert.That(Stored("wood"), Is.EqualTo(2), "Лесоруб отнёс поленья");
-            Assert.That(items.Items, Is.Empty);
-
-            int Stored(string itemId) =>
-                (first.ItemId == itemId ? first.Count : 0) + (second.ItemId == itemId ? second.Count : 0);
-        }
-
-        [Test]
-        public void RoleChange_DropsWorkTheNewRoleDoesNotTake()
-        {
-            var cell = new Vector3Int(12, Ground - 1, 12);
-            world.SetBlock(cell, Block.Full(BlockMaterials.Stone));
-            var dig = orders.AddDig(cell);
-            var worker = Spawn(new Vector2Int(9, 9), WorkerRole.Digger);
-
-            Run(20f, () => worker.State == WorkerState.Working, worker);
+            Run(5f, () => worker.Order != null, worker);
             Assert.That(worker.Order, Is.SameAs(dig));
+            Assert.That(worker.Role, Is.EqualTo(WorkerRole.Digger), "Взял копку — копатель");
+            Assert.That(worker.Assignment, Is.SameAs(dig.Assignment));
 
-            worker.Role = WorkerRole.Builder;
-            Assert.That(worker.Role, Is.EqualTo(WorkerRole.Builder));
-            Assert.That(worker.Order, Is.Null, "Строитель копку бросил");
-            Assert.That(dig.Worker, Is.Null, "Задача снова свободна");
-            Assert.That(orders.Contains(dig), Is.True, "Задача осталась");
-            var taken = damage.Taken(cell);
-            Run(5f, () => false, worker);
-            Assert.That(damage.Taken(cell), Is.EqualTo(taken), "Больше не бьёт");
-
-            worker.Role = WorkerRole.Digger;
             Run(20f, () => !orders.Contains(dig), worker);
-            Assert.That(world.GetBlock(cell).IsAir, Is.True, "Снова копатель — докопал");
+            Assert.That(orders.Contains(dig), Is.False);
+            // Выпал камень, но поддона нет: нести некуда, кучка ничейная, рабочий снова свободный.
+            Run(1f, () => false, worker);
+            Assert.That(worker.Role, Is.EqualTo(WorkerRole.Free), "Задание кончилось — снова свободный");
+            Assert.That(context.MinedBy, Is.Empty, "Кучка без поддона стала ничейной");
+            Assert.That(worker.Assignment, Is.Null);
+            Assert.That(dig.Assignment.Workers, Is.Empty);
         }
 
         [Test]
-        public void RoleChange_KeepsWorkTheNewRoleTakes()
+        public void Worker_IsFreeAgainWhenPlayerCancelsTask()
         {
             items.Drop(world, new Vector3Int(4, Ground, 4), new ItemDrop("stone", 1));
             var build = orders.AddBuild(new Vector3Int(14, Ground, 12), Block.Full(BlockMaterials.Stone), false, new ItemDrop("stone", 1));
             var worker = Spawn(new Vector2Int(9, 9));
 
             Run(20f, () => worker.Carrying != null, worker);
-            Assert.That(worker.Order, Is.SameAs(build));
+            Assert.That(worker.Role, Is.EqualTo(WorkerRole.Builder), "Несёт камень к чертежу — строитель");
 
-            worker.Role = WorkerRole.Builder;
-            Assert.That(worker.Order, Is.SameAs(build), "Строитель продолжает стройку");
-            Assert.That(worker.Carrying, Is.Not.Null);
-
-            worker.Role = WorkerRole.Woodcutter;
-            Assert.That(worker.Order, Is.Null, "Лесоруб стройку бросил");
+            orders.Cancel(build);
+            Assert.That(worker.Role, Is.EqualTo(WorkerRole.Free), "Чертёж сняли — сразу свободный");
+            Run(0.2f, () => false, worker);
+            Assert.That(worker.Order, Is.Null);
             Assert.That(worker.Carrying, Is.Null, "Камень упал у ног");
+        }
+
+        [Test]
+        public void Each_TaskKindGivesItsClass()
+        {
+            var (dig, build) = DigAndBuildOrders();
+            items.Drop(world, new Vector3Int(20, Ground, 20), new ItemDrop("wood", 1));
+            var fire = new Fire(4f, 0f);
+            var fuel = orders.AddFuel(new Vector3Int(24, Ground, 24), fire, "wood", 1);
+            var workers = new[] { Spawn(new Vector2Int(9, 9)), Spawn(new Vector2Int(9, 10)), Spawn(new Vector2Int(21, 21)) };
+
+            var seen = new System.Collections.Generic.Dictionary<WorkOrder, WorkerRole>();
+            Run(40f, () =>
+            {
+                foreach (var worker in workers)
+                {
+                    if (worker.Order != null)
+                        seen[worker.Order] = worker.Role;
+                }
+                return orders.Orders.Count == 0;
+            }, workers);
+
+            Assert.That(orders.Orders, Is.Empty, "Все задачи сделаны");
+            Assert.That(seen[dig], Is.EqualTo(WorkerRole.Digger));
+            Assert.That(seen[build], Is.EqualTo(WorkerRole.Builder));
+            Assert.That(seen[fuel], Is.EqualTo(WorkerRole.Stoker));
+            Assert.That(fire.Amount, Is.EqualTo(1f));
+            Run(1f, () => false, workers);
+            foreach (var worker in workers)
+                Assert.That(worker.Role, Is.EqualTo(WorkerRole.Free), "Без заданий все свободные");
+        }
+
+        [Test]
+        public void Worker_HoldsAssignmentUntilItsOrdersAreDone()
+        {
+            // Задание из двух приказов копать (как будущая зона, #167) и чертёж, который ближе второго приказа.
+            var first = new Vector3Int(11, Ground - 1, 9);
+            var second = new Vector3Int(22, Ground - 1, 22);
+            world.SetBlock(first, Block.Full(BlockMaterials.Stone));
+            world.SetBlock(second, Block.Full(BlockMaterials.Stone));
+            var zone = new WorkAssignment(WorkKind.Dig);
+            var digA = orders.AddDig(first);
+            var digB = orders.AddDig(second);
+            Assert.That(orders.Assign(digA, zone), Is.True);
+            Assert.That(orders.Assign(digB, zone), Is.True);
+            var build = orders.AddBuild(new Vector3Int(13, Ground, 9), Block.Full(BlockMaterials.Dirt), false, null);
+            Assert.That(orders.Assign(build, zone), Is.False, "Чертёж в задание копать не входит");
+            var worker = Spawn(new Vector2Int(9, 9));
+
+            var tookBuildEarly = false;
+            Run(60f, () =>
+            {
+                tookBuildEarly |= worker.Order == build && orders.Contains(digB);
+                return !orders.Contains(digA) && !orders.Contains(digB);
+            }, worker);
+
+            Assert.That(orders.Contains(digB), Is.False, "Задание выкопано целиком");
+            Assert.That(tookBuildEarly, Is.False, "Пока в задании есть приказы, чужие не берёт");
+            Assert.That(zone.IsOver, Is.True);
+
+            Run(20f, () => !orders.Contains(build), worker);
+            Assert.That(orders.Contains(build), Is.False, "Потом, свободным, построил чертёж");
+        }
+
+        [Test]
+        public void Assignment_TakesNoMorePeopleThanItAllows()
+        {
+            var zone = new WorkAssignment(WorkKind.Dig);
+            for (var x = 12; x <= 13; x++)
+            {
+                var cell = new Vector3Int(x, Ground - 1, 15);
+                world.SetBlock(cell, Block.Full(BlockMaterials.Stone));
+                orders.Assign(orders.AddDig(cell), zone);
+            }
+            var a = Spawn(new Vector2Int(9, 9));
+            var b = Spawn(new Vector2Int(9, 10));
+
+            var together = false;
+            Run(30f, () =>
+            {
+                together |= a.Order != null && b.Order != null;
+                return zone.IsOver;
+            }, a, b);
+
+            Assert.That(zone.IsOver, Is.True);
+            Assert.That(together, Is.False, "Одиночное задание держит один человек");
+        }
+
+        [Test]
+        public void Worker_LeavesAssignmentWithNothingToDoNow()
+        {
+            // Задание из двух приказов, второй — в темноте: доделав первый, рабочий его отпускает и берёт чужую работу.
+            var lit = new Vector3Int(11, Ground - 1, 9);
+            var dark = new Vector3Int(28, Ground - 1, 28);
+            world.SetBlock(lit, Block.Full(BlockMaterials.Stone));
+            world.SetBlock(dark, Block.Full(BlockMaterials.Stone));
+            var zone = new WorkAssignment(WorkKind.Dig);
+            orders.Assign(orders.AddDig(lit), zone);
+            var darkDig = orders.AddDig(dark);
+            orders.Assign(darkDig, zone);
+            var build = orders.AddBuild(new Vector3Int(13, Ground, 9), Block.Full(BlockMaterials.Dirt), false, null);
+            context = new WorkerContext(world, orders, items, damage, new BlockStability(), settings, c => c.x < 24, pallets: pallets);
+            var worker = Spawn(new Vector2Int(9, 9));
+
+            Run(40f, () => !orders.Contains(build), worker);
+            Assert.That(orders.Contains(build), Is.False, "Чертёж построен");
+            Assert.That(orders.Contains(darkDig), Is.True, "Приказ в темноте ждёт света");
+            Assert.That(worker.Role, Is.EqualTo(WorkerRole.Free));
+        }
+
+        [Test]
+        public void Digger_CarriesOwnStoneToPalletAsDigger()
+        {
+            var cell = new Vector3Int(12, Ground - 1, 12);
+            world.SetBlock(cell, Block.Full(BlockMaterials.Stone));
+            orders.AddDig(cell);
+            var pallet = pallets.Add(world, new Vector3Int(18, Ground, 12));
+            var worker = Spawn(new Vector2Int(9, 9));
+
+            var carried = false;
+            var classWhileCarrying = WorkerRole.Free;
+            Run(60f, () =>
+            {
+                if (worker.HaulTarget != null && worker.Carrying != null)
+                {
+                    carried = true;
+                    classWhileCarrying = worker.Role;
+                }
+                return pallet.Count == 1;
+            }, worker);
+
+            Assert.That(pallet.Count, Is.EqualTo(1), "Камень на поддоне");
+            Assert.That(carried, Is.True);
+            Assert.That(classWhileCarrying, Is.EqualTo(WorkerRole.Digger), "Несёт свою добычу копателем");
+            Run(1f, () => false, worker);
+            Assert.That(worker.Role, Is.EqualTo(WorkerRole.Free), "Отнёс — снова свободный");
+            Assert.That(items.Items, Is.Empty);
+        }
+
+        [Test]
+        public void MinedPile_IsHauledOnlyByItsMiner()
+        {
+            var cell = new Vector3Int(12, Ground - 1, 12);
+            world.SetBlock(cell, Block.Full(BlockMaterials.Stone));
+            var dig = orders.AddDig(cell);
+            var miner = Spawn(new Vector2Int(9, 9));
+            Run(20f, () => !orders.Contains(dig), miner);
             Assert.That(items.Items, Has.Count.EqualTo(1));
+            var pile = items.Items[0];
+            Assert.That(context.MinedBy[pile], Is.SameAs(miner), "Кучка записана на того, кто копал");
+            Assert.That(miner.Role, Is.EqualTo(WorkerRole.Digger), "Пока добыча не отнесена, держит класс");
+
+            // Поддон появился, а рядом с кучкой свободный без дела: он её не берёт, относит добытчик.
+            var pallet = pallets.Add(world, new Vector3Int(18, Ground, 12));
+            var other = Spawn(new Vector2Int(13, 13));
+            var otherHauled = false;
+            Run(40f, () =>
+            {
+                otherHauled |= other.HaulTarget != null;
+                return pallet.Count == 1;
+            }, other, miner);
+
+            Assert.That(pallet.Count, Is.EqualTo(1));
+            Assert.That(otherHauled, Is.False, "Чужую добычу не трогает");
+        }
+
+        [Test]
+        public void Woodcutter_CarriesOwnLogs_AsWoodcutter()
+        {
+            var tree = forest.Plant(new Vector3Int(14, Ground, 12), birch);
+            orders.AddChop(tree);
+            var pallet = pallets.Add(world, new Vector3Int(18, Ground, 8));
+            var worker = Spawn(new Vector2Int(9, 9));
+
+            var roles = new System.Collections.Generic.HashSet<WorkerRole>();
+            Run(90f, () =>
+            {
+                if (worker.Carrying != null)
+                    roles.Add(worker.Role);
+                return pallet.Count == 3;
+            }, worker);
+
+            Assert.That(pallet.Count, Is.EqualTo(3), "Все три полена на поддоне");
+            Assert.That(pallet.ItemId, Is.EqualTo("wood"));
+            Assert.That(roles, Is.EquivalentTo(new[] { WorkerRole.Woodcutter }), "Носит поленья лесорубом");
+            Run(1f, () => false, worker);
+            Assert.That(worker.Role, Is.EqualTo(WorkerRole.Free));
+        }
+
+        [Test]
+        public void Zone_DigsAndHaulsInTurn()
+        {
+            // Задание из двух приказов: камень первого относит до того, как начнёт второй.
+            var first = new Vector3Int(11, Ground - 1, 9);
+            var second = new Vector3Int(11, Ground - 1, 14);
+            world.SetBlock(first, Block.Full(BlockMaterials.Stone));
+            world.SetBlock(second, Block.Full(BlockMaterials.Stone));
+            var zone = new WorkAssignment(WorkKind.Dig);
+            orders.Assign(orders.AddDig(first), zone);
+            orders.Assign(orders.AddDig(second), zone);
+            var pallet = pallets.Add(world, new Vector3Int(18, Ground, 12));
+            var worker = Spawn(new Vector2Int(9, 11));
+
+            var storedBeforeSecondOrder = -1;
+            var taken = 0;
+            WorkOrder last = null;
+            var classes = new System.Collections.Generic.HashSet<WorkerRole>();
+            Run(90f, () =>
+            {
+                classes.Add(worker.Role);
+                if (worker.Order != null && worker.Order != last)
+                {
+                    last = worker.Order;
+                    if (++taken == 2)
+                        storedBeforeSecondOrder = pallet.Count;
+                }
+                return pallet.Count == 2;
+            }, worker);
+
+            Assert.That(pallet.Count, Is.EqualTo(2));
+            Assert.That(storedBeforeSecondOrder, Is.EqualTo(1), "Первый камень отнесён до второго приказа");
+            Assert.That(classes, Is.EquivalentTo(new[] { WorkerRole.Free, WorkerRole.Digger }), "Всё задание — копатель");
+        }
+
+        [Test]
+        public void StartingCrew_IsFiveFreeWorkers()
+        {
+            Assert.That(settings.Count, Is.EqualTo(5));
         }
 
         [Test]
@@ -212,7 +337,7 @@ namespace Emberhold.Tests.EditMode.Workers
             var near = new Vector3(20.5f, Ground, 20.5f);
             context.Fires.Add(new Vector3(2.5f, Ground, 28.5f));
             context.Fires.Add(near);
-            var worker = Spawn(new Vector2Int(9, 9), WorkerRole.Swordsman);
+            var worker = Spawn(new Vector2Int(9, 9));
 
             var walkedToFire = false;
             Run(30f, () =>
@@ -236,24 +361,13 @@ namespace Emberhold.Tests.EditMode.Workers
         public void WalkingToFire_TakesOrderThatAppears()
         {
             context.Fires.Add(new Vector3(28.5f, Ground, 28.5f));
-            var worker = Spawn(new Vector2Int(3, 3), WorkerRole.Builder);
+            var worker = Spawn(new Vector2Int(3, 3));
             Run(5f, () => worker.State == WorkerState.ToFire, worker);
             Assert.That(worker.State, Is.EqualTo(WorkerState.ToFire));
 
             var build = orders.AddBuild(new Vector3Int(6, Ground, 6), Block.Full(BlockMaterials.Dirt), false, null);
             Run(20f, () => !orders.Contains(build), worker);
             Assert.That(world.GetBlock(build.Cell).Material, Is.EqualTo(BlockMaterials.Dirt), "Развернулся и построил");
-        }
-
-        [Test]
-        public void StartRoles_FromSettingsThenFree()
-        {
-            Assert.That(settings.StartRole(0), Is.EqualTo(WorkerRole.Woodcutter));
-            Assert.That(settings.StartRole(1), Is.EqualTo(WorkerRole.Digger));
-            Assert.That(settings.StartRole(2), Is.EqualTo(WorkerRole.Stoker));
-            Assert.That(settings.StartRole(3), Is.EqualTo(WorkerRole.Free));
-            Assert.That(settings.StartRole(settings.Count - 1), Is.EqualTo(WorkerRole.Free), "В стартовом составе есть свободный");
-            Assert.That(settings.StartRole(50), Is.EqualTo(WorkerRole.Free));
         }
 
         /// <summary>Приказ копать камень в (12, 12) и бесплатный чертёж земли в (14, 8).</summary>
@@ -264,8 +378,7 @@ namespace Emberhold.Tests.EditMode.Workers
             return (orders.AddDig(cell), orders.AddBuild(new Vector3Int(14, Ground, 8), Block.Full(BlockMaterials.Dirt), false, null));
         }
 
-        private Worker Spawn(Vector2Int column, WorkerRole role = WorkerRole.Free) =>
-            new(context, context.Surface.StandPoint(column), role);
+        private Worker Spawn(Vector2Int column) => new(context, context.Surface.StandPoint(column));
 
         private static float Flat(Vector3 a, Vector3 b) => new Vector2(a.x - b.x, a.z - b.z).magnitude;
 

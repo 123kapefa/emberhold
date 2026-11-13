@@ -171,7 +171,7 @@ namespace Emberhold.Gameplay.Workers
             var night = dayNight != null && dayNight.IsNight;
             for (var i = 0; i < workers.Count; i++)
             {
-                // Роль сменили: облик (капюшон, инструмент, снаряжение) строим заново сразу.
+                // Класс сменился (взял задание или оно кончилось): облик (капюшон, инструмент, снаряжение) строим заново сразу.
                 if (workers[i].Role != visuals[i].Look.Role)
                     RebuildVisual(i);
                 Animate(workers[i], visuals[i], space, deltaTime, night);
@@ -540,10 +540,7 @@ namespace Emberhold.Gameplay.Workers
             }
         }
 
-        /// <summary>
-        /// Рабочие встают кольцом в двух блоках от первого источника света (или от центра мира), роли — по стартовому
-        /// составу из настроек.
-        /// </summary>
+        /// <summary>Рабочие встают кольцом в двух блоках от первого источника света (или от центра мира), все свободные.</summary>
         private void Spawn()
         {
             var world = worldView.World;
@@ -557,7 +554,7 @@ namespace Emberhold.Gameplay.Workers
                 var column = WalkSurface.ColumnOf(point);
                 column.x = Mathf.Clamp(column.x, 0, world.SizeInBlocks.x - 1);
                 column.y = Mathf.Clamp(column.y, 0, world.SizeInBlocks.z - 1);
-                workers.Add(new Worker(context, context.Surface.StandPoint(column), settings.StartRole(i)));
+                workers.Add(new Worker(context, context.Surface.StandPoint(column)));
                 // Сначала лицом к огню.
                 var yaw = Mathf.Atan2(center.x - point.x, center.z - point.z) * Mathf.Rad2Deg;
                 visuals.Add(CreateVisual(i, workers[i].Role, workers[i].Position, yaw));

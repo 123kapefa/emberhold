@@ -13,13 +13,6 @@ MonoBehaviour:
   m_Name: Workers
   m_EditorClassIdentifier: Emberhold.Gameplay::Emberhold.Gameplay.Workers.WorkerSettings
   count: 5
-  startRoles:
-  - role: 1
-    count: 1
-  - role: 2
-    count: 1
-  - role: 4
-    count: 1
   moveSpeed: 2.5
   maxStep: 1
   searchLimit: 4096
@@ -31,7 +24,6 @@ MonoBehaviour:
   digHitSeconds: 1
   digHitDamage: 25
   fuelItemId: wood
-  logItemId: wood
   palletLimits:
   - itemId: wood
     count: 20

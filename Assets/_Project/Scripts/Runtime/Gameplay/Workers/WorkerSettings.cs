@@ -7,16 +7,9 @@ namespace Emberhold.Gameplay.Workers
     public sealed class WorkerSettings : ScriptableObject
     {
         [Header("Отряд")]
-        [Tooltip("Сколько рабочих появляется у первого источника света.")]
+        [Tooltip("Сколько рабочих появляется у первого источника света. Все свободные: класс даёт взятое задание.")]
         [Range(0, 8)]
         [SerializeField] private int count = 5;
-        [Tooltip("Роли стартового состава по порядку: сколько людей каждой роли. Кто не попал в список (до числа выше) — Свободный.")]
-        [SerializeField] private RoleCount[] startRoles =
-        {
-            new(WorkerRole.Woodcutter, 1),
-            new(WorkerRole.Digger, 1),
-            new(WorkerRole.Stoker, 1),
-        };
 
         [Header("Ходьба")]
         [Tooltip("Скорость, блоков в секунду.")]
@@ -56,9 +49,6 @@ namespace Emberhold.Gameplay.Workers
         [Header("Топливо")]
         [Tooltip("Id ресурса, которым рабочие кормят огонь.")]
         [SerializeField] private string fuelItemId = "wood";
-
-        [Tooltip("Id поленьев: их на поддоны носит лесоруб, остальную добычу — копатель.")]
-        [SerializeField] private string logItemId = "wood";
 
         [Header("Поддоны")]
         [Tooltip("Сколько ресурса помещается на поддон 2×2 высотой 2, по id ресурса.")]
@@ -116,24 +106,8 @@ namespace Emberhold.Gameplay.Workers
         public float DigHitDamage => digHitDamage;
         public float IdleSearchSeconds => idleSearchSeconds;
         public float FireWaitDistance => fireWaitDistance;
-        public string LogItemId => string.IsNullOrEmpty(logItemId) ? "wood" : logItemId;
         public string FuelItemId => string.IsNullOrEmpty(fuelItemId) ? "wood" : fuelItemId;
         public float Height => height;
-
-        /// <summary>Роль рабочего стартового состава с номером index: по списку startRoles, после него — Свободный.</summary>
-        public WorkerRole StartRole(int index)
-        {
-            if (startRoles != null && index >= 0)
-            {
-                foreach (var entry in startRoles)
-                {
-                    if (index < entry.Count)
-                        return entry.Role;
-                    index -= Mathf.Max(0, entry.Count);
-                }
-            }
-            return WorkerRole.Free;
-        }
 
         /// <summary>Сколько ресурса itemId помещается на один поддон.</summary>
         public int PalletCapacity(string itemId)
@@ -184,23 +158,6 @@ namespace Emberhold.Gameplay.Workers
             }
 
             public string ItemId => itemId;
-            public int Count => count;
-        }
-
-        [Serializable]
-        private struct RoleCount
-        {
-            [SerializeField] private WorkerRole role;
-            [Min(0)]
-            [SerializeField] private int count;
-
-            public RoleCount(WorkerRole role, int count)
-            {
-                this.role = role;
-                this.count = count;
-            }
-
-            public WorkerRole Role => role;
             public int Count => count;
         }
 
