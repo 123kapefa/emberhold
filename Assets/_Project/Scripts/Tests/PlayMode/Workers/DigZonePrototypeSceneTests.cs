@@ -56,7 +56,7 @@ namespace Emberhold.Tests.PlayMode.Workers
             crew.Zones.SetLevel(zone, from.y + 5, crew.Orders);
             Assert.That(zone.Assignment.Orders, Is.Empty);
             yield return null;
-            Assert.That(crew.Zones.All, Does.Not.Contain(zone), "Копать нечего — зона ушла");
+            Assert.That(crew.Zones.All, Has.No.Member(zone), "Копать нечего — зона ушла");
             Assert.That(crew.SelectedZone, Is.Null);
         }
 
