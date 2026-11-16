@@ -105,7 +105,11 @@ namespace Emberhold.Tests.PlayMode.Workers
             foreach (var order in zone.Assignment.Orders)
             {
                 Assert.That(order.Kind, Is.EqualTo(WorkKind.Build));
-                Assert.That(order.Block, Is.EqualTo(LevelZone.FillBlock));
+                // Пустую клетку засыпают землёй, неполный блок дополняют до полного его же материалом (трава — травой).
+                if (order.FillsExisting)
+                    Assert.That(order.Block, Is.EqualTo(Block.Full(crew.World.GetBlock(order.Cell).Material)));
+                else
+                    Assert.That(order.Block, Is.EqualTo(LevelZone.FillBlock));
                 Assert.That(order.Cell.y, Is.GreaterThan(zone.Bottom).And.LessThanOrEqualTo(zone.Level));
             }
             Assert.That(volume.sharedMesh.GetTriangles(1), Is.Not.Empty, "Голубая часть: есть что нарастить");
