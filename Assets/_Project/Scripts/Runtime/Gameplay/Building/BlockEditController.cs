@@ -82,6 +82,7 @@ namespace Emberhold.Gameplay.Building
         private InputAction toolPallet;
         private InputAction toolCampfire;
         private InputAction toolNone;
+        private InputAction raisePriority;
         private InputAction nextForm;
         private InputAction nextMaterial;
         private InputAction rotate;
@@ -199,6 +200,7 @@ namespace Emberhold.Gameplay.Building
             toolPallet = map.FindAction("ToolPallet", true);
             toolCampfire = map.FindAction("ToolCampfire");
             toolNone = map.FindAction("ToolNone");
+            raisePriority = map.FindAction("RaisePriority");
             nextForm = map.FindAction("NextForm", true);
             nextMaterial = map.FindAction("NextMaterial", true);
             rotate = map.FindAction("Rotate", true);
@@ -257,7 +259,12 @@ namespace Emberhold.Gameplay.Building
             HoveredStump = HoveredTree == null ? PickStump(point.ReadValue<Vector2>()) : null;
             Hovered = Tool != BlockTool.None && HoveredTree == null && HoveredStump == null ? Pick(point.ReadValue<Vector2>()) : null;
             UpdatePlan();
-            if (HoveredTree is { } tree && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
+            if (use.WasPressedThisFrame() && raisePriority != null && raisePriority.IsPressed() && !IsCameraDragging() && !IsStrikingCrawler()
+                && HoveredOrderCell() is { } orderCell && RaisePriority(orderCell))
+            {
+                // Shift+ЛКМ по своему приказу поднял его уровень; по пустому месту Shift+ЛКМ ставит как обычный клик.
+            }
+            else if (HoveredTree is { } tree && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
                 if (!ApplyToTree(tree))
                     ShowBlockedMessage(DarkDigMessage);
@@ -385,6 +392,33 @@ namespace Emberhold.Gameplay.Building
             OnWorldChanged(changed);
             return true;
         }
+
+        /// <summary>
+        /// Shift+ЛКМ: поднять уровень приказа в клетке по кругу (обычный → высокий → срочный → обычный). Срабатывает
+        /// только на приказ своего инструмента (чертёж — 4, копать, рубить и корчевать — 5, костёр — 7), в свету и в темноте.
+        /// true — уровень сменился.
+        /// </summary>
+        public bool RaisePriority(Vector3Int cell)
+        {
+            var order = workers != null ? workers.Orders.At(cell) : null;
+            return IsOwnOrder(order) && workers.Orders.RaisePriority(order);
+        }
+
+        /// <summary>Клетка, где под курсором может стоять приказ текущего инструмента: дерево, пень или клетка блока.</summary>
+        private Vector3Int? HoveredOrderCell()
+        {
+            if (HoveredTree is { } tree)
+                return tree.Cell;
+            if (HoveredStump is { } stump)
+                return stump.Cell;
+            return Hovered is { } hit ? TargetCell(hit) : (Vector3Int?)null;
+        }
+
+        /// <summary>Приказ ставит и снимает текущий инструмент.</summary>
+        private bool IsOwnOrder(WorkOrder order) =>
+            order != null && (Tool == BlockTool.Blueprint && order.Kind == WorkKind.Build
+                              || Tool == BlockTool.DigOrder && order.Kind is WorkKind.Dig or WorkKind.Chop
+                              || Tool == BlockTool.Campfire && order.Kind == WorkKind.Campfire);
 
         /// <summary>
         /// Инструмент 6 по земле: убрать поддон, стоящий над блоком под курсором, или поставить новый, у которого
@@ -765,6 +799,8 @@ namespace Emberhold.Gameplay.Building
                 GUILayout.Label(tool == Tool ? $"<b><color=#FFD34D>▶ {line}</color></b>" : $"   {line}", hintStyle);
             }
             GUILayout.Label(Tool == BlockTool.None ? "цифра — взять инструмент" : "Esc или 0 — без инструмента, ЛКМ — применить", hintStyle);
+            if (Tool is BlockTool.Blueprint or BlockTool.DigOrder or BlockTool.Campfire)
+                GUILayout.Label("Shift+ЛКМ по приказу — уровень: обычный → высокий → срочный", hintStyle);
             if (PlacesBlocks)
             {
                 var form = BuildSelection.FormName(Selection.Form);
