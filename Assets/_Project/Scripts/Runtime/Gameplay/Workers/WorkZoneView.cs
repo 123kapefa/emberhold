@@ -75,9 +75,6 @@ namespace Emberhold.Gameplay.Workers
         {
             if (crew == null || space == null)
                 return;
-            // Зону могли снять (или она сама ушла), пока была выбрана.
-            if (crew.SelectedZone != null && !Contains(crew.Zones.All, crew.SelectedZone))
-                crew.SelectedZone = null;
             for (var i = 0; i < lines.Length; i++)
             {
                 lines[i] ??= CreateLines(i);
@@ -227,16 +224,6 @@ namespace Emberhold.Gameplay.Workers
             GUI.enabled = true;
             GUILayout.EndHorizontal();
             return step;
-        }
-
-        private static bool Contains(IReadOnlyList<WorkZone> zones, WorkZone zone)
-        {
-            foreach (var z in zones)
-            {
-                if (z == zone)
-                    return true;
-            }
-            return false;
         }
 
         private void Begin()

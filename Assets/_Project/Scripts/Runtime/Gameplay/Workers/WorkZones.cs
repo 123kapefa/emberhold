@@ -188,6 +188,9 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Номер изменения: растёт, когда зону поставили, сняли или поменяли.</summary>
         public int Version { get; private set; }
 
+        /// <summary>Зона ещё стоит: её не сняли, и она не ушла сама.</summary>
+        public bool Contains(WorkZone zone) => zones.Contains(zone);
+
         /// <summary>Поставить зону рубки с центром в клетке cell; радиус и число людей обрезаются до допустимых.</summary>
         public ChopZone AddChop(Vector3Int cell, int radius, int maxWorkers = DefaultMaxWorkers) =>
             Add(new ChopZone(cell, radius, maxWorkers));

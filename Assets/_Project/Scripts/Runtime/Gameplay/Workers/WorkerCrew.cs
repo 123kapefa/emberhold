@@ -183,6 +183,9 @@ namespace Emberhold.Gameplay.Workers
             UpdateFuelOrders();
             UpdateFires();
             Zones.Update(worldView.World, HasForest ? forest.Forest : null, Orders);
+            // Зона копки уходит сама, когда копать нечего: выбранной она больше быть не может.
+            if (SelectedZone != null && !Zones.Contains(SelectedZone))
+                SelectedZone = null;
             var deltaTime = Time.deltaTime;
             foreach (var worker in workers)
                 worker.Tick(deltaTime);
