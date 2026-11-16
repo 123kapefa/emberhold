@@ -495,27 +495,41 @@ namespace Emberhold.Gameplay.Building
         /// </summary>
         private void UpdateDigZoneDrag()
         {
-            if (use.WasPressedThisFrame() && Hovered is { } hit && !IsCameraDragging() && !IsStrikingCrawler())
+            // Под деревом или пнём луч блока не ищется: берём блок земли, на котором они стоят.
+            var under = DigZoneBlockUnderPointer();
+            if (use.WasPressedThisFrame() && under is { } block && !IsCameraDragging() && !IsStrikingCrawler())
             {
-                if (workers != null && workers.Zones.At(hit.Block, WorkKind.Dig) is { } zone)
+                if (workers != null && workers.Zones.At(block, WorkKind.Dig) is { } zone)
                     workers.SelectedZone = zone;
-                else if (!CanEdit(hit.Block))
+                else if (!CanEdit(block))
                     ShowBlockedMessage(DarkDigMessage);
                 else
                 {
-                    DigZoneDragFrom = hit.Block;
-                    digZoneDragTo = hit.Block;
+                    DigZoneDragFrom = block;
+                    digZoneDragTo = block;
                 }
                 return;
             }
             if (DigZoneDragFrom is not { } from)
                 return;
-            if (Hovered is { } over)
-                digZoneDragTo = over.Block;
+            if (under is { } over)
+                digZoneDragTo = over;
             if (use.IsPressed())
                 return;
             DigZoneDragFrom = null;
             ApplyDigZone(from, digZoneDragTo);
+        }
+
+        /// <summary>Блок под курсором для зоны копки: найденный лучом, а над деревом или пнём — блок, на котором они стоят.</summary>
+        private Vector3Int? DigZoneBlockUnderPointer()
+        {
+            if (Hovered is { } hit)
+                return hit.Block;
+            if (HoveredTree is { } tree)
+                return tree.Cell + Vector3Int.down;
+            if (HoveredStump is { } stump)
+                return stump.Cell + Vector3Int.down;
+            return null;
         }
 
         /// <summary>
