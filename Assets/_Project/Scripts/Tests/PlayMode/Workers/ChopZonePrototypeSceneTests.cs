@@ -32,13 +32,13 @@ namespace Emberhold.Tests.PlayMode.Workers
 
             // Зона у костра: ставится по клику инструментом 8 и сразу выбрана.
             editor.Tool = BlockTool.ChopZone;
-            crew.NewZoneRadius = ChopZones.MaxRadius;
+            crew.NewZoneRadius = ChopZone.MaxRadius;
             var hit = SurfaceHit(view, 3.5f, 0.5f);
             var zone = editor.ApplyChopZone(hit);
             Assert.That(zone, Is.Not.Null);
             Assert.That(crew.SelectedZone, Is.SameAs(zone));
-            Assert.That(zone.Radius, Is.EqualTo(ChopZones.MaxRadius));
-            Assert.That(zone.Assignment.MaxWorkers, Is.EqualTo(Mathf.Min(ChopZones.DefaultMaxWorkers, crew.Workers.Count)));
+            Assert.That(zone.Radius, Is.EqualTo(ChopZone.MaxRadius));
+            Assert.That(zone.Assignment.MaxWorkers, Is.EqualTo(Mathf.Min(WorkZones.DefaultMaxWorkers, crew.Workers.Count)));
 
             // Повторный клик в зоне её выбирает, а не ставит вторую.
             crew.SelectedZone = null;
@@ -46,7 +46,11 @@ namespace Emberhold.Tests.PlayMode.Workers
             Assert.That(crew.Zones.All, Has.Count.EqualTo(1));
             Assert.That(crew.SelectedZone, Is.SameAs(zone));
 
-            // Через кадр на всех деревьях и пнях в круге — приказы зоны.
+            // Черновик приказов не ставит; после «Начать» через кадр на всех деревьях и пнях в круге — приказы зоны.
+            Assert.That(zone.IsDraft, Is.True);
+            yield return null;
+            Assert.That(zone.Assignment.Orders, Is.Empty, "Черновик приказов не ставит");
+            Assert.That(crew.StartZone(zone), Is.True);
             yield return null;
             var covered = forest.Trees.Count(t => t.IsStanding && zone.Covers(t.Cell))
                           + forest.Stumps.Count(s => s.IsPresent && zone.Covers(s.Cell));

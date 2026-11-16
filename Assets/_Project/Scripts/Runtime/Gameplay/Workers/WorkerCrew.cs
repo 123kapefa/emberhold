@@ -58,6 +58,8 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private Material workerMaterial;
         [Tooltip("Материал рамок чертежей и приказов (Unlit, цвет задаётся ниже).")]
         [SerializeField] private Material outlineMaterial;
+        [Tooltip("Прозрачный Unlit-материал объёмов зоны копки (цвет через _BaseColor); пусто — копия материала рамок.")]
+        [SerializeField] private Material zoneVolumeMaterial;
         [SerializeField] private Color blueprintColor = new(0.35f, 0.75f, 1f);
         [SerializeField] private Color digOrderColor = new(1f, 0.45f, 0.15f);
         [Tooltip("Насколько блёкнут рамки чертежей и приказов в темноте: 0 — как в свету, 1 — серые.")]
@@ -89,28 +91,46 @@ namespace Emberhold.Gameplay.Workers
         private int shownPalletsVersion = -1;
         private float urgentTimer;
         private GUIStyle palletLabelStyle;
-        private ChopZoneView zoneView;
+        private WorkZoneView zoneView;
 
         /// <summary>Чертежи и приказы копать.</summary>
         public WorkOrders Orders { get; } = new();
 
-        /// <summary>Зоны рубки (#167): игрок ставит их инструментом 8, отряд каждый кадр ставит в них приказы.</summary>
-        public ChopZones Zones { get; } = new();
+        /// <summary>
+        /// Зоны работ: рубки (#167, инструмент 8) и копки (#136, инструмент 9); отряд каждый кадр ставит в них приказы.
+        /// </summary>
+        public WorkZones Zones { get; } = new();
 
         /// <summary>Зона, открытая в панели зоны, или null.</summary>
-        public ChopZone SelectedZone { get; set; }
+        public WorkZone SelectedZone { get; set; }
 
-        /// <summary>С каким радиусом встанет новая зона; меняют [ ] при инструменте 8, пока ни одна зона не выбрана.</summary>
-        public int NewZoneRadius { get; set; } = ChopZones.DefaultRadius;
+        /// <summary>С каким радиусом встанет новая зона рубки; меняют [ ] при инструменте 8, пока ни одна зона не выбрана.</summary>
+        public int NewZoneRadius { get; set; } = ChopZone.DefaultRadius;
 
         /// <summary>Можно ставить зоны рубки: в сцене есть лес.</summary>
         public bool HasForest => forest != null && forest.Forest != null;
+
+        /// <summary>Мир блоков отряда (для вида зон: что в зоне копки ещё можно копать).</summary>
+        internal VoxelWorld World => worldView != null ? worldView.World : null;
+
+        /// <summary>Лес сцены или null.</summary>
+        internal Forest ForestModel => HasForest ? forest.Forest : null;
+
+        /// <summary>Номер изменения леса (пень убрали — столбец под ним снова можно копать); без леса — 0.</summary>
+        internal int ForestVersion => HasForest ? forest.Forest.Version : 0;
 
         /// <summary>Высота земли в столбце мира блоков: на ней вид рисует круги зон.</summary>
         public float GroundHeight(Vector2Int column) => context != null ? context.Surface.Height(column) : 0f;
 
         /// <summary>Указатель (экранные координаты Input System) над панелью зоны: клик достаётся ей, а не миру.</summary>
         public bool IsOverZonePanel(Vector2 pointer) => zoneView != null && zoneView.IsOverPanel(pointer);
+
+        /// <summary>
+        /// Ручки выбранной зоны (стороны, углы, уровень, перенос, радиус): редактор зовёт раз в кадр раньше своих кликов.
+        /// true — курсор над ручкой или её тянут: клик достаётся ручке.
+        /// </summary>
+        public bool UpdateZoneHandles(UnityEngine.Camera camera, Vector2 pointer, bool pressed, bool held) =>
+            zoneView != null && zoneView.UpdateHandles(camera, pointer, pressed, held);
 
         public IReadOnlyList<Worker> Workers => workers;
 
@@ -153,9 +173,9 @@ namespace Emberhold.Gameplay.Workers
             Spawn();
             // Подпись «что делает» и линия пути над рабочими — отдельный вид, логику рабочих он только читает.
             gameObject.AddComponent<WorkerStatusView>().Bind(this, worldView.transform, outlineMaterial, settings.Height);
-            // Круги зон рубки, их подписи и панель зоны — тоже отдельный вид.
-            zoneView = gameObject.AddComponent<ChopZoneView>();
-            zoneView.Bind(this, editor, worldView.transform, outlineMaterial);
+            // Зоны работ (круги, прямоугольники и уровни), их подписи и панель зоны — тоже отдельный вид.
+            zoneView = gameObject.AddComponent<WorkZoneView>();
+            zoneView.Bind(this, editor, worldView.transform, outlineMaterial, zoneVolumeMaterial);
         }
 
         private void OnDestroy()
@@ -180,8 +200,10 @@ namespace Emberhold.Gameplay.Workers
             PrunePallets();
             UpdateFuelOrders();
             UpdateFires();
-            if (HasForest)
-                Zones.Update(forest.Forest, Orders);
+            Zones.Update(worldView.World, HasForest ? forest.Forest : null, Orders);
+            // Зона копки уходит сама, когда копать нечего: выбранной она больше быть не может.
+            if (SelectedZone != null && !Zones.Contains(SelectedZone))
+                SelectedZone = null;
             var deltaTime = Time.deltaTime;
             foreach (var worker in workers)
                 worker.Tick(deltaTime);
@@ -397,19 +419,37 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Инструмент 8 по клетке над землёй: если она в зоне рубки — выбрать эту зону, иначе поставить новую с радиусом
+        /// Инструмент 8 по клетке над землёй: если она в зоне рубки — выбрать эту зону, иначе поставить новую черновиком (работа — по «Начать») с радиусом
         /// <see cref="NewZoneRadius"/> и выбрать её. Выбранная зона открывается в панели. Null — зону не поставить (нет леса).
         /// </summary>
         public ChopZone PlaceOrSelectZone(Vector3Int cell)
         {
             if (!HasForest)
                 return null;
-            SelectedZone = Zones.At(cell) ?? Zones.Add(cell, NewZoneRadius, Mathf.Min(ChopZones.DefaultMaxWorkers, workers.Count));
-            return SelectedZone;
+            var zone = Zones.At(cell, WorkKind.Chop) as ChopZone
+                       ?? Zones.AddChop(cell, NewZoneRadius, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count), draft: true);
+            SelectedZone = zone;
+            return zone;
         }
 
-        /// <summary>Снять зону рубки вместе с её приказами.</summary>
-        public bool RemoveZone(ChopZone zone)
+        /// <summary>
+        /// Инструмент 9: поставить черновик зоны копки на прямоугольник между столбцами блоков from и to (протяжка ЛКМ) с уровнем на
+        /// блок ниже from и выбрать её. Если протяжки не было (from и to в одном столбце), а там уже есть зона копки,
+        /// выбирается она.
+        /// </summary>
+        public LevelZone PlaceOrSelectLevelZone(Vector3Int from, Vector3Int to)
+        {
+            var zone = from.x == to.x && from.z == to.z ? Zones.At(from, WorkKind.Dig) as LevelZone : null;
+            zone ??= Zones.AddLevel(from, to, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count), draft: true, world: worldView.World);
+            SelectedZone = zone;
+            return zone;
+        }
+
+        /// <summary>Начать черновик зоны: рабочие берутся за неё. false — зона уже работает или снята.</summary>
+        public bool StartZone(WorkZone zone) => zone != null && Zones.Start(zone);
+
+        /// <summary>Снять зону вместе с её приказами.</summary>
+        public bool RemoveZone(WorkZone zone)
         {
             if (SelectedZone == zone)
                 SelectedZone = null;
@@ -753,6 +793,9 @@ namespace Emberhold.Gameplay.Workers
                     continue;
                 }
                 if (order.Kind != kind)
+                    continue;
+                // Приказы зоны копки не обводятся по блоку: зону показывает её вид (край и объёмы, WorkZoneView).
+                if (order.Kind == WorkKind.Dig && Zones.ZoneOf(order) is LevelZone)
                     continue;
                 // Чертёж — по форме будущего блока, приказ копать — по нынешнему блоку и чуть шире, чтобы не сливаться с рамкой курсора.
                 var block = kind == WorkKind.Build ? order.Block : worldView.World.GetBlock(order.Cell);

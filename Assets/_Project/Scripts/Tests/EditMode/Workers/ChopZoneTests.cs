@@ -21,7 +21,7 @@ namespace Emberhold.Tests.EditMode.Workers
         private WorkOrders orders;
         private DroppedItems items;
         private Forest forest;
-        private ChopZones zones;
+        private WorkZones zones;
         private WorkerSettings settings;
         private TreeSpecies birch;
 
@@ -36,7 +36,7 @@ namespace Emberhold.Tests.EditMode.Workers
             orders = new WorkOrders();
             items = new DroppedItems(new NoDrops());
             forest = new Forest(items);
-            zones = new ChopZones();
+            zones = new WorkZones();
             settings = ScriptableObject.CreateInstance<WorkerSettings>();
             birch = TreeSpecies.Create("Берёза", 75f, 3);
         }
@@ -54,26 +54,26 @@ namespace Emberhold.Tests.EditMode.Workers
             var inside = forest.Plant(Cell(12, 10), birch);
             var edge = forest.Plant(Cell(10, 14), birch);
             var outside = forest.Plant(Cell(16, 10), birch);
-            var zone = zones.Add(Cell(10, 10), 4);
+            var zone = zones.AddChop(Cell(10, 10), 4);
 
-            Assert.That(zones.Update(forest, orders), Is.EqualTo(2));
+            Assert.That(zones.Update(world, forest, orders), Is.EqualTo(2));
 
             Assert.That(orders.At(inside.Cell)?.Assignment, Is.SameAs(zone.Assignment));
             Assert.That(orders.At(edge.Cell)?.Assignment, Is.SameAs(zone.Assignment), "Радиус включительно");
             Assert.That(orders.At(outside.Cell), Is.Null);
             Assert.That(zone.Assignment.Orders, Has.Count.EqualTo(2));
-            Assert.That(zones.Update(forest, orders), Is.EqualTo(0), "Повторно приказы не ставятся");
+            Assert.That(zones.Update(world, forest, orders), Is.EqualTo(0), "Повторно приказы не ставятся");
         }
 
         [Test]
         public void Zone_TakesStumpsAndTreesThatAppearLater()
         {
-            var zone = zones.Add(Cell(10, 10), 5);
-            zones.Update(forest, orders);
+            var zone = zones.AddChop(Cell(10, 10), 5);
+            zones.Update(world, forest, orders);
             Assert.That(zone.Assignment.Orders, Is.Empty);
 
             var tree = forest.Plant(Cell(11, 11), birch);
-            zones.Update(forest, orders);
+            zones.Update(world, forest, orders);
             Assert.That(orders.At(tree.Cell)?.Tree, Is.SameAs(tree), "Новое дерево в зоне — тоже под приказом");
 
             // Срубленное дерево оставляет пень: зона ставит на него приказ корчевать.
@@ -81,7 +81,7 @@ namespace Emberhold.Tests.EditMode.Workers
             orders.Prune(world);
             var stump = forest.StumpAt(tree.Cell);
             Assert.That(stump, Is.Not.Null);
-            zones.Update(forest, orders);
+            zones.Update(world, forest, orders);
             Assert.That(orders.At(stump.Cell)?.Stump, Is.SameAs(stump));
             Assert.That(orders.At(stump.Cell).Assignment, Is.SameAs(zone.Assignment));
         }
@@ -99,8 +99,8 @@ namespace Emberhold.Tests.EditMode.Workers
             var heldNow = held.Worker != null ? held : single;
             var freeNow = heldNow == held ? single : held;
 
-            var zone = zones.Add(Cell(10, 10), 3);
-            zones.Update(forest, orders);
+            var zone = zones.AddChop(Cell(10, 10), 3);
+            zones.Update(world, forest, orders);
 
             Assert.That(freeNow.Assignment, Is.SameAs(zone.Assignment), "Свободный одиночный приказ перешёл в зону");
             Assert.That(heldNow.Assignment, Is.Not.SameAs(zone.Assignment), "Взятый приказ остаётся у рабочего");
@@ -110,14 +110,14 @@ namespace Emberhold.Tests.EditMode.Workers
         public void Zone_PriorityGoesToAllOrders_AndToNewOnes()
         {
             forest.Plant(Cell(11, 10), birch);
-            var zone = zones.Add(Cell(10, 10), 4);
-            zones.Update(forest, orders);
+            var zone = zones.AddChop(Cell(10, 10), 4);
+            zones.Update(world, forest, orders);
 
             zones.SetPriority(zone, OrderPriority.Urgent);
             Assert.That(zone.Assignment.Orders.All(o => o.Priority == OrderPriority.Urgent), Is.True);
 
             var later = forest.Plant(Cell(9, 9), birch);
-            zones.Update(forest, orders);
+            zones.Update(world, forest, orders);
             Assert.That(orders.At(later.Cell).Priority, Is.EqualTo(OrderPriority.Urgent));
         }
 
@@ -126,33 +126,33 @@ namespace Emberhold.Tests.EditMode.Workers
         {
             var near = forest.Plant(Cell(11, 10), birch);
             var far = forest.Plant(Cell(14, 10), birch);
-            var zone = zones.Add(Cell(10, 10), 5);
-            zones.Update(forest, orders);
+            var zone = zones.AddChop(Cell(10, 10), 5);
+            zones.Update(world, forest, orders);
             Assert.That(orders.Orders, Has.Count.EqualTo(2));
 
             Assert.That(zones.SetRadius(zone, 2, orders), Is.EqualTo(2));
             Assert.That(orders.At(far.Cell), Is.Null);
             Assert.That(orders.At(near.Cell), Is.Not.Null);
-            Assert.That(zones.SetRadius(zone, 100, orders), Is.EqualTo(ChopZones.MaxRadius));
+            Assert.That(zones.SetRadius(zone, 100, orders), Is.EqualTo(ChopZone.MaxRadius));
 
             Assert.That(zones.Remove(zone, orders), Is.True);
             Assert.That(orders.Orders, Is.Empty);
             Assert.That(zones.All, Is.Empty);
-            zones.Update(forest, orders);
+            zones.Update(world, forest, orders);
             Assert.That(orders.Orders, Is.Empty, "Снятая зона приказов больше не ставит");
         }
 
         [Test]
         public void Zone_At_FindsCoveringZone_OverlapGoesToFirst()
         {
-            var first = zones.Add(Cell(10, 10), 3);
-            var second = zones.Add(Cell(14, 10), 3);
+            var first = zones.AddChop(Cell(10, 10), 3);
+            var second = zones.AddChop(Cell(14, 10), 3);
             var shared = forest.Plant(Cell(12, 10), birch);
 
             Assert.That(zones.At(Cell(9, 10)), Is.SameAs(first));
             Assert.That(zones.At(Cell(15, 10)), Is.SameAs(second));
             Assert.That(zones.At(Cell(25, 25)), Is.Null);
-            zones.Update(forest, orders);
+            zones.Update(world, forest, orders);
             Assert.That(orders.At(shared.Cell).Assignment, Is.SameAs(first.Assignment));
         }
 
@@ -162,7 +162,7 @@ namespace Emberhold.Tests.EditMode.Workers
             forest.Plant(Cell(10, 12), birch);
             forest.Plant(Cell(12, 12), birch);
             forest.Plant(Cell(14, 12), birch);
-            var zone = zones.Add(Cell(12, 12), 4, 1);
+            var zone = zones.AddChop(Cell(12, 12), 4, 1);
             var a = Spawn(new Vector2Int(8, 8));
             var b = Spawn(new Vector2Int(16, 8));
 
@@ -181,7 +181,7 @@ namespace Emberhold.Tests.EditMode.Workers
         {
             for (var x = 8; x <= 16; x += 2)
                 forest.Plant(Cell(x, 12), birch);
-            var zone = zones.Add(Cell(12, 12), 5, 2);
+            var zone = zones.AddChop(Cell(12, 12), 5, 2);
             var a = Spawn(new Vector2Int(8, 8));
             var b = Spawn(new Vector2Int(16, 8));
             Run(1f, () => false, a, b);
@@ -198,7 +198,7 @@ namespace Emberhold.Tests.EditMode.Workers
             forest.Plant(Cell(10, 12), birch);
             forest.Plant(Cell(13, 12), birch);
             var keep = forest.Plant(Cell(25, 25), birch);
-            var zone = zones.Add(Cell(11, 12), 3);
+            var zone = zones.AddChop(Cell(11, 12), 3);
             var worker = Spawn(new Vector2Int(8, 8));
 
             Run(120f, () => forest.Trees.Count == 1 && forest.Stumps.All(s => !zone.Covers(s.Cell)), worker);
@@ -209,12 +209,26 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Draft_ChopZoneWaitsForStart()
+        {
+            var tree = forest.Plant(Cell(11, 10), birch);
+            var zone = zones.AddChop(Cell(10, 10), 4, draft: true);
+            zones.Update(world, forest, orders);
+            Assert.That(orders.Orders, Is.Empty, "Черновик приказов не ставит");
+            Assert.That(WorkZoneView.Label(zone), Is.EqualTo("черновик · рубка · люди 0/2"));
+
+            Assert.That(zones.Start(zone), Is.True);
+            zones.Update(world, forest, orders);
+            Assert.That(orders.At(tree.Cell)?.Assignment, Is.SameAs(zone.Assignment));
+        }
+
+        [Test]
         public void Labels_ShowZoneLevelAndPeople()
         {
-            var zone = zones.Add(Cell(10, 10), 4, 2);
-            Assert.That(ChopZoneView.Label(zone), Is.EqualTo("рубка · обычный · люди 0/2"));
+            var zone = zones.AddChop(Cell(10, 10), 4, 2);
+            Assert.That(WorkZoneView.Label(zone), Is.EqualTo("рубка · люди 0/2"));
             zones.SetPriority(zone, OrderPriority.High);
-            Assert.That(ChopZoneView.Label(zone), Is.EqualTo("рубка · высокий · люди 0/2"));
+            Assert.That(WorkZoneView.Label(zone), Is.EqualTo("рубка · люди 0/2"), "Приоритет на карте не показывается, только в панели");
             Assert.That(PriorityLabel.Name(OrderPriority.Urgent), Is.EqualTo("срочный"));
         }
 
@@ -232,7 +246,7 @@ namespace Emberhold.Tests.EditMode.Workers
             for (var t = 0f; t < seconds; t += Step)
             {
                 orders.Prune(world);
-                zones.Update(forest, orders);
+                zones.Update(world, forest, orders);
                 foreach (var worker in workers)
                     worker.Tick(Step);
                 items.Settle(world);

@@ -1410,6 +1410,24 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "ToolDigZone",
+                    "type": "Button",
+                    "id": "7e23c9fe-a66d-4327-8510-ceac37530a03",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "StartZone",
+                    "type": "Button",
+                    "id": "d1d3b145-7847-4f0c-b6e7-1a5e3a6f58e0",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "ToolNone",
                     "type": "Button",
                     "id": "74d06549-6c83-402b-8d91-ab60870f8203",
@@ -1581,6 +1599,39 @@
                     "processors": "",
                     "groups": "Keyboard&Mouse",
                     "action": "ToolChopZone",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "ff7a427f-99c3-464f-a13f-caecae99d0ee",
+                    "path": "<Keyboard>/9",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "ToolDigZone",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "26637586-101e-47d3-9826-c5f2d1a99873",
+                    "path": "<Keyboard>/enter",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "StartZone",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "7a73043c-745c-4077-8bc5-a87274592641",
+                    "path": "<Keyboard>/numpadEnter",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "StartZone",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
