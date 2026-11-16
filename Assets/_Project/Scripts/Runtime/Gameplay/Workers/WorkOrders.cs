@@ -51,8 +51,8 @@ namespace Emberhold.Gameplay.Workers
     /// <summary>
     /// Задание: группа приказов одного вида, за которую держится рабочий. Взяв приказ задания, рабочий получает класс
     /// задания (<see cref="Role"/>) и берёт следующие приказы только из него, пока они есть; потом снова свободный.
-    /// Пока каждый приказ — своё задание из одного приказа на одного человека; зоны из многих приказов и число людей
-    /// на задание — #167.
+    /// Одиночный приказ — своё задание из одного приказа на одного человека; зона рубки (<see cref="ChopZone"/>, #167) —
+    /// задание из многих приказов, число людей в нём игрок меняет в панели зоны.
     /// </summary>
     public sealed class WorkAssignment
     {
@@ -70,8 +70,14 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Класс, который задание даёт рабочему.</summary>
         public WorkerRole Role => WorkerRoles.For(Kind);
 
-        /// <summary>Сколько людей самое большее держат задание.</summary>
-        public int MaxWorkers { get; }
+        /// <summary>Сколько людей самое большее держат задание. Не меньше одного.</summary>
+        public int MaxWorkers
+        {
+            get => maxWorkers;
+            internal set => maxWorkers = Math.Max(1, value);
+        }
+
+        private int maxWorkers;
 
         /// <summary>Невыполненные приказы задания.</summary>
         public IReadOnlyList<WorkOrder> Orders => orders;
@@ -84,6 +90,12 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>Есть место ещё для одного человека.</summary>
         public bool HasRoom => workers.Count < MaxWorkers;
+
+        /// <summary>
+        /// Рабочий лишний: людей в задании больше, чем теперь можно (игрок уменьшил число), и он пришёл позже других.
+        /// Лишний доделывает свой приказ и уходит из задания.
+        /// </summary>
+        public bool IsExtra(Worker worker) => workers.IndexOf(worker) >= MaxWorkers;
 
         internal void AddOrder(WorkOrder order) => orders.Add(order);
         internal void RemoveOrder(WorkOrder order) => orders.Remove(order);

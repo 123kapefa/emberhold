@@ -255,6 +255,9 @@ namespace Emberhold.Gameplay.Workers
         /// </summary>
         private bool TryTakeOrder(WorkOrder only = null)
         {
+            // Игрок уменьшил число людей в задании: лишний уходит, как только доделал свой приказ.
+            if (Assignment != null && Assignment.IsExtra(this))
+                LeaveAssignment();
             if (only == null && !HasFreeOrder())
             {
                 LeaveAssignment();

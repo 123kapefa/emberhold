@@ -89,9 +89,28 @@ namespace Emberhold.Gameplay.Workers
         private int shownPalletsVersion = -1;
         private float urgentTimer;
         private GUIStyle palletLabelStyle;
+        private ChopZoneView zoneView;
 
         /// <summary>Чертежи и приказы копать.</summary>
         public WorkOrders Orders { get; } = new();
+
+        /// <summary>Зоны рубки (#167): игрок ставит их инструментом 8, отряд каждый кадр ставит в них приказы.</summary>
+        public ChopZones Zones { get; } = new();
+
+        /// <summary>Зона, открытая в панели зоны, или null.</summary>
+        public ChopZone SelectedZone { get; set; }
+
+        /// <summary>С каким радиусом встанет новая зона; меняют [ ] при инструменте 8, пока ни одна зона не выбрана.</summary>
+        public int NewZoneRadius { get; set; } = ChopZones.DefaultRadius;
+
+        /// <summary>Можно ставить зоны рубки: в сцене есть лес.</summary>
+        public bool HasForest => forest != null && forest.Forest != null;
+
+        /// <summary>Высота земли в столбце мира блоков: на ней вид рисует круги зон.</summary>
+        public float GroundHeight(Vector2Int column) => context != null ? context.Surface.Height(column) : 0f;
+
+        /// <summary>Указатель (экранные координаты Input System) над панелью зоны: клик достаётся ей, а не миру.</summary>
+        public bool IsOverZonePanel(Vector2 pointer) => zoneView != null && zoneView.IsOverPanel(pointer);
 
         public IReadOnlyList<Worker> Workers => workers;
 
@@ -134,6 +153,9 @@ namespace Emberhold.Gameplay.Workers
             Spawn();
             // Подпись «что делает» и линия пути над рабочими — отдельный вид, логику рабочих он только читает.
             gameObject.AddComponent<WorkerStatusView>().Bind(this, worldView.transform, outlineMaterial, settings.Height);
+            // Круги зон рубки, их подписи и панель зоны — тоже отдельный вид.
+            zoneView = gameObject.AddComponent<ChopZoneView>();
+            zoneView.Bind(this, editor, worldView.transform, outlineMaterial);
         }
 
         private void OnDestroy()
@@ -158,6 +180,8 @@ namespace Emberhold.Gameplay.Workers
             PrunePallets();
             UpdateFuelOrders();
             UpdateFires();
+            if (HasForest)
+                Zones.Update(forest.Forest, Orders);
             var deltaTime = Time.deltaTime;
             foreach (var worker in workers)
                 worker.Tick(deltaTime);
@@ -370,6 +394,26 @@ namespace Emberhold.Gameplay.Workers
             if (fire.Fuel != null)
                 fire.DrainFuel(fire.Fuel.Amount);
             builtFires.Add(fire);
+        }
+
+        /// <summary>
+        /// Инструмент 8 по клетке над землёй: если она в зоне рубки — выбрать эту зону, иначе поставить новую с радиусом
+        /// <see cref="NewZoneRadius"/> и выбрать её. Выбранная зона открывается в панели. Null — зону не поставить (нет леса).
+        /// </summary>
+        public ChopZone PlaceOrSelectZone(Vector3Int cell)
+        {
+            if (!HasForest)
+                return null;
+            SelectedZone = Zones.At(cell) ?? Zones.Add(cell, NewZoneRadius, Mathf.Min(ChopZones.DefaultMaxWorkers, workers.Count));
+            return SelectedZone;
+        }
+
+        /// <summary>Снять зону рубки вместе с её приказами.</summary>
+        public bool RemoveZone(ChopZone zone)
+        {
+            if (SelectedZone == zone)
+                SelectedZone = null;
+            return Zones.Remove(zone, Orders);
         }
 
         /// <summary>Поручить выкопать блок или снять приказ. true — что-то изменилось.</summary>

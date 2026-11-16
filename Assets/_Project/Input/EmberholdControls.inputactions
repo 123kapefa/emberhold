@@ -1401,6 +1401,15 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "ToolChopZone",
+                    "type": "Button",
+                    "id": "9e7255b8-34fa-4690-9665-c3cdbfc65b77",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "ToolNone",
                     "type": "Button",
                     "id": "74d06549-6c83-402b-8d91-ab60870f8203",
@@ -1561,6 +1570,17 @@
                     "processors": "",
                     "groups": "Keyboard&Mouse",
                     "action": "ToolCampfire",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "e21fc9eb-e0df-4951-bfef-f2b1c17b6e19",
+                    "path": "<Keyboard>/8",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "ToolChopZone",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

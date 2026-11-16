@@ -10,6 +10,9 @@ namespace Emberhold.Gameplay.Workers
         public static string Text(WorkOrder order) =>
             order.Kind == WorkKind.Fuel ? null : Text(order.Priority);
 
+        /// <summary>Название уровня: «обычный», «высокий», «срочный».</summary>
+        public static string Name(OrderPriority priority) => Text(priority) ?? "обычный";
+
         public static string Text(OrderPriority priority) => priority switch
         {
             OrderPriority.High => "высокий",
