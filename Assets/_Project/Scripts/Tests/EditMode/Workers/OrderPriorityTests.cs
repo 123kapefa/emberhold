@@ -209,6 +209,27 @@ namespace Emberhold.Tests.EditMode.Workers
             Assert.That(UrgentCall.Dispatch(orders, new[] { worker }), Is.EqualTo(0));
         }
 
+        [Test]
+        public void Urgent_PullsWorkerOutOfHisAssignment_ZoneStaysOpenForOthers()
+        {
+            // Рабочий держит задание из двух приказов копать (#161); срочный чертёж снимает его с задания.
+            var zone = new WorkAssignment(WorkKind.Dig);
+            var first = orders.AddDig(new Vector3Int(6, Ground - 1, 5));
+            var second = orders.AddDig(new Vector3Int(7, Ground - 1, 5));
+            orders.Assign(first, zone);
+            orders.Assign(second, zone);
+            var busy = Spawn(new Vector2Int(5, 5));
+            Run(10f, () => busy.State == WorkerState.Working, busy);
+            Assert.That(busy.Assignment, Is.SameAs(zone));
+
+            var urgent = MakeUrgent(orders.AddBuild(new Vector3Int(9, Ground, 9), Block.Full(BlockMaterials.Dirt), false, null));
+            Assert.That(UrgentCall.Dispatch(orders, new[] { busy }), Is.EqualTo(1));
+            Assert.That(busy.Order, Is.SameAs(urgent), "Ушёл на срочный чертёж");
+            Assert.That(busy.Role, Is.EqualTo(WorkerRole.Builder));
+            Assert.That(zone.Workers, Is.Empty, "Задание копать отпущено");
+            Assert.That(zone.HasRoom, Is.True, "Приказы задания может взять другой");
+        }
+
         private WorkOrder MakeUrgent(WorkOrder order)
         {
             while (order.Priority != OrderPriority.Urgent)

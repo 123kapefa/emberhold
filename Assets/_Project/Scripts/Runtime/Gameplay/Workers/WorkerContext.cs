@@ -58,6 +58,7 @@ namespace Emberhold.Gameplay.Workers
             HasAnyLight = hasAnyLight ?? (() => true);
             Pallets = pallets ?? new Pallets(settings.PalletCapacity);
             Surface = new WalkSurface(world, settings.MaxStep);
+            items.Dropped += OnDropped;
             Flood = new ColumnFlood(settings.SearchLimit);
         }
 
@@ -72,6 +73,64 @@ namespace Emberhold.Gameplay.Workers
         /// Сколько единиц каждой кучки уже идут относить на поддоны: другие носильщики берут только остаток.
         /// </summary>
         public Dictionary<DroppedItem, int> HaulClaims { get; } = new();
+
+        /// <summary>
+        /// Кто добыл кучку: её на поддон относит он сам, другие рабочие её не трогают. Кучки без добытчика
+        /// (брошенная ноша, добытчик не смог отнести) носит любой свободный.
+        /// </summary>
+        public Dictionary<DroppedItem, Worker> MinedBy { get; } = new();
+
+        /// <summary>Рабочий, который сейчас бьёт блок или дерево: выпавшее из-под удара записывается на него.</summary>
+        internal Worker Miner { get; set; }
+
+        private void OnDropped(DroppedItem pile)
+        {
+            if (Miner != null)
+                MinedBy[pile] = Miner;
+        }
+
+        /// <summary>Есть ли на земле кучка, которую добыл worker.</summary>
+        public bool HasMined(Worker worker)
+        {
+            foreach (var pile in Items.Items)
+            {
+                if (MinedBy.TryGetValue(pile, out var miner) && miner == worker)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Добытчик отказался от своих кучек (носить некуда): теперь они ничейные.</summary>
+        public void ForgetMined(Worker worker)
+        {
+            foreach (var pile in Items.Items)
+            {
+                if (MinedBy.TryGetValue(pile, out var miner) && miner == worker)
+                    MinedBy.Remove(pile);
+            }
+        }
+
+        /// <summary>
+        /// Где горят огни (точки в координатах мира блоков): без подходящей задачи рабочие ждут у ближайшего.
+        /// В сцене список каждый кадр обновляет отряд; пустой — ждут, где стоят.
+        /// </summary>
+        public List<Vector3> Fires { get; } = new();
+
+        /// <summary>Ближайший по прямой горящий огонь. false — огней нет.</summary>
+        public bool TryNearestFire(Vector3 from, out Vector3 fire)
+        {
+            fire = default;
+            var best = float.PositiveInfinity;
+            foreach (var candidate in Fires)
+            {
+                var d = new Vector2(candidate.x - from.x, candidate.z - from.z).sqrMagnitude;
+                if (d >= best)
+                    continue;
+                best = d;
+                fire = candidate;
+            }
+            return !float.IsPositiveInfinity(best);
+        }
         public BlockDamage Damage { get; }
         public BlockStability Stability { get; }
         public WorkerSettings Settings { get; }
@@ -252,9 +311,10 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>
         /// Что отнести на поддон: ближайшая (по последнему разливу) освещённая кучка, у которой осталось
         /// не занятое другими носильщиками, и ближайший к ней поддон с местом. Поддон, где уже лежит этот ресурс,
-        /// лучше пустого: так один вид не расползается по всем поддонам. false — носить нечего или некуда.
+        /// лучше пустого: так один вид не расползается по всем поддонам. miner — только кучки, которые он добыл;
+        /// null — только ничейные (<see cref="MinedBy"/>). false — носить нечего или некуда.
         /// </summary>
-        public bool TryFindHaul(out DroppedItem pile, out Pallet pallet, out Vector2Int stand)
+        public bool TryFindHaul(Worker miner, out DroppedItem pile, out Pallet pallet, out Vector2Int stand)
         {
             pile = null;
             pallet = null;
@@ -265,6 +325,9 @@ namespace Emberhold.Gameplay.Workers
             foreach (var candidate in Items.Items)
             {
                 var itemId = candidate.Drop.ItemId;
+                MinedBy.TryGetValue(candidate, out var owner);
+                if (owner != miner)
+                    continue;
                 HaulClaims.TryGetValue(candidate, out var claimed);
                 if (candidate.Drop.Count - claimed <= 0 || !IsLit(new Vector2Int(candidate.Cell.x, candidate.Cell.z))
                     || !TryStandSpot(candidate.Cell, true, out var spot, out var toPile) || toPile >= bestCost)
