@@ -276,12 +276,12 @@ namespace Emberhold.Gameplay.Building
             }
             else if (HoveredTree is { } tree && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
-                if (!ApplyToTree(tree))
+                if (!UseOnTree(tree))
                     ShowBlockedMessage(DarkDigMessage);
             }
             else if (HoveredStump is { } stump && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
             {
-                if (!ApplyToStump(stump))
+                if (!UseOnStump(stump))
                     ShowBlockedMessage(DarkDigMessage);
             }
             else if (Hovered is { } zoneHit && Tool == BlockTool.ChopZone && use.WasPressedThisFrame() && !IsCameraDragging()
@@ -441,15 +441,28 @@ namespace Emberhold.Gameplay.Building
         /// Инструмент 8 по земле: выбрать зону рубки, в которую попадает клетка над блоком, или поставить там новую — только
         /// в свету. Возвращает выбранную зону; null — ничего не вышло (темно или нет леса).
         /// </summary>
-        public ChopZone ApplyChopZone(BlockHit hit)
+        public ChopZone ApplyChopZone(BlockHit hit) => ApplyChopZone(hit.Block + Vector3Int.up);
+
+        /// <summary>Инструмент 8 по клетке над землёй (в том числе по клетке дерева или пня): выбрать зону или поставить новую.</summary>
+        private ChopZone ApplyChopZone(Vector3Int cell)
         {
             if (workers == null)
                 return null;
-            var cell = hit.Block + Vector3Int.up;
             if (workers.Zones.At(cell) == null && !CanEdit(cell))
                 return null;
             return workers.PlaceOrSelectZone(cell);
         }
+
+        /// <summary>
+        /// ЛКМ по дереву текущим инструментом: зона рубки (8) ставится или выбирается в его клетке, остальные — как
+        /// <see cref="ApplyToTree"/>. true — что-то сделано.
+        /// </summary>
+        public bool UseOnTree(TreeStand tree) =>
+            Tool == BlockTool.ChopZone ? tree != null && ApplyChopZone(tree.Cell) != null : ApplyToTree(tree);
+
+        /// <summary>ЛКМ по пню текущим инструментом: как <see cref="UseOnTree"/>, но по пню.</summary>
+        public bool UseOnStump(TreeStump stump) =>
+            Tool == BlockTool.ChopZone ? stump != null && ApplyChopZone(stump.Cell) != null : ApplyToStump(stump);
 
         /// <summary>[ и ] при инструменте 8: радиус выбранной зоны, а если зона не выбрана — радиус будущей.</summary>
         private void ReadZoneInput()

@@ -57,6 +57,15 @@ namespace Emberhold.Tests.PlayMode.Workers
             Assert.That(crew.RemoveZone(zone), Is.True);
             Assert.That(crew.SelectedZone, Is.Null);
             Assert.That(crew.Orders.Orders.Any(o => o.Assignment == zone.Assignment), Is.False);
+
+            // Клик инструментом 8 прямо по дереву в свету тоже ставит зону с центром в его клетке, а не уходит в рубку одного дерева.
+            var center = new Vector3(3.5f, 0f, 0.5f);
+            var tree = forest.Trees.Where(t => t.IsStanding)
+                .OrderBy(t => (new Vector3(t.Cell.x + 0.5f, 0f, t.Cell.z + 0.5f) - center).sqrMagnitude).First();
+            Assert.That(editor.UseOnTree(tree), Is.True, "Зона по клику на дерево");
+            Assert.That(crew.SelectedZone, Is.Not.Null);
+            Assert.That(crew.SelectedZone.Covers(tree.Cell), Is.True);
+            Assert.That(crew.Orders.At(tree.Cell), Is.Null, "Клик не поставил приказ рубить одно дерево");
         }
 
         private static BlockHit SurfaceHit(VoxelWorldView view, float x, float z)
