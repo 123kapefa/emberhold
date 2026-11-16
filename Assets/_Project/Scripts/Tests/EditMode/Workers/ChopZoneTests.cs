@@ -209,6 +209,20 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Draft_ChopZoneWaitsForStart()
+        {
+            var tree = forest.Plant(Cell(11, 10), birch);
+            var zone = zones.AddChop(Cell(10, 10), 4, draft: true);
+            zones.Update(world, forest, orders);
+            Assert.That(orders.Orders, Is.Empty, "Черновик приказов не ставит");
+            Assert.That(WorkZoneView.Label(zone), Is.EqualTo("черновик · рубка · люди 0/2"));
+
+            Assert.That(zones.Start(zone), Is.True);
+            zones.Update(world, forest, orders);
+            Assert.That(orders.At(tree.Cell)?.Assignment, Is.SameAs(zone.Assignment));
+        }
+
+        [Test]
         public void Labels_ShowZoneLevelAndPeople()
         {
             var zone = zones.AddChop(Cell(10, 10), 4, 2);

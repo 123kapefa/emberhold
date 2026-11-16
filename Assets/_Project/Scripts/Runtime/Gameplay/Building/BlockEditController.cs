@@ -95,6 +95,7 @@ namespace Emberhold.Gameplay.Building
         private InputAction toolCampfire;
         private InputAction toolChopZone;
         private InputAction toolDigZone;
+        private InputAction startZone;
         private Vector3Int digZoneDragTo;
         private InputAction toolNone;
         private InputAction raisePriority;
@@ -216,6 +217,7 @@ namespace Emberhold.Gameplay.Building
             toolCampfire = map.FindAction("ToolCampfire");
             toolChopZone = map.FindAction("ToolChopZone");
             toolDigZone = map.FindAction("ToolDigZone");
+            startZone = map.FindAction("StartZone");
             toolNone = map.FindAction("ToolNone");
             raisePriority = map.FindAction("RaisePriority");
             nextForm = map.FindAction("NextForm", true);
@@ -279,6 +281,10 @@ namespace Emberhold.Gameplay.Building
                 ReadBuildInput();
             if (Tool is BlockTool.ChopZone or BlockTool.DigZone)
                 ReadZoneInput();
+            // Enter, пока открыта панель черновика зоны, — «Начать».
+            if (Tool is BlockTool.ChopZone or BlockTool.DigZone && startZone != null && startZone.WasPressedThisFrame()
+                && workers != null && workers.SelectedZone is { IsDraft: true } draft)
+                workers.StartZone(draft);
 
             HoveredTree = PickTree(point.ReadValue<Vector2>());
             HoveredStump = HoveredTree == null ? PickStump(point.ReadValue<Vector2>()) : null;
@@ -951,12 +957,12 @@ namespace Emberhold.Gameplay.Building
                 GUILayout.Label("Shift+ЛКМ по приказу — уровень: обычный → высокий → срочный", hintStyle);
             if (Tool == BlockTool.ChopZone && workers != null)
                 GUILayout.Label(workers.SelectedZone != null
-                    ? "ЛКМ по зоне — выбрать, по земле — новая зона; [ ] — радиус выбранной, панель внизу"
+                    ? "ЛКМ по зоне — выбрать, по земле — новая зона; [ ] — радиус выбранной, Enter — начать черновик"
                     : $"ЛКМ — поставить зону или выбрать; [ ] — радиус {workers.NewZoneRadius}", hintStyle);
             if (Tool == BlockTool.DigZone && workers != null)
                 GUILayout.Label(workers.SelectedZone is LevelZone
-                    ? "ЛКМ по зоне — выбрать, протяжка по земле — новая зона; [ ] — уровень выбранной, панель внизу"
-                    : "Зажать ЛКМ и протянуть — прямоугольник: копают всё выше уровня (на блок ниже начала)", hintStyle);
+                    ? "ЛКМ по зоне — выбрать, протяжка по земле — новая зона; [ ] — уровень выбранной, Enter — начать черновик"
+                    : "Зажать ЛКМ и протянуть — черновик зоны: копать всё выше уровня (на блок ниже начала); настроить и «Начать»", hintStyle);
             if (PlacesBlocks)
             {
                 var form = BuildSelection.FormName(Selection.Form);

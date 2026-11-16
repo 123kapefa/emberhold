@@ -7,7 +7,8 @@ namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
     /// Заглушка вида зон работ, пока у них нет своего облика. Зона рубки (#167) — круг по земле, зона копки (#136) —
-    /// линия по внешнему краю прямоугольника и полупрозрачные объёмы: жёлтый — что выкопать (выше уровня), голубой — что
+    /// линия по внешнему краю прямоугольника и полупрозрачные объёмы. Черновик (ещё не начатая зона) — пунктирный бледный
+    /// край и бледные объёмы тех же цветов, в подписи «черновик», в панели кнопка «Начать». Объёмы: жёлтый — что выкопать (выше уровня), голубой — что
     /// нарастить до уровня (покажет и выравнивание #169). Объёмы — один меш на зону, пересобираются, только когда зона или
     /// мир поменялись. Приоритет на карте не показывается (он виден в панели). Над зоной подпись,
     /// под курсором при инструменте 8 или 9 — будущая зона (у копки — вся протяжка ЛКМ), внизу экрана — панель выбранной
@@ -23,14 +24,19 @@ namespace Emberhold.Gameplay.Workers
         private const float PanelWidth = 360f;
         private const float PanelBottom = 16f;
 
-        // Линии: 0 — края зон, 1 — выбранная зона, 2 — будущая зона.
+        // Линии: 0 — края работающих зон, 1 — выбранная зона, 2 — будущая зона, 3 — края черновиков (пунктир).
         private const int ZoneLines = 0;
         private const int SelectedLines = 1;
         private const int PreviewLines = 2;
+        private const int DraftLines = 3;
+
+        /// <summary>Во сколько раз бледнее объёмы черновика.</summary>
+        private const float DraftAlpha = 0.45f;
 
         [SerializeField] private Color zoneColor = new(0.9f, 0.9f, 0.85f);
         [SerializeField] private Color selectedColor = Color.white;
         [SerializeField] private Color previewColor = new(0.9f, 0.9f, 0.85f, 0.5f);
+        [SerializeField] private Color draftColor = new(0.75f, 0.75f, 0.7f, 0.6f);
         [SerializeField] private Color digColor = new(1f, 0.85f, 0.15f, 0.35f);
         [SerializeField] private Color fillColor = new(0.3f, 0.8f, 1f, 0.35f);
 
@@ -39,7 +45,7 @@ namespace Emberhold.Gameplay.Workers
         private readonly List<Vector3> volumeVertices = new();
         private readonly List<int> digTriangles = new();
         private readonly List<int> fillTriangles = new();
-        private readonly GameObject[] lines = new GameObject[3];
+        private readonly GameObject[] lines = new GameObject[4];
         private readonly Dictionary<LevelZone, Volume> volumes = new();
         private readonly List<LevelZone> goneVolumes = new();
         private WorkerCrew crew;
@@ -71,11 +77,15 @@ namespace Emberhold.Gameplay.Workers
             }
         }
 
-        /// <summary>Подпись над зоной: «рубка · люди 1/2», «копка до 5 · люди 0/2». Приоритет — только в панели.</summary>
+        /// <summary>
+        /// Подпись над зоной: «рубка · люди 1/2», «копка до 5 · люди 0/2», у черновика — «черновик · копка до 5 · люди 0/2».
+        /// Приоритет — только в панели.
+        /// </summary>
         public static string Label(WorkZone zone)
         {
             var what = zone is LevelZone level ? $"копка до {level.Level}" : "рубка";
-            return $"{what} · люди {zone.Assignment.Workers.Count}/{zone.Assignment.MaxWorkers}";
+            var draft = zone.IsDraft ? "черновик · " : "";
+            return $"{draft}{what} · люди {zone.Assignment.Workers.Count}/{zone.Assignment.MaxWorkers}";
         }
 
         private void OnBlockChanged(Vector3Int _) => worldStamp++;
@@ -92,6 +102,8 @@ namespace Emberhold.Gameplay.Workers
         private Rect PanelRect()
         {
             var height = crew != null && crew.SelectedZone is LevelZone ? 232f : 178f;
+            if (crew != null && crew.SelectedZone is { IsDraft: true })
+                height += 46f;
             return new Rect((Screen.width - PanelWidth) * 0.5f, Screen.height - height - PanelBottom, PanelWidth, height);
         }
 
@@ -105,10 +117,16 @@ namespace Emberhold.Gameplay.Workers
                 lines[i].transform.SetPositionAndRotation(space.position, space.rotation);
                 lines[i].transform.localScale = space.lossyScale;
             }
-            Begin();
-            foreach (var zone in crew.Zones.All)
-                AppendOutline(zone, 0f);
-            End(lines[ZoneLines]);
+            foreach (var (index, drafts) in new[] { (ZoneLines, false), (DraftLines, true) })
+            {
+                Begin();
+                foreach (var zone in crew.Zones.All)
+                {
+                    if (zone.IsDraft == drafts)
+                        AppendOutline(zone, 0f, drafts);
+                }
+                End(lines[index]);
+            }
             UpdateVolumes();
             Begin();
             if (PanelShown)
@@ -129,6 +147,7 @@ namespace Emberhold.Gameplay.Workers
                 if (!volumes.TryGetValue(level, out var volume))
                     volumes[level] = volume = CreateVolume($"Dig Zone Volume {volumes.Count + 1}");
                 Place(volume.Renderer.transform);
+                SetDraftLook(volume, level.IsDraft);
                 Rebuild(volume, level.Min, level.Size, level.Level);
             }
             goneVolumes.Clear();
@@ -172,6 +191,8 @@ namespace Emberhold.Gameplay.Workers
         private void AppendPreview()
         {
             preview ??= CreateVolume("Dig Zone Preview Volume");
+            // Будущая зона встанет черновиком — и выглядит так же.
+            SetDraftLook(preview, true);
             Place(preview.Renderer.transform);
             if (!AppendPreviewShape())
                 preview.Renderer.gameObject.SetActive(false);
@@ -252,6 +273,8 @@ namespace Emberhold.Gameplay.Workers
         private void DrawPanel(WorkZone zone)
         {
             GUILayout.BeginArea(PanelRect(), GUI.skin.box);
+            if (zone.IsDraft)
+                GUILayout.Label("Черновик: рабочие не придут, пока не нажмёшь «Начать»");
             if (zone is ChopZone chop)
             {
                 GUILayout.Label("Зона рубки: деревья и пни в круге");
@@ -282,6 +305,8 @@ namespace Emberhold.Gameplay.Workers
                 crew.Zones.SetMaxWorkers(zone, max + people, crew.Workers.Count);
             GUILayout.Label($"Приказов в зоне: {zone.Assignment.Orders.Count}");
             GUILayout.BeginHorizontal();
+            if (zone.IsDraft && GUILayout.Button("Начать (Enter)"))
+                crew.StartZone(zone);
             if (GUILayout.Button("Снять зону"))
                 crew.RemoveZone(zone);
             if (GUILayout.Button("Закрыть"))
@@ -315,17 +340,17 @@ namespace Emberhold.Gameplay.Workers
             indices.Clear();
         }
 
-        /// <summary>Граница зоны по земле; inset — насколько отступить внутрь (рамка выбранной зоны).</summary>
-        private void AppendOutline(WorkZone zone, float inset)
+        /// <summary>Граница зоны по земле; inset — насколько отступить внутрь (рамка выбранной зоны), dashed — пунктиром.</summary>
+        private void AppendOutline(WorkZone zone, float inset, bool dashed = false)
         {
             if (zone is ChopZone chop)
-                AppendCircle(chop.Cell, chop.Radius - inset);
+                AppendCircle(chop.Cell, chop.Radius - inset, dashed);
             else if (zone is LevelZone level)
-                AppendRect(level.Min, level.Size, inset);
+                AppendRect(level.Min, level.Size, inset, dashed);
         }
 
         /// <summary>Круг по земле вокруг середины клетки center, в координатах мира блоков.</summary>
-        private void AppendCircle(Vector3Int center, float radius)
+        private void AppendCircle(Vector3Int center, float radius, bool dashed = false)
         {
             var first = vertices.Count;
             for (var i = 0; i < Segments; i++)
@@ -334,13 +359,15 @@ namespace Emberhold.Gameplay.Workers
                 var x = center.x + 0.5f + Mathf.Cos(angle) * radius;
                 var z = center.z + 0.5f + Mathf.Sin(angle) * radius;
                 vertices.Add(new Vector3(x, Ground(x, z), z));
+                if (dashed && i % 2 == 1)
+                    continue;
                 indices.Add(first + i);
                 indices.Add(first + (i + 1) % Segments);
             }
         }
 
         /// <summary>Рамка прямоугольника столбцов по земле, по полблока, чтобы следовать рельефу.</summary>
-        private void AppendRect(Vector2Int min, Vector2Int size, float inset)
+        private void AppendRect(Vector2Int min, Vector2Int size, float inset, bool dashed = false)
         {
             var x0 = min.x + inset;
             var z0 = min.y + inset;
@@ -364,6 +391,8 @@ namespace Emberhold.Gameplay.Workers
             var count = vertices.Count - first;
             for (var i = 0; i < count; i++)
             {
+                if (dashed && i % 2 == 1)
+                    continue;
                 indices.Add(first + i);
                 indices.Add(first + (i + 1) % count);
             }
@@ -387,6 +416,7 @@ namespace Emberhold.Gameplay.Workers
             {
                 ZoneLines => zoneColor,
                 SelectedLines => selectedColor,
+                DraftLines => draftColor,
                 _ => previewColor,
             };
             var go = new GameObject($"Work Zones {index}");
@@ -424,14 +454,25 @@ namespace Emberhold.Gameplay.Workers
             renderer.sharedMaterials = new[] { shared, shared };
             renderer.shadowCastingMode = ShadowCastingMode.Off;
             renderer.receiveShadows = false;
-            var properties = new MaterialPropertyBlock();
-            properties.SetColor(BaseColorId, digColor);
-            renderer.SetPropertyBlock(properties, 0);
-            properties = new MaterialPropertyBlock();
-            properties.SetColor(BaseColorId, fillColor);
-            renderer.SetPropertyBlock(properties, 1);
             go.SetActive(false);
-            return new Volume(renderer, mesh);
+            var volume = new Volume(renderer, mesh);
+            SetDraftLook(volume, false, true);
+            return volume;
+        }
+
+        /// <summary>Цвета объёма: у черновика те же жёлтый и голубой, но бледнее.</summary>
+        private void SetDraftLook(Volume volume, bool draft, bool force = false)
+        {
+            if (!force && volume.IsDraftLook == draft)
+                return;
+            volume.IsDraftLook = draft;
+            var scale = draft ? DraftAlpha : 1f;
+            var properties = new MaterialPropertyBlock();
+            properties.SetColor(BaseColorId, new Color(digColor.r, digColor.g, digColor.b, digColor.a * scale));
+            volume.Renderer.SetPropertyBlock(properties, 0);
+            properties = new MaterialPropertyBlock();
+            properties.SetColor(BaseColorId, new Color(fillColor.r, fillColor.g, fillColor.b, fillColor.a * scale));
+            volume.Renderer.SetPropertyBlock(properties, 1);
         }
 
         /// <summary>
@@ -472,6 +513,7 @@ namespace Emberhold.Gameplay.Workers
             public MeshRenderer Renderer { get; }
             public Mesh Mesh { get; }
             public bool HasGeometry { get; set; }
+            public bool IsDraftLook { get; set; }
 
             /// <summary>С чем объём собран в последний раз: прямоугольник, уровень, отметка мира и леса.</summary>
             public (Vector2Int, Vector2Int, int, int, int) Key { get; set; } = (default, default, int.MinValue, -1, -1);

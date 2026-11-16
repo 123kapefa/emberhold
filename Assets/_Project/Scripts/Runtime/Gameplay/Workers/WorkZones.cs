@@ -6,7 +6,8 @@ using UnityEngine;
 namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
-    /// Зона работ: область на карте, в которой отряд сам ставит приказы одного вида. Живёт, пока игрок её не снимет
+    /// Зона работ: область на карте, в которой отряд сам ставит приказы одного вида. Ставится черновиком (<see cref="IsDraft"/>):
+    /// игрок настраивает её и начинает. Живёт, пока игрок её не снимет
     /// (зона копки ещё и сама уходит, когда копать нечего). Зона — задание (<see cref="WorkAssignment"/>): её приказы
     /// держат не больше <see cref="WorkAssignment.MaxWorkers"/> человек и получают уровень зоны (<see cref="Priority"/>).
     /// Меняет зону только <see cref="WorkZones"/>.
@@ -23,6 +24,12 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>Задание зоны: её приказы и кто их держит.</summary>
         public WorkAssignment Assignment { get; }
+
+        /// <summary>
+        /// Черновик: зона видна и настраивается, но приказов не ставит и рабочих не зовёт, пока её не начнут
+        /// (<see cref="WorkZones.Start"/>). Черновик сам не уходит, даже если делать в нём нечего.
+        /// </summary>
+        public bool IsDraft { get; internal set; }
 
         /// <summary>Зона сделала всё, что могла, и уходит (у зоны рубки так не бывает: она ждёт новых деревьев).</summary>
         public bool IsFinished { get; private protected set; }
@@ -202,19 +209,32 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Зона ещё стоит: её не сняли, и она не ушла сама.</summary>
         public bool Contains(WorkZone zone) => zones.Contains(zone);
 
-        /// <summary>Поставить зону рубки с центром в клетке cell; радиус и число людей обрезаются до допустимых.</summary>
-        public ChopZone AddChop(Vector3Int cell, int radius, int maxWorkers = DefaultMaxWorkers) =>
-            Add(new ChopZone(cell, radius, maxWorkers));
+        /// <summary>
+        /// Поставить зону рубки с центром в клетке cell; радиус и число людей обрезаются до допустимых. draft — черновиком:
+        /// работа начнётся по <see cref="Start"/>.
+        /// </summary>
+        public ChopZone AddChop(Vector3Int cell, int radius, int maxWorkers = DefaultMaxWorkers, bool draft = false) =>
+            Add(new ChopZone(cell, radius, maxWorkers) { IsDraft = draft });
 
         /// <summary>
         /// Поставить зону копки на прямоугольник между столбцами двух блоков (в любом порядке); уровень — на блок ниже
         /// блока from (снять один слой).
         /// </summary>
-        public LevelZone AddLevel(Vector3Int from, Vector3Int to, int maxWorkers = DefaultMaxWorkers)
+        public LevelZone AddLevel(Vector3Int from, Vector3Int to, int maxWorkers = DefaultMaxWorkers, bool draft = false)
         {
             var min = new Vector2Int(Mathf.Min(from.x, to.x), Mathf.Min(from.z, to.z));
             var size = new Vector2Int(Mathf.Abs(to.x - from.x) + 1, Mathf.Abs(to.z - from.z) + 1);
-            return Add(new LevelZone(min, size, from.y - 1, maxWorkers));
+            return Add(new LevelZone(min, size, from.y - 1, maxWorkers) { IsDraft = draft });
+        }
+
+        /// <summary>Начать черновик: со следующего <see cref="Update"/> зона ставит приказы. false — зона не черновик или её нет.</summary>
+        public bool Start(WorkZone zone)
+        {
+            if (!zones.Contains(zone) || !zone.IsDraft)
+                return false;
+            zone.IsDraft = false;
+            Version++;
+            return true;
         }
 
         private T Add<T>(T zone) where T : WorkZone
@@ -314,6 +334,10 @@ namespace Emberhold.Gameplay.Workers
         {
             var added = 0;
             foreach (var zone in zones)
+            {
+                // Черновик только виден и настраивается: приказов не ставит и не уходит.
+                if (zone.IsDraft)
+                    continue;
                 zone.Refresh(world, forest, orders, order =>
                 {
                     if (!Take(zone, orders, order))
@@ -321,9 +345,10 @@ namespace Emberhold.Gameplay.Workers
                     added++;
                     return true;
                 });
+            }
             for (var i = zones.Count - 1; i >= 0; i--)
             {
-                if (zones[i].IsFinished)
+                if (!zones[i].IsDraft && zones[i].IsFinished)
                     Remove(zones[i], orders);
             }
             return added;
@@ -353,7 +378,7 @@ namespace Emberhold.Gameplay.Workers
         {
             foreach (var zone in zones)
             {
-                if (zone.Kind == kind && zone.Covers(cell))
+                if (zone.Kind == kind && !zone.IsDraft && zone.Covers(cell))
                     return zone;
             }
             return null;

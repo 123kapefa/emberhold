@@ -412,7 +412,7 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Инструмент 8 по клетке над землёй: если она в зоне рубки — выбрать эту зону, иначе поставить новую с радиусом
+        /// Инструмент 8 по клетке над землёй: если она в зоне рубки — выбрать эту зону, иначе поставить новую черновиком (работа — по «Начать») с радиусом
         /// <see cref="NewZoneRadius"/> и выбрать её. Выбранная зона открывается в панели. Null — зону не поставить (нет леса).
         /// </summary>
         public ChopZone PlaceOrSelectZone(Vector3Int cell)
@@ -420,23 +420,26 @@ namespace Emberhold.Gameplay.Workers
             if (!HasForest)
                 return null;
             var zone = Zones.At(cell, WorkKind.Chop) as ChopZone
-                       ?? Zones.AddChop(cell, NewZoneRadius, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count));
+                       ?? Zones.AddChop(cell, NewZoneRadius, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count), draft: true);
             SelectedZone = zone;
             return zone;
         }
 
         /// <summary>
-        /// Инструмент 9: поставить зону копки на прямоугольник между столбцами блоков from и to (протяжка ЛКМ) с уровнем на
+        /// Инструмент 9: поставить черновик зоны копки на прямоугольник между столбцами блоков from и to (протяжка ЛКМ) с уровнем на
         /// блок ниже from и выбрать её. Если протяжки не было (from и to в одном столбце), а там уже есть зона копки,
         /// выбирается она.
         /// </summary>
         public LevelZone PlaceOrSelectLevelZone(Vector3Int from, Vector3Int to)
         {
             var zone = from.x == to.x && from.z == to.z ? Zones.At(from, WorkKind.Dig) as LevelZone : null;
-            zone ??= Zones.AddLevel(from, to, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count));
+            zone ??= Zones.AddLevel(from, to, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count), draft: true);
             SelectedZone = zone;
             return zone;
         }
+
+        /// <summary>Начать черновик зоны: рабочие берутся за неё. false — зона уже работает или снята.</summary>
+        public bool StartZone(WorkZone zone) => zone != null && Zones.Start(zone);
 
         /// <summary>Снять зону вместе с её приказами.</summary>
         public bool RemoveZone(WorkZone zone)

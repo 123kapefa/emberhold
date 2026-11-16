@@ -202,6 +202,45 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Draft_PlacesNoOrders_DoesNotLeave_StartsOnStart()
+        {
+            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5), draft: true);
+            var worker = Spawn(new Vector2Int(8, 8));
+
+            Run(3f, () => false, worker);
+            Assert.That(orders.Orders, Is.Empty, "Черновик приказов не ставит");
+            Assert.That(worker.Order, Is.Null, "Рабочий за черновик не берётся");
+
+            // Черновик, где копать нечего, сам не уходит.
+            zones.SetLevel(zone, Top + 3, orders);
+            zones.Update(world, forest, orders);
+            Assert.That(zones.All, Has.Member(zone));
+            zones.SetLevel(zone, Top - 1, orders);
+
+            // Настройки черновика держатся до старта.
+            zones.SetPriority(zone, OrderPriority.High);
+            zones.SetSize(zone, new Vector2Int(3, 1), orders);
+            Assert.That(zones.Start(zone), Is.True);
+            Assert.That(zones.Start(zone), Is.False, "Уже начата");
+            zones.Update(world, forest, orders);
+            Assert.That(zone.Assignment.Orders, Has.Count.EqualTo(3));
+            Assert.That(zone.Assignment.Orders.All(o => o.Priority == OrderPriority.High), Is.True);
+            Assert.That(WorkZoneView.Label(zone), Does.Not.StartWith("черновик"));
+        }
+
+        [Test]
+        public void Draft_DoesNotTakeOrdersFromWorkingZone()
+        {
+            var draft = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5), draft: true);
+            var working = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5));
+            zones.Update(world, forest, orders);
+
+            Assert.That(working.Assignment.Orders, Has.Count.EqualTo(2), "Клетки, накрытые черновиком, достаются работающей зоне");
+            Assert.That(draft.Assignment.Orders, Is.Empty);
+            Assert.That(WorkZoneView.Label(draft), Is.EqualTo($"черновик · копка до {Top - 1} · люди 0/2"));
+        }
+
+        [Test]
         public void Label_ShowsLevelPriorityAndPeople()
         {
             var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(11, Top, 10), 3);

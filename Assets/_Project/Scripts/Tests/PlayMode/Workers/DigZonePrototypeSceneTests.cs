@@ -42,8 +42,23 @@ namespace Emberhold.Tests.PlayMode.Workers
             Assert.That(editor.ApplyDigZone(to, to), Is.SameAs(zone));
             Assert.That(crew.Zones.All.OfType<LevelZone>().Count(), Is.EqualTo(1));
 
-            // Через кадр на верхних блоках прямоугольника выше уровня — приказы копать этой зоны.
+            // Новая зона — черновик: видна, но приказов нет, рабочие не идут.
+            Assert.That(zone.IsDraft, Is.True);
             yield return null;
+            Assert.That(zone.Assignment.Orders, Is.Empty, "Черновик приказов не ставит");
+            Assert.That(WorkZoneView.Label(zone), Does.StartWith("черновик"));
+            // Черновик, где копать нечего, сам не уходит.
+            var level = zone.Level;
+            crew.Zones.SetLevel(zone, from.y + 5, crew.Orders);
+            yield return null;
+            Assert.That(crew.Zones.Contains(zone), Is.True, "Черновик не уходит, даже если копать нечего");
+            crew.Zones.SetLevel(zone, level, crew.Orders);
+
+            // «Начать»: через кадр на верхних блоках прямоугольника выше уровня — приказы копать этой зоны.
+            Assert.That(crew.StartZone(zone), Is.True);
+            Assert.That(crew.StartZone(zone), Is.False, "Начать можно один раз");
+            yield return null;
+            Assert.That(zone.IsDraft, Is.False);
             Assert.That(zone.Assignment.Orders, Is.Not.Empty);
             foreach (var order in zone.Assignment.Orders)
             {
