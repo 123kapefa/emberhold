@@ -52,11 +52,13 @@ namespace Emberhold.Tests.EditMode.Workers
         [Test]
         public void AddLevel_RectBetweenBlocks_LevelOneBelowStart()
         {
-            var zone = zones.AddLevel(new Vector3Int(8, Top, 6), new Vector3Int(5, Top, 7));
+            var zone = zones.AddLevel(new Vector3Int(8, Top, 6), new Vector3Int(5, Top, 7), world: world);
 
             Assert.That(zone.Min, Is.EqualTo(new Vector2Int(5, 6)));
             Assert.That(zone.Size, Is.EqualTo(new Vector2Int(4, 2)));
             Assert.That(zone.Level, Is.EqualTo(Top - 1), "Снять один слой");
+            Assert.That(zone.Top, Is.EqualTo(Top), "Верх — самый высокий блок");
+            Assert.That(zone.Bottom, Is.EqualTo(Top - 1), "Земля ровная и выше уровня — низ на уровне");
             Assert.That(zone.Kind, Is.EqualTo(WorkKind.Dig));
             Assert.That(zone.Mode, Is.EqualTo(LevelZoneMode.Dig));
             Assert.That(zone.Covers(new Vector3Int(8, 0, 7)), Is.True);
@@ -68,7 +70,7 @@ namespace Emberhold.Tests.EditMode.Workers
         {
             // В одном столбце лишний блок сверху: приказ только на него, не на блок под ним.
             world.SetBlock(new Vector3Int(6, Top + 1, 6), Block.Full(BlockMaterials.Dirt));
-            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(7, Top, 6));
+            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(7, Top, 6), world: world);
 
             Assert.That(zones.Update(world, forest, orders), Is.EqualTo(6));
 
@@ -92,7 +94,7 @@ namespace Emberhold.Tests.EditMode.Workers
             var tree = forest.Plant(new Vector3Int(7, Top + 1, 5), birch);
             Assert.That(forest.Hit(world, tree, 1000f), Is.True);
             Assert.That(forest.StumpAt(new Vector3Int(7, Top + 1, 5)), Is.Not.Null);
-            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(8, Top, 5));
+            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(8, Top, 5), world: world);
 
             zones.Update(world, forest, orders);
 
@@ -103,7 +105,7 @@ namespace Emberhold.Tests.EditMode.Workers
         public void Zone_WithNothingAboveLevel_Leaves()
         {
             world.SetBlock(new Vector3Int(5, Top, 5), Block.Full(BlockMaterials.Cliff));
-            zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(5, Top, 5));
+            zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(5, Top, 5), world: world);
 
             zones.Update(world, forest, orders);
 
@@ -114,7 +116,7 @@ namespace Emberhold.Tests.EditMode.Workers
         [Test]
         public void SetLevelAndSize_RecalculateOrders()
         {
-            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(8, Top, 5));
+            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(8, Top, 5), world: world);
             zones.Update(world, forest, orders);
             Assert.That(zone.Assignment.Orders, Has.Count.EqualTo(4));
 
@@ -134,7 +136,7 @@ namespace Emberhold.Tests.EditMode.Workers
         public void Zone_AdoptsFreeSingleDigOrder_NotOtherKinds()
         {
             var single = orders.AddDig(new Vector3Int(5, Top, 5));
-            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5));
+            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5), world: world);
             zones.SetPriority(zone, OrderPriority.High);
 
             zones.Update(world, forest, orders);
@@ -147,7 +149,7 @@ namespace Emberhold.Tests.EditMode.Workers
         [Test]
         public void Workers_DigRectDownToLevel_ThenZoneLeaves()
         {
-            var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(12, Top, 11));
+            var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(12, Top, 11), world: world);
             var a = Spawn(new Vector2Int(8, 8));
             var b = Spawn(new Vector2Int(14, 14));
 
@@ -167,7 +169,7 @@ namespace Emberhold.Tests.EditMode.Workers
         [Test]
         public void Workers_DigTwoLayers_TopFirst()
         {
-            var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(11, Top, 10));
+            var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(11, Top, 10), world: world);
             zones.SetLevel(zone, Top - 2, orders);
             var worker = Spawn(new Vector2Int(8, 8));
             var lowerBeforeUpper = false;
@@ -190,7 +192,7 @@ namespace Emberhold.Tests.EditMode.Workers
         public void DarkColumns_WaitForLight()
         {
             // Светло только при x < 12: зона на 10..13 копается наполовину и ждёт.
-            var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(13, Top, 10));
+            var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(13, Top, 10), world: world);
             var worker = Spawn(new Vector2Int(8, 10), c => c.x < 12);
 
             Run(60f, () => world.GetBlock(new Vector3Int(10, Top, 10)).IsAir && world.GetBlock(new Vector3Int(11, Top, 10)).IsAir, worker);
@@ -204,7 +206,7 @@ namespace Emberhold.Tests.EditMode.Workers
         [Test]
         public void Draft_PlacesNoOrders_DoesNotLeave_StartsOnStart()
         {
-            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5), draft: true);
+            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5), draft: true, world: world);
             var worker = Spawn(new Vector2Int(8, 8));
 
             Run(3f, () => false, worker);
@@ -231,8 +233,8 @@ namespace Emberhold.Tests.EditMode.Workers
         [Test]
         public void Draft_DoesNotTakeOrdersFromWorkingZone()
         {
-            var draft = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5), draft: true);
-            var working = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5));
+            var draft = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5), draft: true, world: world);
+            var working = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5), world: world);
             zones.Update(world, forest, orders);
 
             Assert.That(working.Assignment.Orders, Has.Count.EqualTo(2), "Клетки, накрытые черновиком, достаются работающей зоне");
@@ -241,9 +243,68 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Defaults_TopIsHighestBlock_BottomIsLowestGround()
+        {
+            world.SetBlock(new Vector3Int(6, Top + 1, 6), Block.Full(BlockMaterials.Dirt));
+            world.SetBlock(new Vector3Int(7, Top, 6), Block.Air);
+            world.SetBlock(new Vector3Int(7, Top - 1, 6), Block.Air);
+
+            var zone = zones.AddLevel(new Vector3Int(5, Top, 6), new Vector3Int(8, Top, 6), world: world);
+
+            Assert.That(zone.Level, Is.EqualTo(Top - 1));
+            Assert.That(zone.Top, Is.EqualTo(Top + 1));
+            Assert.That(zone.Bottom, Is.EqualTo(Top - 2), "Низ — верхний блок самого низкого столбца");
+        }
+
+        [Test]
+        public void Top_BlocksAboveAreNotDug_ChangingTopRecalculatesOrders()
+        {
+            // Столб в столбце (6, 5): блоки до высоты Top + 3.
+            for (var y = Top + 1; y <= Top + 3; y++)
+                world.SetBlock(new Vector3Int(6, y, 5), Block.Full(BlockMaterials.Dirt));
+            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5), world: world);
+            Assert.That(zone.Top, Is.EqualTo(Top + 3));
+
+            zones.SetTop(zone, Top + 1, orders);
+            zones.Update(world, forest, orders);
+            Assert.That(orders.At(new Vector3Int(6, Top + 1, 5))?.Assignment, Is.SameAs(zone.Assignment), "Копают с верха коробки");
+            Assert.That(orders.At(new Vector3Int(6, Top + 3, 5)), Is.Null, "Выше верха не трогают");
+            Assert.That(orders.At(new Vector3Int(6, Top + 2, 5)), Is.Null);
+
+            zones.SetTop(zone, Top, orders);
+            Assert.That(orders.At(new Vector3Int(6, Top + 1, 5)), Is.Null, "Приказ выше нового верха снят");
+            zones.Update(world, forest, orders);
+            Assert.That(orders.At(new Vector3Int(6, Top, 5))?.Assignment, Is.SameAs(zone.Assignment));
+
+            zones.SetTop(zone, Top + 3, orders);
+            zones.Update(world, forest, orders);
+            Assert.That(orders.At(new Vector3Int(6, Top + 3, 5))?.Assignment, Is.SameAs(zone.Assignment), "Поднятый верх — снова копают столб");
+        }
+
+        [Test]
+        public void Bounds_StayOrdered_NeighboursMove()
+        {
+            var zone = zones.AddLevel(new Vector3Int(5, Top, 5), new Vector3Int(6, Top, 5), world: world);
+            zones.SetTop(zone, 10, orders);
+            zones.SetBottom(zone, 0, orders);
+            zones.SetLevel(zone, 5, orders);
+
+            zones.SetTop(zone, 3, orders);
+            Assert.That((zone.Bottom, zone.Level, zone.Top), Is.EqualTo((0, 3, 3)), "Верх ниже уровня тянет уровень вниз");
+
+            zones.SetBottom(zone, 7, orders);
+            Assert.That((zone.Bottom, zone.Level, zone.Top), Is.EqualTo((7, 7, 7)), "Низ выше уровня тянет уровень и верх вверх");
+
+            zones.SetLevel(zone, 2, orders);
+            Assert.That((zone.Bottom, zone.Level, zone.Top), Is.EqualTo((2, 2, 7)));
+            zones.SetBottom(zone, -5, orders);
+            Assert.That(zone.Bottom, Is.EqualTo(0));
+        }
+
+        [Test]
         public void Label_ShowsLevelPriorityAndPeople()
         {
-            var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(11, Top, 10), 3);
+            var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(11, Top, 10), 3, world: world);
             Assert.That(WorkZoneView.Label(zone), Is.EqualTo($"копка до {Top - 1} · люди 0/3"));
         }
 
@@ -251,7 +312,7 @@ namespace Emberhold.Tests.EditMode.Workers
         public void At_FiltersByKind()
         {
             var chop = zones.AddChop(new Vector3Int(10, Top + 1, 10), 4);
-            var dig = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(11, Top, 11));
+            var dig = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(11, Top, 11), world: world);
 
             Assert.That(zones.At(new Vector3Int(10, Top, 10), WorkKind.Dig), Is.SameAs(dig));
             Assert.That(zones.At(new Vector3Int(10, Top, 10), WorkKind.Chop), Is.SameAs(chop));

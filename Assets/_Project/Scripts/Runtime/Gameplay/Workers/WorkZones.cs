@@ -114,11 +114,13 @@ namespace Emberhold.Gameplay.Workers
         public const int MinSize = 1;
         public const int MaxSize = 32;
 
-        internal LevelZone(Vector2Int min, Vector2Int size, int level, int maxWorkers) : base(WorkKind.Dig, maxWorkers)
+        internal LevelZone(Vector2Int min, Vector2Int size, int level, int top, int bottom, int maxWorkers) : base(WorkKind.Dig, maxWorkers)
         {
             Min = min;
             Size = ClampSize(size);
-            Level = level;
+            Level = Mathf.Max(0, level);
+            Top = Mathf.Max(Level, top);
+            Bottom = Mathf.Clamp(bottom, 0, Level);
         }
 
         public LevelZoneMode Mode => LevelZoneMode.Dig;
@@ -129,15 +131,60 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Длина (по x) и ширина (по z) в столбцах; угол <see cref="Min"/> при смене размера стоит на месте.</summary>
         public Vector2Int Size { get; internal set; }
 
-        /// <summary>Целевой уровень: высота (y) блока, который останется верхним; всё выше выкапывается.</summary>
+        /// <summary>Целевой уровень: высота (y) блока, который останется верхним; блоки выше (до <see cref="Top"/>) выкапываются.</summary>
         public int Level { get; internal set; }
+
+        /// <summary>
+        /// Верх коробки зоны: высота (y) самого высокого блока, который можно копать. Блоки выше не трогают (если под ними
+        /// выкопали, они падают по обычной устойчивости). Не ниже <see cref="Level"/>.
+        /// </summary>
+        public int Top { get; internal set; }
+
+        /// <summary>
+        /// Низ коробки зоны: наращивать (#169) можно клетки выше этой высоты и до уровня включительно; ниже не трогают.
+        /// Не выше <see cref="Level"/>.
+        /// </summary>
+        public int Bottom { get; internal set; }
 
         public override Vector2 Center => new(Min.x + Size.x * 0.5f, Min.y + Size.y * 0.5f);
 
         public override bool Covers(Vector3Int cell) =>
             cell.x >= Min.x && cell.x < Min.x + Size.x && cell.z >= Min.y && cell.z < Min.y + Size.y;
 
-        internal override bool Keeps(WorkOrder order) => Covers(order.Cell) && order.Cell.y > Level;
+        internal override bool Keeps(WorkOrder order) => Covers(order.Cell) && order.Cell.y > Level && order.Cell.y <= Top;
+
+        /// <summary>
+        /// Границы коробки по умолчанию для прямоугольника: верх — самый высокий блок в нём, низ — самая низкая земля
+        /// (верхний блок самого низкого столбца). Верх не ниже уровня, низ не выше. Пустые столбцы не считаются.
+        /// </summary>
+        public static (int top, int bottom) DefaultBounds(VoxelWorld world, Vector2Int min, Vector2Int size, int level)
+        {
+            var top = level;
+            var bottom = level;
+            for (var z = min.y; z < min.y + size.y; z++)
+            for (var x = min.x; x < min.x + size.x; x++)
+            {
+                if (!TryTopBlock(world, x, z, world.SizeInBlocks.y - 1, -1, out var y))
+                    continue;
+                top = Mathf.Max(top, y);
+                bottom = Mathf.Min(bottom, y);
+            }
+            return (top, bottom);
+        }
+
+        /// <summary>Самый высокий непустой блок столбца от высоты from вниз, выше below. false — столбец вне мира или пуст.</summary>
+        private static bool TryTopBlock(VoxelWorld world, int x, int z, int from, int below, out int y)
+        {
+            y = 0;
+            if (x < 0 || z < 0 || x >= world.SizeInBlocks.x || z >= world.SizeInBlocks.z)
+                return false;
+            for (y = Mathf.Min(from, world.SizeInBlocks.y - 1); y > below; y--)
+            {
+                if (!world.GetBlock(new Vector3Int(x, y, z)).IsAir)
+                    return true;
+            }
+            return false;
+        }
 
         internal static Vector2Int ClampSize(Vector2Int size) =>
             new(Mathf.Clamp(size.x, MinSize, MaxSize), Mathf.Clamp(size.y, MinSize, MaxSize));
@@ -148,7 +195,7 @@ namespace Emberhold.Gameplay.Workers
             for (var z = Min.y; z < Min.y + Size.y; z++)
             for (var x = Min.x; x < Min.x + Size.x; x++)
             {
-                if (!TryTopToDig(world, forest, x, z, Level, out var cell))
+                if (!TryTopToDig(world, forest, x, z, Level, Top, out var cell))
                     continue;
                 work = true;
                 var order = orders.At(cell);
@@ -160,21 +207,18 @@ namespace Emberhold.Gameplay.Workers
             IsFinished = !work;
         }
 
-        /// <summary>Верхний блок столбца выше уровня level, если его можно копать: не скала и не под пнём.</summary>
-        internal static bool TryTopToDig(VoxelWorld world, Forest forest, int x, int z, int level, out Vector3Int cell)
+        /// <summary>
+        /// Верхний блок столбца в (level, top] — что копать следующим, если его можно копать: не скала и не под пнём.
+        /// Блоки выше top не считаются.
+        /// </summary>
+        internal static bool TryTopToDig(VoxelWorld world, Forest forest, int x, int z, int level, int top, out Vector3Int cell)
         {
             cell = default;
-            if (x < 0 || z < 0 || x >= world.SizeInBlocks.x || z >= world.SizeInBlocks.z)
+            if (!TryTopBlock(world, x, z, top, level, out var y))
                 return false;
-            for (var y = world.SizeInBlocks.y - 1; y > level; y--)
-            {
-                var block = world.GetBlock(new Vector3Int(x, y, z));
-                if (block.IsAir)
-                    continue;
-                cell = new Vector3Int(x, y, z);
-                return BlockMaterials.IsBreakable(block.Material) && (forest == null || !forest.BlocksEdit(cell));
-            }
-            return false;
+            cell = new Vector3Int(x, y, z);
+            var block = world.GetBlock(cell);
+            return BlockMaterials.IsBreakable(block.Material) && (forest == null || !forest.BlocksEdit(cell));
         }
     }
 
@@ -218,13 +262,17 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>
         /// Поставить зону копки на прямоугольник между столбцами двух блоков (в любом порядке); уровень — на блок ниже
-        /// блока from (снять один слой).
+        /// блока from (снять один слой). С world верх и низ коробки — самый высокий блок и самая низкая земля прямоугольника
+        /// (<see cref="LevelZone.DefaultBounds"/>), без него — блок from и уровень.
         /// </summary>
-        public LevelZone AddLevel(Vector3Int from, Vector3Int to, int maxWorkers = DefaultMaxWorkers, bool draft = false)
+        public LevelZone AddLevel(Vector3Int from, Vector3Int to, int maxWorkers = DefaultMaxWorkers, bool draft = false,
+            VoxelWorld world = null)
         {
             var min = new Vector2Int(Mathf.Min(from.x, to.x), Mathf.Min(from.z, to.z));
-            var size = new Vector2Int(Mathf.Abs(to.x - from.x) + 1, Mathf.Abs(to.z - from.z) + 1);
-            return Add(new LevelZone(min, size, from.y - 1, maxWorkers) { IsDraft = draft });
+            var size = LevelZone.ClampSize(new Vector2Int(Mathf.Abs(to.x - from.x) + 1, Mathf.Abs(to.z - from.z) + 1));
+            var level = from.y - 1;
+            var (top, bottom) = world != null ? LevelZone.DefaultBounds(world, min, size, level) : (from.y, level);
+            return Add(new LevelZone(min, size, level, top, bottom, maxWorkers) { IsDraft = draft });
         }
 
         /// <summary>Начать черновик: со следующего <see cref="Update"/> зона ставит приказы. false — зона не черновик или её нет.</summary>
@@ -358,12 +406,39 @@ namespace Emberhold.Gameplay.Workers
         public int SetRadiusTo(ChopZone zone, Vector2 point, WorkOrders orders) =>
             SetRadius(zone, Mathf.RoundToInt(Vector2.Distance(zone.Center, point)), orders);
 
-        /// <summary>Сменить целевой уровень; приказы на уровне и ниже снимаются, новые встанут в <see cref="Update"/>.</summary>
+        /// <summary>
+        /// Сменить целевой уровень; верх и низ подвигаются, чтобы было Низ ≤ Уровень ≤ Верх. Приказы вне (Уровень, Верх]
+        /// снимаются, новые встанут в <see cref="Update"/>.
+        /// </summary>
         public void SetLevel(LevelZone zone, int level, WorkOrders orders)
         {
-            if (zone.Level == level)
+            level = Mathf.Max(0, level);
+            SetBounds(zone, Mathf.Max(zone.Top, level), level, Mathf.Min(zone.Bottom, level), orders);
+        }
+
+        /// <summary>Сменить верх коробки; уровень и низ опускаются, если верх ниже них. Приказы выше верха снимаются.</summary>
+        public void SetTop(LevelZone zone, int top, WorkOrders orders)
+        {
+            top = Mathf.Max(0, top);
+            var level = Mathf.Min(zone.Level, top);
+            SetBounds(zone, top, level, Mathf.Min(zone.Bottom, level), orders);
+        }
+
+        /// <summary>Сменить низ коробки; уровень и верх поднимаются, если низ выше них.</summary>
+        public void SetBottom(LevelZone zone, int bottom, WorkOrders orders)
+        {
+            bottom = Mathf.Max(0, bottom);
+            var level = Mathf.Max(zone.Level, bottom);
+            SetBounds(zone, Mathf.Max(zone.Top, level), level, bottom, orders);
+        }
+
+        private void SetBounds(LevelZone zone, int top, int level, int bottom, WorkOrders orders)
+        {
+            if (zone.Top == top && zone.Level == level && zone.Bottom == bottom)
                 return;
+            zone.Top = top;
             zone.Level = level;
+            zone.Bottom = bottom;
             Reshaped(zone, orders);
         }
 

@@ -15,6 +15,10 @@ namespace Emberhold.Gameplay.Workers
         Level,
         /// <summary>Радиус зоны рубки: ручка на краю круга.</summary>
         Radius,
+        /// <summary>Верх коробки зоны копки: стрелка вверх-вниз у дальнего угла, на высоте верха.</summary>
+        Top,
+        /// <summary>Низ коробки зоны копки: стрелка вверх-вниз у ближнего угла, на высоте низа.</summary>
+        Bottom,
     }
 
     /// <summary>Ручка на выбранной зоне: что делает и где стоит (в координатах мира блоков).</summary>
@@ -38,7 +42,7 @@ namespace Emberhold.Gameplay.Workers
 
     /// <summary>
     /// Где стоят ручки зоны (#136): у прямоугольника — по середине каждой стороны, на углах, перенос в середине и стрелка
-    /// уровня над ней; у круга рубки — перенос в центре и радиус на краю круга (со стороны больших x). Всё по земле:
+    /// уровня над ней, стрелки верха и низа коробки — снаружи у дальнего и ближнего углов на своей высоте; у круга рубки — перенос в центре и радиус на краю круга (со стороны больших x). Всё по земле:
     /// высоту даёт ground (у сторон и углов — земля столбца внутри зоны у ручки). Чистая геометрия, без сцены.
     /// </summary>
     public static class ZoneHandleLayout
@@ -47,6 +51,9 @@ namespace Emberhold.Gameplay.Workers
         public const float LevelLift = 2f;
 
         private const float GroundLift = 0.15f;
+
+        /// <summary>Насколько стрелки верха и низа отступают от углов наружу, чтобы не путаться с ручками углов.</summary>
+        public const float BoundOffset = 0.7f;
 
         public static void Build(WorkZone zone, Func<Vector2Int, float> ground, List<ZoneHandle> into)
         {
@@ -78,6 +85,8 @@ namespace Emberhold.Gameplay.Workers
             into.Add(new ZoneHandle(ZoneHandleKind.Move, move));
             var levelY = Mathf.Max(level.Level + 1f, move.y) + LevelLift;
             into.Add(new ZoneHandle(ZoneHandleKind.Level, new Vector3(center.x, levelY, center.y)));
+            into.Add(new ZoneHandle(ZoneHandleKind.Top, new Vector3(x1 + BoundOffset, level.Top + 1f, z1 + BoundOffset)));
+            into.Add(new ZoneHandle(ZoneHandleKind.Bottom, new Vector3(x0 - BoundOffset, level.Bottom + 1f, z0 - BoundOffset)));
         }
 
         private static Vector3 OnGround(Func<Vector2Int, float> ground, Vector2 point, Vector2 sample)

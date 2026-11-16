@@ -103,6 +103,12 @@ namespace Emberhold.Tests.EditMode.Workers
             Assert.That(new Vector2(move.Position.x, move.Position.z), Is.EqualTo(zone.Center));
             var level = handles.Single(h => h.Kind == ZoneHandleKind.Level);
             Assert.That(level.Position.y, Is.EqualTo(4f + 0.15f + ZoneHandleLayout.LevelLift).Within(1e-4f), "Над землёй, если она выше уровня");
+            var top = handles.Single(h => h.Kind == ZoneHandleKind.Top);
+            var bottom = handles.Single(h => h.Kind == ZoneHandleKind.Bottom);
+            Assert.That(top.Position.y, Is.EqualTo(zone.Top + 1f));
+            Assert.That(bottom.Position.y, Is.EqualTo(zone.Bottom + 1f));
+            Assert.That(top.Position.x, Is.GreaterThan(9f), "Снаружи дальнего угла");
+            Assert.That(bottom.Position.x, Is.LessThan(5f), "Снаружи ближнего угла");
         }
 
         [Test]

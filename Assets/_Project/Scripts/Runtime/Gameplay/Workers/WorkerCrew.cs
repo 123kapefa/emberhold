@@ -440,7 +440,7 @@ namespace Emberhold.Gameplay.Workers
         public LevelZone PlaceOrSelectLevelZone(Vector3Int from, Vector3Int to)
         {
             var zone = from.x == to.x && from.z == to.z ? Zones.At(from, WorkKind.Dig) as LevelZone : null;
-            zone ??= Zones.AddLevel(from, to, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count), draft: true);
+            zone ??= Zones.AddLevel(from, to, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count), draft: true, world: worldView.World);
             SelectedZone = zone;
             return zone;
         }

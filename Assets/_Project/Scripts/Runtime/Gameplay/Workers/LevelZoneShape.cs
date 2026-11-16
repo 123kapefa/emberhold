@@ -5,8 +5,9 @@ using UnityEngine;
 namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
-    /// Объёмы зоны с уровнем для её вида (#136): что выкопать — от уровня до земли столбца, где земля выше уровня и верхний
-    /// блок можно копать; что нарастить — от земли до уровня, где земля ниже уровня (достраивание — #169, пока только видно).
+    /// Объёмы зоны с уровнем для её вида (#136): что выкопать — от уровня до земли столбца, но не выше верха коробки, где
+    /// земля выше уровня и блок можно копать; что нарастить — от земли, но не ниже низа коробки, до уровня, где земля ниже
+    /// уровня (достраивание — #169, пока только видно).
     /// Соседние столбцы одного объёма сливаются: грани между ними не строятся, остаются верх и внешние стенки. Объём чуть
     /// раздут (<see cref="Inflate"/>), чтобы не мерцать с гранями блоков. Чистая геометрия в координатах мира блоков, без сцены.
     /// </summary>
@@ -17,23 +18,26 @@ namespace Emberhold.Gameplay.Workers
         private static readonly Vector2Int[] Sides = { Vector2Int.right, Vector2Int.left, new(0, 1), new(0, -1) };
 
         /// <summary>
-        /// Построить объёмы прямоугольника min/size с уровнем level. height — высота земли столбца, diggable — верхний
-        /// блок столбца выше уровня можно копать. Треугольники объёма «выкопать» — в dig, «нарастить» — в fill.
+        /// Построить объёмы прямоугольника min/size с уровнем level и коробкой: верх top (высота самого высокого блока,
+        /// который копают), низ bottom (наращивают клетки выше него). height — высота земли столбца, diggable — в столбце
+        /// есть что копать в (уровень, верх]. Треугольники объёма «выкопать» — в dig, «нарастить» — в fill.
         /// </summary>
-        public static void Build(Vector2Int min, Vector2Int size, int level, Func<Vector2Int, float> height, Func<Vector2Int, bool> diggable,
-            List<Vector3> vertices, List<int> dig, List<int> fill)
+        public static void Build(Vector2Int min, Vector2Int size, int level, int top, int bottom, Func<Vector2Int, float> height,
+            Func<Vector2Int, bool> diggable, List<Vector3> vertices, List<int> dig, List<int> fill)
         {
             vertices.Clear();
             dig.Clear();
             fill.Clear();
             var plane = level + 1f;
+            var ceiling = top + 1f;
+            var floor = bottom + 1f;
             for (var z = min.y; z < min.y + size.y; z++)
             for (var x = min.x; x < min.x + size.x; x++)
             {
                 var column = new Vector2Int(x, z);
                 foreach (var (triangles, isDig) in new[] { (dig, true), (fill, false) })
                 {
-                    if (!TryInterval(column, isDig, min, size, plane, height, diggable, out var low, out var high))
+                    if (!TryInterval(column, isDig, min, size, plane, ceiling, floor, height, diggable, out var low, out var high))
                         continue;
                     // Верх: у «выкопать» — по земле, у «нарастить» — плоскость уровня.
                     AddQuad(vertices, triangles,
@@ -41,7 +45,7 @@ namespace Emberhold.Gameplay.Workers
                         new Vector3(x + 1, high + Inflate, z + 1), new Vector3(x + 1, high + Inflate, z));
                     foreach (var side in Sides)
                     {
-                        var hasNeighbour = TryInterval(column + side, isDig, min, size, plane, height, diggable, out var nLow, out var nHigh);
+                        var hasNeighbour = TryInterval(column + side, isDig, min, size, plane, ceiling, floor, height, diggable, out var nLow, out var nHigh);
                         // Видимые куски стенки: свой отрезок минус отрезок соседа того же объёма.
                         if (!hasNeighbour || nHigh <= low || nLow >= high)
                             AddSide(vertices, triangles, column, side, low, high);
@@ -57,9 +61,12 @@ namespace Emberhold.Gameplay.Workers
             }
         }
 
-        /// <summary>Отрезок объёма в столбце: «выкопать» — [уровень, земля], «нарастить» — [земля, уровень]. false — пусто.</summary>
-        private static bool TryInterval(Vector2Int column, bool isDig, Vector2Int min, Vector2Int size, float plane,
-            Func<Vector2Int, float> height, Func<Vector2Int, bool> diggable, out float low, out float high)
+        /// <summary>
+        /// Отрезок объёма в столбце: «выкопать» — [уровень, min(земля, верх)], «нарастить» — [max(земля, низ), уровень].
+        /// false — пусто.
+        /// </summary>
+        private static bool TryInterval(Vector2Int column, bool isDig, Vector2Int min, Vector2Int size, float plane, float ceiling,
+            float floor, Func<Vector2Int, float> height, Func<Vector2Int, bool> diggable, out float low, out float high)
         {
             low = high = 0f;
             if (column.x < min.x || column.y < min.y || column.x >= min.x + size.x || column.y >= min.y + size.y)
@@ -67,15 +74,15 @@ namespace Emberhold.Gameplay.Workers
             var ground = height(column);
             if (isDig)
             {
-                if (ground <= plane + 1e-3f || !diggable(column))
+                high = Mathf.Min(ground, ceiling);
+                if (high <= plane + 1e-3f || !diggable(column))
                     return false;
                 low = plane;
-                high = ground;
                 return true;
             }
-            if (ground >= plane - 1e-3f)
+            low = Mathf.Max(ground, floor);
+            if (low >= plane - 1e-3f)
                 return false;
-            low = ground;
             high = plane;
             return true;
         }

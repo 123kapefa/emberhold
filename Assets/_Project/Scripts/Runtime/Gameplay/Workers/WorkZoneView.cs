@@ -7,7 +7,7 @@ namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
     /// Заглушка вида зон работ, пока у них нет своего облика. Зона рубки (#167) — круг по земле, зона копки (#136) —
-    /// линия по внешнему краю прямоугольника и полупрозрачные объёмы. Черновик (ещё не начатая зона) — пунктирный бледный
+    /// коробка от низа до верха (какие высоты захвачены) и полупрозрачные объёмы. Черновик (ещё не начатая зона) — пунктирный бледный
     /// край и бледные объёмы тех же цветов, в подписи «черновик», в панели кнопка «Начать». Объёмы: жёлтый — что выкопать (выше уровня), голубой — что
     /// нарастить до уровня (покажет и выравнивание #169). Объёмы — один меш на зону, пересобираются, только когда зона или
     /// мир поменялись. Приоритет на карте не показывается (он виден в панели). Над зоной подпись,
@@ -119,7 +119,7 @@ namespace Emberhold.Gameplay.Workers
 
         private Rect PanelRect()
         {
-            var height = crew != null && crew.SelectedZone is LevelZone ? 232f : 178f;
+            var height = crew != null && crew.SelectedZone is LevelZone ? 278f : 178f;
             if (crew != null && crew.SelectedZone is { IsDraft: true })
                 height += 46f;
             return new Rect((Screen.width - PanelWidth) * 0.5f, Screen.height - height - PanelBottom, PanelWidth, height);
@@ -214,7 +214,7 @@ namespace Emberhold.Gameplay.Workers
         /// </summary>
         private void StartDrag(WorkZone zone, ZoneHandle handle, Ray ray, UnityEngine.Camera camera)
         {
-            if (handle.Kind == ZoneHandleKind.Level)
+            if (handle.Kind is ZoneHandleKind.Level or ZoneHandleKind.Top or ZoneHandleKind.Bottom)
             {
                 var facing = space.InverseTransformVector(camera.transform.forward);
                 facing.y = 0f;
@@ -228,7 +228,14 @@ namespace Emberhold.Gameplay.Workers
                 return;
             var hit = ray.GetPoint(enter);
             grabHeight = hit.y;
-            grabLevel = zone is LevelZone level ? level.Level : 0;
+            grabLevel = zone is LevelZone level
+                ? handle.Kind switch
+                {
+                    ZoneHandleKind.Top => level.Top,
+                    ZoneHandleKind.Bottom => level.Bottom,
+                    _ => level.Level,
+                }
+                : 0;
             grabOffset = zone switch
             {
                 LevelZone levelZone => new Vector2(hit.x - levelZone.Min.x, hit.z - levelZone.Min.y),
@@ -253,6 +260,12 @@ namespace Emberhold.Gameplay.Workers
                     break;
                 case ZoneHandleKind.Level when zone is LevelZone level:
                     crew.Zones.SetLevel(level, Mathf.Max(0, grabLevel + Mathf.RoundToInt(hit.y - grabHeight)), orders);
+                    break;
+                case ZoneHandleKind.Top when zone is LevelZone level:
+                    crew.Zones.SetTop(level, Mathf.Max(0, grabLevel + Mathf.RoundToInt(hit.y - grabHeight)), orders);
+                    break;
+                case ZoneHandleKind.Bottom when zone is LevelZone level:
+                    crew.Zones.SetBottom(level, Mathf.Max(0, grabLevel + Mathf.RoundToInt(hit.y - grabHeight)), orders);
                     break;
                 case ZoneHandleKind.Move when zone is LevelZone level:
                     crew.Zones.Move(level, new Vector2Int(Mathf.RoundToInt(hit.x - grabOffset.x), Mathf.RoundToInt(hit.z - grabOffset.y)), orders);
@@ -297,6 +310,8 @@ namespace Emberhold.Gameplay.Workers
             switch (handle.Kind)
             {
                 case ZoneHandleKind.Level:
+                case ZoneHandleKind.Top:
+                case ZoneHandleKind.Bottom:
                     // Стрелка вверх-вниз.
                     AppendSegment(p + Vector3.down * 0.7f, p + Vector3.up * 0.7f);
                     AppendSegment(p + Vector3.up * 0.7f, p + new Vector3(-s, 0.7f - s, 0f));
@@ -342,7 +357,7 @@ namespace Emberhold.Gameplay.Workers
                     volumes[level] = volume = CreateVolume($"Dig Zone Volume {volumes.Count + 1}");
                 Place(volume.Renderer.transform);
                 SetDraftLook(volume, level.IsDraft);
-                Rebuild(volume, level.Min, level.Size, level.Level);
+                Rebuild(volume, level.Min, level.Size, level.Level, level.Top, level.Bottom);
             }
             goneVolumes.Clear();
             foreach (var pair in volumes)
@@ -358,16 +373,16 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>Пересобрать объём, только если прямоугольник, уровень или мир поменялись с прошлой сборки, и показать его.</summary>
-        private void Rebuild(Volume volume, Vector2Int min, Vector2Int size, int level)
+        private void Rebuild(Volume volume, Vector2Int min, Vector2Int size, int level, int top, int bottom)
         {
-            var key = (min, size, level, worldStamp, crew.ForestVersion);
+            var key = (min, size, level, top, bottom, worldStamp, crew.ForestVersion);
             if (!volume.Key.Equals(key))
             {
                 volume.Key = key;
                 var world = crew.World;
                 var forest = crew.ForestModel;
-                LevelZoneShape.Build(min, size, level, crew.GroundHeight,
-                    column => LevelZone.TryTopToDig(world, forest, column.x, column.y, level, out _),
+                LevelZoneShape.Build(min, size, level, top, bottom, crew.GroundHeight,
+                    column => LevelZone.TryTopToDig(world, forest, column.x, column.y, level, top, out _),
                     volumeVertices, digTriangles, fillTriangles);
                 var mesh = volume.Mesh;
                 mesh.Clear();
@@ -412,8 +427,10 @@ namespace Emberhold.Gameplay.Workers
                 return false;
             var min = new Vector2Int(Mathf.Min(from.x, hit.Block.x), Mathf.Min(from.z, hit.Block.z));
             var size = new Vector2Int(Mathf.Abs(hit.Block.x - from.x) + 1, Mathf.Abs(hit.Block.z - from.z) + 1);
-            AppendRect(min, size, 0f);
-            Rebuild(preview, min, size, from.y - 1);
+            var level = from.y - 1;
+            var (top, bottom) = LevelZone.DefaultBounds(crew.World, min, size, level);
+            AppendBox(min, size, bottom, top, 0f);
+            Rebuild(preview, min, size, level, top, bottom);
             return true;
         }
 
@@ -486,9 +503,15 @@ namespace Emberhold.Gameplay.Workers
                 var width = Stepper("Ширина", level.Size.y.ToString(), level.Size.y > LevelZone.MinSize, level.Size.y < LevelZone.MaxSize);
                 if (width != 0)
                     crew.Zones.SetSize(level, level.Size + new Vector2Int(0, width), crew.Orders);
+                var top = Stepper("Верх", $"высота {level.Top}", level.Top > 0, true);
+                if (top != 0)
+                    crew.Zones.SetTop(level, level.Top + top, crew.Orders);
                 var height = Stepper("Уровень", $"высота {level.Level}", level.Level > 0, true);
                 if (height != 0)
                     crew.Zones.SetLevel(level, level.Level + height, crew.Orders);
+                var bottom = Stepper("Низ", $"высота {level.Bottom}", level.Bottom > 0, true);
+                if (bottom != 0)
+                    crew.Zones.SetBottom(level, level.Bottom + bottom, crew.Orders);
             }
             var priority = Stepper("Приоритет", PriorityLabel.Name(zone.Priority), zone.Priority > OrderPriority.Normal,
                 zone.Priority < OrderPriority.Urgent);
@@ -541,7 +564,46 @@ namespace Emberhold.Gameplay.Workers
             if (zone is ChopZone chop)
                 AppendCircle(chop.Cell, chop.Radius - inset, dashed);
             else if (zone is LevelZone level)
-                AppendRect(level.Min, level.Size, inset, dashed);
+                AppendBox(level.Min, level.Size, level.Bottom, level.Top, inset, dashed);
+        }
+
+        /// <summary>
+        /// Коробка зоны с уровнем: прямоугольник столбцов от низа (верх блока bottom) до верха (верх блока top) — видно,
+        /// какие высоты захвачены. dashed — пунктиром (черновик).
+        /// </summary>
+        private void AppendBox(Vector2Int min, Vector2Int size, int bottom, int top, float inset, bool dashed = false)
+        {
+            var x0 = min.x + inset;
+            var z0 = min.y + inset;
+            var x1 = min.x + size.x - inset;
+            var z1 = min.y + size.y - inset;
+            var y0 = bottom + 1f + Lift;
+            var y1 = top + 1f + Lift;
+            var corners = new[] { new Vector2(x0, z0), new Vector2(x1, z0), new Vector2(x1, z1), new Vector2(x0, z1) };
+            for (var i = 0; i < 4; i++)
+            {
+                var a = corners[i];
+                var b = corners[(i + 1) % 4];
+                AppendEdge(new Vector3(a.x, y0, a.y), new Vector3(b.x, y0, b.y), dashed);
+                if (y1 > y0 + 1e-3f)
+                {
+                    AppendEdge(new Vector3(a.x, y1, a.y), new Vector3(b.x, y1, b.y), dashed);
+                    AppendEdge(new Vector3(a.x, y0, a.y), new Vector3(a.x, y1, a.y), dashed);
+                }
+            }
+        }
+
+        /// <summary>Ребро; пунктиром — кусками по полблока через один.</summary>
+        private void AppendEdge(Vector3 a, Vector3 b, bool dashed)
+        {
+            if (!dashed)
+            {
+                AppendSegment(a, b);
+                return;
+            }
+            var steps = Mathf.Max(1, Mathf.CeilToInt(Vector3.Distance(a, b) * 2f));
+            for (var i = 0; i < steps; i += 2)
+                AppendSegment(Vector3.Lerp(a, b, (float)i / steps), Vector3.Lerp(a, b, (float)(i + 1) / steps));
         }
 
         /// <summary>Круг по земле вокруг середины клетки center, в координатах мира блоков.</summary>
@@ -558,38 +620,6 @@ namespace Emberhold.Gameplay.Workers
                     continue;
                 indices.Add(first + i);
                 indices.Add(first + (i + 1) % Segments);
-            }
-        }
-
-        /// <summary>Рамка прямоугольника столбцов по земле, по полблока, чтобы следовать рельефу.</summary>
-        private void AppendRect(Vector2Int min, Vector2Int size, float inset, bool dashed = false)
-        {
-            var x0 = min.x + inset;
-            var z0 = min.y + inset;
-            var x1 = min.x + size.x - inset;
-            var z1 = min.y + size.y - inset;
-            var corners = new[] { new Vector2(x0, z0), new Vector2(x1, z0), new Vector2(x1, z1), new Vector2(x0, z1) };
-            var first = vertices.Count;
-            for (var side = 0; side < 4; side++)
-            {
-                var a = corners[side];
-                var b = corners[(side + 1) % 4];
-                var steps = Mathf.Max(1, Mathf.CeilToInt(Vector2.Distance(a, b) * 2f));
-                for (var i = 0; i < steps; i++)
-                {
-                    var p = Vector2.Lerp(a, b, (float)i / steps);
-                    // Высоту берём у столбца внутри прямоугольника, а не у соседа за краем.
-                    var inside = new Vector2(Mathf.Clamp(p.x, x0 + 0.01f, x1 - 0.01f), Mathf.Clamp(p.y, z0 + 0.01f, z1 - 0.01f));
-                    vertices.Add(new Vector3(p.x, Ground(inside.x, inside.y), p.y));
-                }
-            }
-            var count = vertices.Count - first;
-            for (var i = 0; i < count; i++)
-            {
-                if (dashed && i % 2 == 1)
-                    continue;
-                indices.Add(first + i);
-                indices.Add(first + (i + 1) % count);
             }
         }
 
@@ -713,7 +743,7 @@ namespace Emberhold.Gameplay.Workers
             public bool IsDraftLook { get; set; }
 
             /// <summary>С чем объём собран в последний раз: прямоугольник, уровень, отметка мира и леса.</summary>
-            public (Vector2Int, Vector2Int, int, int, int) Key { get; set; } = (default, default, int.MinValue, -1, -1);
+            public (Vector2Int, Vector2Int, int, int, int, int, int) Key { get; set; } = (default, default, int.MinValue, 0, 0, -1, -1);
         }
 }
 }
