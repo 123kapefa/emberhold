@@ -212,6 +212,26 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void Worker_InDarkness_LetsOthersTakeHisOrder()
+        {
+            // Копатель идёт к приказу, и свет уходит у него из-под ног: приказ сразу может взять другой, светлый рабочий.
+            var cell = new Vector3Int(20, Ground - 1, 9);
+            world.SetBlock(cell, Block.Full(BlockMaterials.Stone));
+            var darkBelow = int.MinValue;
+            context = new WorkerContext(world, orders, items, damage, new BlockStability(), settings, c => c.x > darkBelow, pallets: pallets);
+            var dig = orders.AddDig(cell);
+            var first = Spawn(new Vector2Int(4, 9));
+            Run(5f, () => first.Order == dig, first);
+            Assert.That(first.Order, Is.SameAs(dig));
+
+            darkBelow = Mathf.FloorToInt(first.Position.x) + 1;
+            var second = Spawn(new Vector2Int(28, 9));
+            Run(5f, () => dig.Worker == second, first, second);
+            Assert.That(dig.Worker, Is.SameAs(second), "Приказ взял рабочий в свету");
+            Assert.That(second.Role, Is.EqualTo(WorkerRole.Digger));
+        }
+
+        [Test]
         public void Digger_CarriesOwnStoneToPalletAsDigger()
         {
             var cell = new Vector3Int(12, Ground - 1, 12);

@@ -135,6 +135,8 @@ namespace Emberhold.Gameplay.Workers
                 // Свет ушёл из-под ног: бросаем всё и раз в IdleSearchSeconds ищем путь к свету.
                 if (State != WorkerState.Idle || Order != null || Carrying != null)
                     Abandon();
+                // Пока бежит к свету, задание не держит: его приказ может взять другой.
+                LeaveAssignment();
                 fleeTimer -= deltaTime;
                 if (fleeTimer <= 0f)
                 {
