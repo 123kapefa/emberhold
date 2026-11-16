@@ -14,7 +14,10 @@ using Object = UnityEngine.Object;
 
 namespace Emberhold.Tests.PlayMode.Workers
 {
-    /// <summary>Зона копки в сцене Prototype (#136): инструмент 9 ставит прямоугольник с уровнем, выбирает и снимает зону.</summary>
+    /// <summary>
+    /// Зона копки в сцене Prototype (#136, #169): инструмент 9 ставит прямоугольник с уровнем, выбирает зону; она копает,
+    /// наращивает и уходит, когда в её режиме делать нечего.
+    /// </summary>
     public sealed class DigZonePrototypeSceneTests
     {
         [UnityTest]
@@ -90,11 +93,26 @@ namespace Emberhold.Tests.PlayMode.Workers
             Assert.That(volume.GetComponent<MeshRenderer>().sharedMaterial.renderQueue, Is.GreaterThanOrEqualTo(3000), "Объём прозрачный");
             Assert.That(WorkZoneView.Label(zone), Does.Not.Contain("обычный"), "Приоритет на карте не показывается");
 
-            // Уровень вверх до начального блока: копать нечего, приказы уходят.
-            crew.Zones.SetLevel(zone, from.y + 5, crew.Orders);
+            // Выравнивание (#169), режим по умолчанию: уровень на блок выше земли — копать нечего, зона наращивает землёй.
+            Assert.That(zone.Mode, Is.EqualTo(LevelZoneMode.Level));
+            crew.Zones.SetLevel(zone, from.y + 1, crew.Orders);
+            yield return null;
+            Assert.That(zone.IsFilling, Is.True);
+            Assert.That(zone.Assignment.Orders, Is.Not.Empty, "Чертежи земли до уровня");
+            foreach (var order in zone.Assignment.Orders)
+            {
+                Assert.That(order.Kind, Is.EqualTo(WorkKind.Build));
+                Assert.That(order.Block, Is.EqualTo(LevelZone.FillBlock));
+                Assert.That(order.Cell.y, Is.GreaterThan(zone.Bottom).And.LessThanOrEqualTo(zone.Level));
+            }
+            Assert.That(volume.sharedMesh.GetTriangles(1), Is.Not.Empty, "Голубая часть: есть что нарастить");
+            Assert.That(WorkZoneView.Label(zone), Does.StartWith("выровнять до"));
+
+            // Режим «выкопать»: чертежи сняты, голубое не рисуется; копать нечего — зона ушла.
+            crew.Zones.SetMode(zone, LevelZoneMode.Dig, crew.Orders);
             Assert.That(zone.Assignment.Orders, Is.Empty);
             yield return null;
-            Assert.That(crew.Zones.All, Has.No.Member(zone), "Копать нечего — зона ушла");
+            Assert.That(crew.Zones.All, Has.No.Member(zone), "В режиме зоны делать нечего — зона ушла");
             Assert.That(crew.SelectedZone, Is.Null);
         }
 

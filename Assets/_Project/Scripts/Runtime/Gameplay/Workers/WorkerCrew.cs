@@ -162,6 +162,9 @@ namespace Emberhold.Gameplay.Workers
                 () => buildZone == null || litZone.Count > 0, editor.OnWorldChanged, forest != null ? forest.Forest : null, Pallets, IsCellLit,
                 BuildCampfire);
             Orders.Cancelled += OnOrderCancelled;
+            // Зона выравнивания наращивает чертежами по ценам из таблицы; в костёр и поддон не насыпает.
+            Zones.CostOf = material => costs != null ? costs.CostOf(material) : null;
+            Zones.IsBlocked = cell => HasFireAt(cell) || Pallets.At(cell) != null;
             if (dayNight == null)
                 dayNight = FindAnyObjectByType<DayNightCycle>();
             blueprintLines = CreateLines("Blueprints", blueprintColor);
@@ -794,8 +797,8 @@ namespace Emberhold.Gameplay.Workers
                 }
                 if (order.Kind != kind)
                     continue;
-                // Приказы зоны копки не обводятся по блоку: зону показывает её вид (край и объёмы, WorkZoneView).
-                if (order.Kind == WorkKind.Dig && Zones.ZoneOf(order) is LevelZone)
+                // Приказы и чертежи зоны с уровнем не обводятся по блоку: зону показывает её вид (край и объёмы, WorkZoneView).
+                if (Zones.ZoneOf(order) is LevelZone)
                     continue;
                 // Чертёж — по форме будущего блока, приказ копать — по нынешнему блоку и чуть шире, чтобы не сливаться с рамкой курсора.
                 var block = kind == WorkKind.Build ? order.Block : worldView.World.GetBlock(order.Cell);

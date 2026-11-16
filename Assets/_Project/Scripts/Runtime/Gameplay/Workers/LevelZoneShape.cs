@@ -5,9 +5,9 @@ using UnityEngine;
 namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
-    /// Объёмы зоны с уровнем для её вида (#136): что выкопать — от уровня до земли столбца, но не выше верха коробки, где
-    /// земля выше уровня и блок можно копать; что нарастить — от земли, но не ниже низа коробки, до уровня, где земля ниже
-    /// уровня (достраивание — #169, пока только видно).
+    /// Объёмы зоны с уровнем для её вида (#136, #169): что выкопать — от уровня до земли столбца, но не выше верха коробки,
+    /// где земля выше уровня и блок можно копать; что нарастить — от земли до уровня, где земля ниже уровня, но не ниже
+    /// низа коробки. Столбец, чья земля ниже низа, не наращивают (класть не на что) — у него голубого нет.
     /// Соседние столбцы одного объёма сливаются: грани между ними не строятся, остаются верх и внешние стенки. Объём чуть
     /// раздут (<see cref="Inflate"/>), чтобы не мерцать с гранями блоков. Чистая геометрия в координатах мира блоков, без сцены.
     /// </summary>
@@ -20,10 +20,12 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>
         /// Построить объёмы прямоугольника min/size с уровнем level и коробкой: верх top (высота самого высокого блока,
         /// который копают), низ bottom (наращивают клетки выше него). height — высота земли столбца, diggable — в столбце
-        /// есть что копать в (уровень, верх]. Треугольники объёма «выкопать» — в dig, «нарастить» — в fill.
+        /// есть что копать в (уровень, верх]. Треугольники объёма «выкопать» — в dig, «нарастить» — в fill; showDig = false —
+        /// «выкопать» не строится (режим без копки), showFill = false — «нарастить».
         /// </summary>
         public static void Build(Vector2Int min, Vector2Int size, int level, int top, int bottom, Func<Vector2Int, float> height,
-            Func<Vector2Int, bool> diggable, List<Vector3> vertices, List<int> dig, List<int> fill)
+            Func<Vector2Int, bool> diggable, List<Vector3> vertices, List<int> dig, List<int> fill, bool showDig = true,
+            bool showFill = true)
         {
             vertices.Clear();
             dig.Clear();
@@ -37,6 +39,8 @@ namespace Emberhold.Gameplay.Workers
                 var column = new Vector2Int(x, z);
                 foreach (var (triangles, isDig) in new[] { (dig, true), (fill, false) })
                 {
+                    if (isDig ? !showDig : !showFill)
+                        continue;
                     if (!TryInterval(column, isDig, min, size, plane, ceiling, floor, height, diggable, out var low, out var high))
                         continue;
                     // Верх: у «выкопать» — по земле, у «нарастить» — плоскость уровня.
@@ -80,6 +84,9 @@ namespace Emberhold.Gameplay.Workers
                 low = plane;
                 return true;
             }
+            // Земля ниже низа коробки: нижней клетке (низ + 1) не на что лечь.
+            if (ground <= floor - 1f + 1e-3f)
+                return false;
             low = Mathf.Max(ground, floor);
             if (low >= plane - 1e-3f)
                 return false;
