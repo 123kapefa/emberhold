@@ -6,6 +6,7 @@ using Emberhold.Gameplay.Building;
 using Emberhold.Gameplay.Workers;
 using Emberhold.World;
 using Emberhold.World.Editing;
+using Emberhold.World.Voxels;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -116,6 +117,61 @@ namespace Emberhold.Tests.PlayMode.Workers
             yield return null;
             Assert.That(crew.Zones.All, Has.No.Member(zone), "В режиме зоны делать нечего — зона ушла");
             Assert.That(crew.SelectedZone, Is.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator PrototypeScene_FillZoneLevelsDipOnSmoothGround()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+            yield return null;
+
+            var crew = Object.FindAnyObjectByType<WorkerCrew>();
+            var editor = Object.FindAnyObjectByType<BlockEditController>();
+            var view = Object.FindAnyObjectByType<VoxelWorldView>();
+            var world = view.World;
+
+            // Ямка на гладкой земле у костра (#78): в одном столбце верхний блок — половинка, в соседнем верхнего блока нет.
+            var half = SurfaceHit(view, 2.5f, 2.5f).Block;
+            var hole = SurfaceHit(view, 3.5f, 2.5f).Block;
+            var level = Mathf.Max(half.y, hole.y);
+            var material = world.GetBlock(half).Material;
+            world.SetBlock(half, Block.Flat(material, BlockShape.MaxHeight / 2));
+            editor.OnWorldChanged(half);
+            world.SetBlock(hole, Block.Air);
+            editor.OnWorldChanged(hole);
+
+            var zone = crew.Zones.AddLevel(new Vector3Int(half.x, level + 1, half.z), new Vector3Int(hole.x, level + 1, hole.z),
+                world: world, mode: LevelZoneMode.Fill);
+            Assert.That(zone.Level, Is.EqualTo(level));
+            yield return null;
+
+            // Голубое — ровно то, что засыплют: половинку дополняют её же материалом, в пустую клетку кладут землю.
+            var topUp = crew.Orders.At(half);
+            Assert.That(topUp?.Assignment, Is.SameAs(zone.Assignment), "Неполный блок в ямке — тоже работа зоны");
+            Assert.That(topUp.FillsExisting, Is.True);
+            Assert.That(topUp.Block, Is.EqualTo(Block.Full(material)));
+            Assert.That(crew.Orders.At(hole)?.Assignment, Is.SameAs(zone.Assignment));
+            var volume = crew.GetComponentsInChildren<MeshFilter>().FirstOrDefault(f => f.name.StartsWith("Dig Zone Volume"));
+            Assert.That(volume, Is.Not.Null);
+            Assert.That(volume.sharedMesh.GetTriangles(1), Is.Not.Empty, "Голубое над ямкой");
+
+            var timeScale = Time.timeScale;
+            Time.timeScale = 4f;
+            try
+            {
+                var start = Time.realtimeSinceStartup;
+                while (crew.Zones.Contains(zone) && Time.realtimeSinceStartup - start < 60f)
+                    yield return null;
+            }
+            finally
+            {
+                Time.timeScale = timeScale;
+            }
+
+            Assert.That(crew.Zones.Contains(zone), Is.False, "Ямку засыпали — зона ушла");
+            Assert.That(world.GetBlock(half), Is.EqualTo(Block.Full(material)), "Половинку дополнили до полного");
+            for (var y = hole.y; y <= level; y++)
+                Assert.That(world.GetBlock(new Vector3Int(hole.x, y, hole.z)).IsAir, Is.False, $"Клетка {y} в ямке засыпана");
         }
 
         private static BlockHit SurfaceHit(VoxelWorldView view, float x, float z)

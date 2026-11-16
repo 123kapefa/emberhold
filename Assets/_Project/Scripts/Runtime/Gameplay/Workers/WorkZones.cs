@@ -206,7 +206,8 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>
         /// Границы коробки по умолчанию для прямоугольника: верх — самый высокий блок в нём, низ — самая низкая земля
-        /// (верхний блок самого низкого столбца). Верх не ниже уровня, низ не выше. Пустые столбцы не считаются.
+        /// (верхний блок самого низкого столбца; если он неполный — блок под ним, чтобы его досыпали). Верх не ниже уровня,
+        /// низ не выше. Пустые столбцы не считаются.
         /// </summary>
         public static (int top, int bottom) DefaultBounds(VoxelWorld world, Vector2Int min, Vector2Int size, int level)
         {
@@ -218,7 +219,9 @@ namespace Emberhold.Gameplay.Workers
                 if (!TryTopBlock(world, x, z, world.SizeInBlocks.y - 1, -1, out var y))
                     continue;
                 top = Mathf.Max(top, y);
-                bottom = Mathf.Min(bottom, y);
+                // Неполный верхний блок (#78) — тоже что досыпать: низ под ним, чтобы он попал в (Низ, Уровень].
+                var shape = world.GetBlock(new Vector3Int(x, y, z)).Shape;
+                bottom = Mathf.Min(bottom, shape.IsFull || shape.IsCatalog ? y : y - 1);
             }
             return (top, bottom);
         }
@@ -271,16 +274,15 @@ namespace Emberhold.Gameplay.Workers
             IsFilling = Fills && !digWork;
             if (IsFilling)
             {
-                var cost = refresh.CostOf?.Invoke(FillBlock.Material);
                 for (var z = Min.y; z < Min.y + Size.y; z++)
                 for (var x = Min.x; x < Min.x + Size.x; x++)
                 {
-                    if (!TryNextToFill(world, refresh.Forest, refresh.IsBlocked, x, z, Level, Bottom, out var cell))
+                    if (!TryNextToFill(world, refresh.Forest, refresh.IsBlocked, x, z, Level, Bottom, out var cell, out var block, out var topUp))
                         continue;
                     fillWork = true;
                     var order = orders.At(cell);
                     if (order == null)
-                        take(orders.AddBuild(cell, FillBlock, false, cost));
+                        take(orders.AddBuild(cell, block, topUp, refresh.CostOf?.Invoke(block.Material)));
                     else if (order.Kind == WorkKind.Build)
                         take(order);
                 }
@@ -308,30 +310,62 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Что наращивать следующим в столбце: нижняя пустая клетка в (bottom, level], под которой стоит блок, — если в неё
-        /// можно поставить блок (там нет дерева, пня, а isBlocked её не держит). Пустая клетка над пустой — класть не на что:
-        /// выше в столбце тоже не наращивают.
+        /// Что наращивать следующим в столбце, снизу вверх по (bottom, level]:
+        /// неполный блок (не полный и не каталожной формы, #78) с пустой клеткой над ним — дополнить до полного тем же
+        /// материалом (topUp, чертёж <see cref="WorkOrder.FillsExisting"/>); иначе нижняя пустая клетка, под которой стоит
+        /// блок, — новый блок земли (<see cref="FillBlock"/>). Пустая клетка над пустой — класть не на что: выше в столбце
+        /// тоже не наращивают. false и тогда, когда клетку держит дерево, пень или isBlocked (костёр, поддон) — в ней или
+        /// над дополняемым блоком.
         /// </summary>
         internal static bool TryNextToFill(VoxelWorld world, Forest forest, Func<Vector3Int, bool> isBlocked, int x, int z,
-            int level, int bottom, out Vector3Int cell)
+            int level, int bottom, out Vector3Int cell, out Block block, out bool topUp)
         {
             cell = default;
+            block = FillBlock;
+            topUp = false;
             if (x < 0 || z < 0 || x >= world.SizeInBlocks.x || z >= world.SizeInBlocks.z)
                 return false;
             var from = Mathf.Max(bottom + 1, 1);
-            var to = Mathf.Min(level, world.SizeInBlocks.y - 1);
+            var to = Mathf.Min(level, world.SizeInBlocks.y - 2);
             for (var y = from; y <= to; y++)
             {
                 var here = new Vector3Int(x, y, z);
-                if (!world.GetBlock(here).IsAir)
-                    continue;
+                var current = world.GetBlock(here);
+                if (!current.IsAir)
+                {
+                    // Неполный верхний блок досыпают до полного; погребённый под другим блоком не трогают.
+                    if (current.Shape.IsCatalog || current.Shape.IsFull || !world.GetBlock(here + Vector3Int.up).IsAir)
+                        continue;
+                    cell = here;
+                    block = Block.Full(current.Material);
+                    topUp = true;
+                    return IsFree(forest, isBlocked, here) && IsFree(forest, isBlocked, here + Vector3Int.up);
+                }
                 if (world.GetBlock(here + Vector3Int.down).IsAir)
                     return false;
                 cell = here;
-                return !(forest != null && (forest.BlocksEdit(here) || forest.At(new Vector2Int(x, z)) is { IsStanding: true } tree && tree.Cell == here))
-                       && (isBlocked == null || !isBlocked(here));
+                return IsFree(forest, isBlocked, here);
             }
             return false;
+        }
+
+        /// <summary>В клетке нет пня, стоящего дерева, и isBlocked её не держит.</summary>
+        private static bool IsFree(Forest forest, Func<Vector3Int, bool> isBlocked, Vector3Int cell) =>
+            !(forest != null && (forest.StumpAt(cell) != null
+                                 || forest.At(new Vector2Int(cell.x, cell.z)) is { IsStanding: true } tree && tree.Cell == cell))
+            && (isBlocked == null || !isBlocked(cell));
+
+        /// <summary>
+        /// С какой высоты в столбце (x, z) начнут наращивать — низ голубого объёма: у неполного блока — его верх
+        /// (surface — высота поверхности столбца), у пустой клетки — её пол. null — наращивать в столбце нечего. Та же
+        /// проверка, что у приказов (<see cref="TryNextToFill"/>): голубое — ровно то, что засыплют.
+        /// </summary>
+        public static float? FillFrom(VoxelWorld world, Forest forest, Func<Vector3Int, bool> isBlocked, Func<Vector2Int, float> surface,
+            int x, int z, int level, int bottom)
+        {
+            if (!TryNextToFill(world, forest, isBlocked, x, z, level, bottom, out var cell, out _, out var topUp))
+                return null;
+            return topUp ? Mathf.Clamp(surface(new Vector2Int(x, z)), cell.y, cell.y + 1f) : cell.y;
         }
 
         /// <summary>

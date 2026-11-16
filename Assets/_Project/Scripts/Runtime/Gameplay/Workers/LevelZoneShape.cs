@@ -21,11 +21,13 @@ namespace Emberhold.Gameplay.Workers
         /// Построить объёмы прямоугольника min/size с уровнем level и коробкой: верх top (высота самого высокого блока,
         /// который копают), низ bottom (наращивают клетки выше него). height — высота земли столбца, diggable — в столбце
         /// есть что копать в (уровень, верх]. Треугольники объёма «выкопать» — в dig, «нарастить» — в fill; showDig = false —
-        /// «выкопать» не строится (режим без копки), showFill = false — «нарастить».
+        /// «выкопать» не строится (режим без копки), showFill = false — «нарастить». fillFrom — с какой высоты в столбце
+        /// начнут наращивать (null — нечего; <see cref="LevelZone.FillFrom"/>): так голубое совпадает с тем, что засыплют.
+        /// Без fillFrom голубое считается по высоте земли и низу коробки.
         /// </summary>
         public static void Build(Vector2Int min, Vector2Int size, int level, int top, int bottom, Func<Vector2Int, float> height,
             Func<Vector2Int, bool> diggable, List<Vector3> vertices, List<int> dig, List<int> fill, bool showDig = true,
-            bool showFill = true)
+            bool showFill = true, Func<Vector2Int, float?> fillFrom = null)
         {
             vertices.Clear();
             dig.Clear();
@@ -41,7 +43,7 @@ namespace Emberhold.Gameplay.Workers
                 {
                     if (isDig ? !showDig : !showFill)
                         continue;
-                    if (!TryInterval(column, isDig, min, size, plane, ceiling, floor, height, diggable, out var low, out var high))
+                    if (!TryInterval(column, isDig, min, size, plane, ceiling, floor, height, diggable, fillFrom, out var low, out var high))
                         continue;
                     // Верх: у «выкопать» — по земле, у «нарастить» — плоскость уровня.
                     AddQuad(vertices, triangles,
@@ -49,7 +51,7 @@ namespace Emberhold.Gameplay.Workers
                         new Vector3(x + 1, high + Inflate, z + 1), new Vector3(x + 1, high + Inflate, z));
                     foreach (var side in Sides)
                     {
-                        var hasNeighbour = TryInterval(column + side, isDig, min, size, plane, ceiling, floor, height, diggable, out var nLow, out var nHigh);
+                        var hasNeighbour = TryInterval(column + side, isDig, min, size, plane, ceiling, floor, height, diggable, fillFrom, out var nLow, out var nHigh);
                         // Видимые куски стенки: свой отрезок минус отрезок соседа того же объёма.
                         if (!hasNeighbour || nHigh <= low || nLow >= high)
                             AddSide(vertices, triangles, column, side, low, high);
@@ -70,11 +72,20 @@ namespace Emberhold.Gameplay.Workers
         /// false — пусто.
         /// </summary>
         private static bool TryInterval(Vector2Int column, bool isDig, Vector2Int min, Vector2Int size, float plane, float ceiling,
-            float floor, Func<Vector2Int, float> height, Func<Vector2Int, bool> diggable, out float low, out float high)
+            float floor, Func<Vector2Int, float> height, Func<Vector2Int, bool> diggable, Func<Vector2Int, float?> fillFrom,
+            out float low, out float high)
         {
             low = high = 0f;
             if (column.x < min.x || column.y < min.y || column.x >= min.x + size.x || column.y >= min.y + size.y)
                 return false;
+            if (!isDig && fillFrom != null)
+            {
+                if (fillFrom(column) is not { } from || from >= plane - 1e-3f)
+                    return false;
+                low = from;
+                high = plane;
+                return true;
+            }
             var ground = height(column);
             if (isDig)
             {

@@ -403,7 +403,8 @@ namespace Emberhold.Gameplay.Workers
                 var forest = crew.ForestModel;
                 LevelZoneShape.Build(min, size, level, top, bottom, crew.GroundHeight,
                     column => LevelZone.TryTopToDig(world, forest, column.x, column.y, level, top, out _),
-                    volumeVertices, digTriangles, fillTriangles, mode != LevelZoneMode.Fill, mode != LevelZoneMode.Dig);
+                    volumeVertices, digTriangles, fillTriangles, mode != LevelZoneMode.Fill, mode != LevelZoneMode.Dig,
+                    column => LevelZone.FillFrom(world, forest, crew.Zones.IsBlocked, crew.GroundHeight, column.x, column.y, level, bottom));
                 var mesh = volume.Mesh;
                 mesh.Clear();
                 mesh.subMeshCount = 2;

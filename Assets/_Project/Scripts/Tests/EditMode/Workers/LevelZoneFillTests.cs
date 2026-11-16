@@ -235,6 +235,86 @@ namespace Emberhold.Tests.EditMode.Workers
             Assert.That(mostPeople, Is.EqualTo(1), "Один общий счётчик людей");
         }
 
+        [Test]
+        public void Fill_TopsUpPartialBlockWithItsMaterial_ThenBuildsAbove()
+        {
+            // Гладкая земля (#78): в (6, 5) верхний блок — половинка травы, в (7, 5) — пустая клетка над половинкой земли.
+            world.SetBlock(new Vector3Int(6, Top, 5), Block.Flat(BlockMaterials.Grass, 8));
+            Hole(7, 5, 1);
+            world.SetBlock(new Vector3Int(7, Top - 1, 5), Block.Flat(BlockMaterials.Dirt, 4));
+            zones.CostOf = material => material == BlockMaterials.Grass ? new ItemDrop("grass", 1) : null;
+            var zone = zones.AddLevel(new Vector3Int(5, Top + 1, 5), new Vector3Int(7, Top + 1, 5), world: world, mode: LevelZoneMode.Fill);
+            Assert.That(zone.Bottom, Is.EqualTo(Top - 2), "Низ — под неполным блоком самого низкого столбца");
+
+            zones.Update(world, forest, orders);
+
+            var grass = orders.At(new Vector3Int(6, Top, 5));
+            Assert.That(grass?.Assignment, Is.SameAs(zone.Assignment));
+            Assert.That(grass.FillsExisting, Is.True, "Неполный блок дополняют до полного");
+            Assert.That(grass.Block, Is.EqualTo(Block.Full(BlockMaterials.Grass)), "Тем же материалом");
+            Assert.That(grass.ItemId, Is.EqualTo("grass"), "Цена — по материалу блока");
+            var dirt = orders.At(new Vector3Int(7, Top - 1, 5));
+            Assert.That(dirt?.FillsExisting, Is.True);
+            Assert.That(dirt.Block, Is.EqualTo(Block.Full(BlockMaterials.Dirt)));
+            Assert.That(orders.At(new Vector3Int(7, Top, 5)), Is.Null, "Выше — после того, как нижний станет полным");
+
+            // Дополнили: выше встаёт обычный чертёж земли; зона уходит, только когда всё ровно.
+            world.SetBlock(new Vector3Int(7, Top - 1, 5), Block.Full(BlockMaterials.Dirt));
+            orders.Prune(world);
+            zones.Update(world, forest, orders);
+            Assert.That(orders.At(new Vector3Int(7, Top, 5)) is { FillsExisting: false } above && above.Block == LevelZone.FillBlock, Is.True);
+            Assert.That(zones.All, Has.Member(zone));
+        }
+
+        [Test]
+        public void Level_AfterDigging_TopsUpPartialBlocks()
+        {
+            world.SetBlock(new Vector3Int(5, Top + 1, 5), Block.Full(BlockMaterials.Dirt));
+            world.SetBlock(new Vector3Int(7, Top, 5), Block.Flat(BlockMaterials.Dirt, 4));
+            var zone = zones.AddLevel(new Vector3Int(5, Top + 1, 5), new Vector3Int(7, Top + 1, 5), world: world);
+
+            zones.Update(world, forest, orders);
+            Assert.That(zone.Assignment.Orders.Select(o => o.Kind), Is.EquivalentTo(new[] { WorkKind.Dig }), "Сначала копают");
+
+            world.SetBlock(new Vector3Int(5, Top + 1, 5), Block.Air);
+            orders.Prune(world);
+            zones.Update(world, forest, orders);
+            var order = zone.Assignment.Orders.Single();
+            Assert.That((order.Kind, order.Cell, order.FillsExisting), Is.EqualTo((WorkKind.Build, new Vector3Int(7, Top, 5), true)));
+        }
+
+        [Test]
+        public void FillFrom_MatchesWhatIsFilled()
+        {
+            world.SetBlock(new Vector3Int(6, Top, 5), Block.Flat(BlockMaterials.Dirt, 8));
+            Hole(7, 5, 1);
+            float Surface(Vector2Int c) => c.x == 6 ? Top + 0.5f : Top + 1f;
+
+            Assert.That(LevelZone.FillFrom(world, forest, null, Surface, 6, 5, Top, Top - 1), Is.EqualTo(Top + 0.5f),
+                "Над неполным блоком — от его верха");
+            Assert.That(LevelZone.FillFrom(world, forest, null, Surface, 7, 5, Top, Top - 1), Is.EqualTo((float)Top), "Пустая клетка — от её пола");
+            Assert.That(LevelZone.FillFrom(world, forest, null, Surface, 5, 5, Top, Top - 1), Is.Null, "Ровно — засыпать нечего");
+            Assert.That(LevelZone.FillFrom(world, forest, c => c.x == 7, Surface, 7, 5, Top, Top - 1), Is.Null, "Занятую клетку не засыпают");
+        }
+
+        [Test]
+        public void Workers_TopUpPartialBlocks_UntilFlat()
+        {
+            world.SetBlock(new Vector3Int(10, Top, 10), Block.Flat(BlockMaterials.Dirt, 8));
+            Hole(11, 10, 1);
+            world.SetBlock(new Vector3Int(11, Top - 1, 10), Block.Flat(BlockMaterials.Dirt, 4));
+            var zone = zones.AddLevel(new Vector3Int(10, Top + 1, 10), new Vector3Int(11, Top + 1, 10), world: world, mode: LevelZoneMode.Fill);
+            var worker = Spawn(new Vector2Int(8, 8));
+
+            Run(120f, () => zones.All.Count == 0, worker);
+
+            Assert.That(zones.All, Is.Empty, "Всё ровно — зона ушла");
+            Assert.That(world.GetBlock(new Vector3Int(10, Top, 10)), Is.EqualTo(Block.Full(BlockMaterials.Dirt)));
+            Assert.That(world.GetBlock(new Vector3Int(11, Top - 1, 10)), Is.EqualTo(Block.Full(BlockMaterials.Dirt)));
+            Assert.That(world.GetBlock(new Vector3Int(11, Top, 10)), Is.EqualTo(LevelZone.FillBlock));
+            Assert.That(zone.Assignment.Orders, Is.Empty);
+        }
+
         /// <summary>Вынуть depth верхних блоков столбца (x, z).</summary>
         private void Hole(int x, int z, int depth)
         {

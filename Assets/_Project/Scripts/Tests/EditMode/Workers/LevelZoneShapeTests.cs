@@ -80,6 +80,19 @@ namespace Emberhold.Tests.EditMode.Workers
         }
 
         [Test]
+        public void FillFrom_DrawsBlueExactlyWhereItWillBeFilled()
+        {
+            // Земля везде на 2.5 (ниже плоскости уровня 4), но засыпать будут только столбец 0 — с 2.5; столбец 1 занят.
+            LevelZoneShape.Build(new Vector2Int(0, 0), new Vector2Int(2, 1), 3, 9, 0, _ => 2.5f, _ => true, vertices, dig, fill,
+                fillFrom: c => c.x == 0 ? 2.5f : (float?)null);
+
+            var used = fill.Select(i => vertices[i]).ToList();
+            Assert.That(used, Is.Not.Empty);
+            Assert.That(used.Min(v => v.y), Is.EqualTo(2.5f).Within(1e-4f));
+            Assert.That(used.All(v => v.x <= 1f + LevelZoneShape.Inflate), Is.True, "У столбца без работы голубого нет");
+        }
+
+        [Test]
         public void Mode_HidesVolumeItDoesNotWork()
         {
             // Столбец 0 выше уровня, столбец 1 ниже: в режиме «выкопать» нет голубого, в «нарастить» — жёлтого (#169).
