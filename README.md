@@ -1,6 +1,6 @@
 # Emberhold
 
-Unity-проект игры Emberhold. Дизайн-документ и прочие материалы лежат в `Docs/`.
+Unity-проект игры Emberhold. Документация — в `Docs/`: про игру (дизайн, план, решения) — `Docs/global/`, техническая — `Docs/tech/`.
 
 - Unity **6000.6.5f1** (Unity 6.6), Universal Render Pipeline (шаблон Universal 3D).
 - Новый Input System, Linear color space, Force Text сериализация, видимые `.meta`.
@@ -9,7 +9,7 @@ Unity-проект игры Emberhold. Дизайн-документ и проч
 ## Структура
 
 ```
-Docs/                         документация (вне Assets)
+Docs/                         документация (вне Assets): global/ — игра, tech/ — техника
 Assets/
   Settings/                   URP-ассеты из шаблона
   _Project/                   всё своё; сторонние ассеты кладём рядом, вне _Project
