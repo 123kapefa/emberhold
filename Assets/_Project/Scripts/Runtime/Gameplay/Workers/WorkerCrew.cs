@@ -89,19 +89,21 @@ namespace Emberhold.Gameplay.Workers
         private int shownPalletsVersion = -1;
         private float urgentTimer;
         private GUIStyle palletLabelStyle;
-        private ChopZoneView zoneView;
+        private WorkZoneView zoneView;
 
         /// <summary>Чертежи и приказы копать.</summary>
         public WorkOrders Orders { get; } = new();
 
-        /// <summary>Зоны рубки (#167): игрок ставит их инструментом 8, отряд каждый кадр ставит в них приказы.</summary>
-        public ChopZones Zones { get; } = new();
+        /// <summary>
+        /// Зоны работ: рубки (#167, инструмент 8) и копки (#136, инструмент 9); отряд каждый кадр ставит в них приказы.
+        /// </summary>
+        public WorkZones Zones { get; } = new();
 
         /// <summary>Зона, открытая в панели зоны, или null.</summary>
-        public ChopZone SelectedZone { get; set; }
+        public WorkZone SelectedZone { get; set; }
 
-        /// <summary>С каким радиусом встанет новая зона; меняют [ ] при инструменте 8, пока ни одна зона не выбрана.</summary>
-        public int NewZoneRadius { get; set; } = ChopZones.DefaultRadius;
+        /// <summary>С каким радиусом встанет новая зона рубки; меняют [ ] при инструменте 8, пока ни одна зона не выбрана.</summary>
+        public int NewZoneRadius { get; set; } = ChopZone.DefaultRadius;
 
         /// <summary>Можно ставить зоны рубки: в сцене есть лес.</summary>
         public bool HasForest => forest != null && forest.Forest != null;
@@ -153,8 +155,8 @@ namespace Emberhold.Gameplay.Workers
             Spawn();
             // Подпись «что делает» и линия пути над рабочими — отдельный вид, логику рабочих он только читает.
             gameObject.AddComponent<WorkerStatusView>().Bind(this, worldView.transform, outlineMaterial, settings.Height);
-            // Круги зон рубки, их подписи и панель зоны — тоже отдельный вид.
-            zoneView = gameObject.AddComponent<ChopZoneView>();
+            // Зоны работ (круги, прямоугольники и уровни), их подписи и панель зоны — тоже отдельный вид.
+            zoneView = gameObject.AddComponent<WorkZoneView>();
             zoneView.Bind(this, editor, worldView.transform, outlineMaterial);
         }
 
@@ -180,8 +182,7 @@ namespace Emberhold.Gameplay.Workers
             PrunePallets();
             UpdateFuelOrders();
             UpdateFires();
-            if (HasForest)
-                Zones.Update(forest.Forest, Orders);
+            Zones.Update(worldView.World, HasForest ? forest.Forest : null, Orders);
             var deltaTime = Time.deltaTime;
             foreach (var worker in workers)
                 worker.Tick(deltaTime);
@@ -404,12 +405,27 @@ namespace Emberhold.Gameplay.Workers
         {
             if (!HasForest)
                 return null;
-            SelectedZone = Zones.At(cell) ?? Zones.Add(cell, NewZoneRadius, Mathf.Min(ChopZones.DefaultMaxWorkers, workers.Count));
-            return SelectedZone;
+            var zone = Zones.At(cell, WorkKind.Chop) as ChopZone
+                       ?? Zones.AddChop(cell, NewZoneRadius, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count));
+            SelectedZone = zone;
+            return zone;
         }
 
-        /// <summary>Снять зону рубки вместе с её приказами.</summary>
-        public bool RemoveZone(ChopZone zone)
+        /// <summary>
+        /// Инструмент 9: поставить зону копки на прямоугольник между столбцами блоков from и to (протяжка ЛКМ) с уровнем на
+        /// блок ниже from и выбрать её. Если протяжки не было (from и to в одном столбце), а там уже есть зона копки,
+        /// выбирается она.
+        /// </summary>
+        public LevelZone PlaceOrSelectLevelZone(Vector3Int from, Vector3Int to)
+        {
+            var zone = from.x == to.x && from.z == to.z ? Zones.At(from, WorkKind.Dig) as LevelZone : null;
+            zone ??= Zones.AddLevel(from, to, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count));
+            SelectedZone = zone;
+            return zone;
+        }
+
+        /// <summary>Снять зону вместе с её приказами.</summary>
+        public bool RemoveZone(WorkZone zone)
         {
             if (SelectedZone == zone)
                 SelectedZone = null;

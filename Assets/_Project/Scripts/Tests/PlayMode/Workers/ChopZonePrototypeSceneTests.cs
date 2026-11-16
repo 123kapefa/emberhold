@@ -32,13 +32,13 @@ namespace Emberhold.Tests.PlayMode.Workers
 
             // Зона у костра: ставится по клику инструментом 8 и сразу выбрана.
             editor.Tool = BlockTool.ChopZone;
-            crew.NewZoneRadius = ChopZones.MaxRadius;
+            crew.NewZoneRadius = ChopZone.MaxRadius;
             var hit = SurfaceHit(view, 3.5f, 0.5f);
             var zone = editor.ApplyChopZone(hit);
             Assert.That(zone, Is.Not.Null);
             Assert.That(crew.SelectedZone, Is.SameAs(zone));
-            Assert.That(zone.Radius, Is.EqualTo(ChopZones.MaxRadius));
-            Assert.That(zone.Assignment.MaxWorkers, Is.EqualTo(Mathf.Min(ChopZones.DefaultMaxWorkers, crew.Workers.Count)));
+            Assert.That(zone.Radius, Is.EqualTo(ChopZone.MaxRadius));
+            Assert.That(zone.Assignment.MaxWorkers, Is.EqualTo(Mathf.Min(WorkZones.DefaultMaxWorkers, crew.Workers.Count)));
 
             // Повторный клик в зоне её выбирает, а не ставит вторую.
             crew.SelectedZone = null;
