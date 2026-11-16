@@ -68,13 +68,22 @@ namespace Emberhold.Gameplay.Workers
         public WorkAssignment Assignment { get; private set; }
 
         /// <summary>
-        /// Класс рабочего: класс задания, пока в нём есть приказы; потом — класс добычи, пока он относит выбитое на поддон;
-        /// иначе свободный. По нему вид меняет облик.
+        /// Класс рабочего, пока в его задании есть приказы: по виду приказа, который он делает; без приказа — класс добычи,
+        /// пока он относит выбитое на поддон, иначе класс последнего взятого из задания приказа. Задания нет или оно
+        /// кончилось — класс добычи, пока она не на поддоне; иначе свободный. В зоне
+        /// выравнивания (#169) один и тот же человек так бывает то копателем, то строителем. По классу вид меняет облик.
         /// </summary>
-        public WorkerRole Role => Assignment is { IsOver: false } assignment ? assignment.Role : minedRole;
+        public WorkerRole Role =>
+            Assignment is not { IsOver: false } ? minedRole
+            : Order != null && Order.Assignment == Assignment ? WorkerRoles.For(Order.Kind)
+            : minedRole != WorkerRole.Free ? minedRole
+            : assignmentRole;
 
         // Класс, с которым выбита ещё не отнесённая добыча (копатель, лесоруб), или Free.
         private WorkerRole minedRole;
+
+        // Класс последнего приказа, взятого из нынешнего задания.
+        private WorkerRole assignmentRole;
 
         /// <summary>Где стоит рабочий: точка на верхе столбца в координатах мира блоков.</summary>
         public Vector3 Position { get; private set; }
@@ -295,6 +304,7 @@ namespace Emberhold.Gameplay.Workers
                 return false;
             }
             JoinAssignment(best.Assignment);
+            assignmentRole = WorkerRoles.For(best.Kind);
             Order = best;
             best.Worker = this;
             source = bestSource;

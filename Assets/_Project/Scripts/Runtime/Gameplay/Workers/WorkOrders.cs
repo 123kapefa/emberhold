@@ -49,26 +49,52 @@ namespace Emberhold.Gameplay.Workers
     }
 
     /// <summary>
-    /// Задание: группа приказов одного вида, за которую держится рабочий. Взяв приказ задания, рабочий получает класс
-    /// задания (<see cref="Role"/>) и берёт следующие приказы только из него, пока они есть; потом снова свободный.
-    /// Одиночный приказ — своё задание из одного приказа на одного человека; зона рубки (<see cref="ChopZone"/>, #167) —
-    /// задание из многих приказов, число людей в нём игрок меняет в панели зоны.
+    /// Задание: группа приказов, за которую держится рабочий. Взяв приказ задания, рабочий получает класс по виду этого
+    /// приказа (<see cref="WorkerRoles.For"/>) и берёт следующие приказы только из задания, пока они есть; потом снова свободный.
+    /// Одиночный приказ — своё задание из одного приказа на одного человека; зона (<see cref="WorkZone"/>) — задание из многих
+    /// приказов, число людей в нём игрок меняет в панели зоны. Зона выравнивания (#169) держит приказы двух видов —
+    /// копать и чертежи (<see cref="Accepts"/>): людей на неё один общий счётчик, а кто кем станет — по взятому приказу.
     /// </summary>
     public sealed class WorkAssignment
     {
         private readonly List<WorkOrder> orders = new();
         private readonly List<Worker> workers = new();
 
-        public WorkAssignment(WorkKind kind, int maxWorkers = 1)
+        private readonly WorkKind[] kinds;
+
+        public WorkAssignment(WorkKind kind, int maxWorkers = 1) : this(maxWorkers, kind)
         {
-            Kind = kind;
+        }
+
+        /// <summary>Задание из приказов нескольких видов; первый — главный (<see cref="Kind"/>).</summary>
+        public WorkAssignment(int maxWorkers, params WorkKind[] kinds)
+        {
+            if (kinds == null || kinds.Length == 0)
+                throw new ArgumentException("Нужен хотя бы один вид работы", nameof(kinds));
+            this.kinds = (WorkKind[])kinds.Clone();
             MaxWorkers = Math.Max(1, maxWorkers);
         }
 
-        public WorkKind Kind { get; }
+        /// <summary>Главный вид работы задания (у зоны копки — копать, даже когда она наращивает).</summary>
+        public WorkKind Kind => kinds[0];
 
-        /// <summary>Класс, который задание даёт рабочему.</summary>
+        /// <summary>Класс главного вида работы. Рабочий в задании получает класс своего приказа, а не этот.</summary>
         public WorkerRole Role => WorkerRoles.For(Kind);
+
+        /// <summary>
+        /// Приказ такого вида может войти в задание: вид — один из видов задания или даёт тот же класс (чертёж блока и
+        /// костра — оба строителю).
+        /// </summary>
+        public bool Accepts(WorkKind kind)
+        {
+            var role = WorkerRoles.For(kind);
+            foreach (var own in kinds)
+            {
+                if (own == kind || WorkerRoles.For(own) == role)
+                    return true;
+            }
+            return false;
+        }
 
         /// <summary>Сколько людей самое большее держат задание. Не меньше одного.</summary>
         public int MaxWorkers
@@ -239,12 +265,12 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Перенести приказ в задание (зона из многих приказов, #167). Только приказ того же вида, которого ещё никто
-        /// не взял. false — нельзя.
+        /// Перенести приказ в задание (зона из многих приказов, #167). Только приказ вида, который задание принимает
+        /// (<see cref="WorkAssignment.Accepts"/>), и которого ещё никто не взял. false — нельзя.
         /// </summary>
         public bool Assign(WorkOrder order, WorkAssignment assignment)
         {
-            if (!Contains(order) || assignment == null || order.Worker != null || WorkerRoles.For(order.Kind) != assignment.Role)
+            if (!Contains(order) || assignment == null || order.Worker != null || !assignment.Accepts(order.Kind))
                 return false;
             order.Assignment.RemoveOrder(order);
             order.Assignment = assignment;

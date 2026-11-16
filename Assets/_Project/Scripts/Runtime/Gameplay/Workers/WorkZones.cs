@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using Emberhold.World.Items;
 using Emberhold.World.Trees;
 using Emberhold.World.Voxels;
 using UnityEngine;
@@ -6,18 +8,21 @@ using UnityEngine;
 namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
-    /// Зона работ: область на карте, в которой отряд сам ставит приказы одного вида. Ставится черновиком (<see cref="IsDraft"/>):
-    /// игрок настраивает её и начинает. Живёт, пока игрок её не снимет
-    /// (зона копки ещё и сама уходит, когда копать нечего). Зона — задание (<see cref="WorkAssignment"/>): её приказы
+    /// Зона работ: область на карте, в которой отряд сам ставит приказы (у зоны рубки — рубить, у зоны с уровнем — копать
+    /// и наращивать). Ставится черновиком (<see cref="IsDraft"/>): игрок настраивает её и начинает. Живёт, пока игрок её
+    /// не снимет (зона с уровнем ещё и сама уходит, когда в её режиме делать нечего). Зона — задание (<see cref="WorkAssignment"/>): её приказы
     /// держат не больше <see cref="WorkAssignment.MaxWorkers"/> человек и получают уровень зоны (<see cref="Priority"/>).
     /// Меняет зону только <see cref="WorkZones"/>.
     /// </summary>
     public abstract class WorkZone
     {
-        private protected WorkZone(WorkKind kind, int maxWorkers) => Assignment = new WorkAssignment(kind, maxWorkers);
+        private protected WorkZone(int maxWorkers, params WorkKind[] kinds) => Assignment = new WorkAssignment(maxWorkers, kinds);
 
-        /// <summary>Какие приказы ставит зона.</summary>
+        /// <summary>Главный вид приказов зоны: по нему зона находится (<see cref="WorkZones.At"/>).</summary>
         public WorkKind Kind => Assignment.Kind;
+
+        /// <summary>Приказы такого вида зона ставит и забирает себе.</summary>
+        public bool Accepts(WorkKind kind) => Assignment.Accepts(kind);
 
         /// <summary>Уровень, который получают приказы зоны.</summary>
         public OrderPriority Priority { get; internal set; }
@@ -44,7 +49,7 @@ namespace Emberhold.Gameplay.Workers
         internal virtual bool Keeps(WorkOrder order) => Covers(order.Cell);
 
         /// <summary>Поставить приказы, которых не хватает; take — забрать приказ в зону (false — его забрать нельзя).</summary>
-        internal abstract void Refresh(VoxelWorld world, Forest forest, WorkOrders orders, System.Func<WorkOrder, bool> take);
+        internal abstract void Refresh(ZoneRefresh refresh, Func<WorkOrder, bool> take);
     }
 
     /// <summary>
@@ -57,7 +62,7 @@ namespace Emberhold.Gameplay.Workers
         public const int MaxRadius = 16;
         public const int DefaultRadius = 4;
 
-        internal ChopZone(Vector3Int cell, int radius, int maxWorkers) : base(WorkKind.Chop, maxWorkers)
+        internal ChopZone(Vector3Int cell, int radius, int maxWorkers) : base(maxWorkers, WorkKind.Chop)
         {
             Cell = cell;
             Radius = Mathf.Clamp(radius, MinRadius, MaxRadius);
@@ -78,8 +83,10 @@ namespace Emberhold.Gameplay.Workers
             return dx * dx + dz * dz <= Radius * Radius;
         }
 
-        internal override void Refresh(VoxelWorld world, Forest forest, WorkOrders orders, System.Func<WorkOrder, bool> take)
+        internal override void Refresh(ZoneRefresh refresh, Func<WorkOrder, bool> take)
         {
+            var forest = refresh.Forest;
+            var orders = refresh.Orders;
             if (forest == null)
                 return;
             foreach (var tree in forest.Trees)
@@ -95,27 +102,59 @@ namespace Emberhold.Gameplay.Workers
         }
     }
 
-    /// <summary>Что зона с уровнем делает с землёй. Пока только выкапывает; выравнивание (#169) добавит режимы сюда.</summary>
+    /// <summary>Что зона с уровнем делает с землёй (#169). Номера записаны в данных: новые режимы — в конец.</summary>
     public enum LevelZoneMode
     {
-        /// <summary>Выкопать всё выше уровня.</summary>
+        /// <summary>Только выкопать всё выше уровня (жёлтое).</summary>
         Dig,
+        /// <summary>Только нарастить землёй до уровня (голубое).</summary>
+        Fill,
+        /// <summary>Выровнять: сначала выкопать всё выше уровня, потом, когда копать нечего, нарастить до уровня.</summary>
+        Level,
+    }
+
+    /// <summary>Что нужно зонам, чтобы поставить приказы: мир, лес, список приказов, цена блока и где наращивать нельзя.</summary>
+    internal readonly struct ZoneRefresh
+    {
+        public ZoneRefresh(VoxelWorld world, Forest forest, WorkOrders orders, Func<byte, ItemDrop?> costOf, Func<Vector3Int, bool> isBlocked)
+        {
+            World = world;
+            Forest = forest;
+            Orders = orders;
+            CostOf = costOf;
+            IsBlocked = isBlocked;
+        }
+
+        public VoxelWorld World { get; }
+        public Forest Forest { get; }
+        public WorkOrders Orders { get; }
+        public Func<byte, ItemDrop?> CostOf { get; }
+        public Func<Vector3Int, bool> IsBlocked { get; }
     }
 
     /// <summary>
-    /// Зона с уровнем (#136): прямоугольник столбцов и целевой уровень <see cref="Level"/> — высота блока, который остаётся
-    /// верхним. В режиме <see cref="LevelZoneMode.Dig"/> рабочие выкапывают всё выше уровня слоями сверху: приказ стоит
-    /// только на верхнем блоке столбца, следующий появится, когда его выкопают (а соседние столбцы держит #146).
-    /// Скала и коренная порода (#97) и блоки под пнями не копаются: такой столбец считается готовым. Тёмные приказы ждут
-    /// света. Когда во всём прямоугольнике выше уровня копать нечего, зона уходит.
+    /// Зона с уровнем (#136, #169): прямоугольник столбцов, целевой уровень <see cref="Level"/> — высота блока, который
+    /// остаётся верхним, — и коробка <see cref="Bottom"/> ≤ Уровень ≤ <see cref="Top"/>.
+    /// Копают (режимы <see cref="LevelZoneMode.Dig"/> и <see cref="LevelZoneMode.Level"/>) всё в (Уровень, Верх] слоями
+    /// сверху: приказ стоит только на верхнем блоке столбца, следующий появится, когда его выкопают (а соседние столбцы
+    /// держит #146). Скала и коренная порода (#97) и блоки под пнями не копаются: такой столбец считается готовым.
+    /// Наращивают (режимы <see cref="LevelZoneMode.Fill"/> и <see cref="LevelZoneMode.Level"/>) клетки в (Низ, Уровень]
+    /// чертежами блоков земли снизу вверх: чертёж стоит только на нижней пустой клетке столбца, под которой есть блок.
+    /// Столбец, чья земля ниже низа коробки, не наращивают (класть не на что). В режиме выравнивания наращивать начинают,
+    /// только когда во всей зоне копать нечего. Тёмные приказы ждут света. Когда в режиме зоны делать нечего, зона уходит.
     /// </summary>
     public sealed class LevelZone : WorkZone
     {
         public const int MinSize = 1;
         public const int MaxSize = 32;
 
-        internal LevelZone(Vector2Int min, Vector2Int size, int level, int top, int bottom, int maxWorkers) : base(WorkKind.Dig, maxWorkers)
+        /// <summary>Чем наращивают: блок земли.</summary>
+        public static readonly Block FillBlock = Block.Full(BlockMaterials.Dirt);
+
+        internal LevelZone(Vector2Int min, Vector2Int size, int level, int top, int bottom, int maxWorkers,
+            LevelZoneMode mode = LevelZoneMode.Level) : base(maxWorkers, WorkKind.Dig, WorkKind.Build)
         {
+            Mode = mode;
             Min = min;
             Size = ClampSize(size);
             Level = Mathf.Max(0, level);
@@ -123,7 +162,14 @@ namespace Emberhold.Gameplay.Workers
             Bottom = Mathf.Clamp(bottom, 0, Level);
         }
 
-        public LevelZoneMode Mode => LevelZoneMode.Dig;
+        /// <summary>Что зона делает: копает, наращивает или то и другое. Меняет <see cref="WorkZones.SetMode"/>.</summary>
+        public LevelZoneMode Mode { get; internal set; }
+
+        /// <summary>В этом режиме копают (жёлтое).</summary>
+        public bool Digs => Mode != LevelZoneMode.Fill;
+
+        /// <summary>В этом режиме наращивают (голубое).</summary>
+        public bool Fills => Mode != LevelZoneMode.Dig;
 
         /// <summary>Ближний угол прямоугольника: наименьшие x и z столбцов.</summary>
         public Vector2Int Min { get; internal set; }
@@ -141,7 +187,7 @@ namespace Emberhold.Gameplay.Workers
         public int Top { get; internal set; }
 
         /// <summary>
-        /// Низ коробки зоны: наращивать (#169) можно клетки выше этой высоты и до уровня включительно; ниже не трогают.
+        /// Низ коробки зоны: наращивают (#169) клетки выше этой высоты и до уровня включительно; ниже не трогают.
         /// Не выше <see cref="Level"/>.
         /// </summary>
         public int Bottom { get; internal set; }
@@ -151,11 +197,17 @@ namespace Emberhold.Gameplay.Workers
         public override bool Covers(Vector3Int cell) =>
             cell.x >= Min.x && cell.x < Min.x + Size.x && cell.z >= Min.y && cell.z < Min.y + Size.y;
 
-        internal override bool Keeps(WorkOrder order) => Covers(order.Cell) && order.Cell.y > Level && order.Cell.y <= Top;
+        internal override bool Keeps(WorkOrder order) => Covers(order.Cell) && order.Kind switch
+        {
+            WorkKind.Dig => Digs && order.Cell.y > Level && order.Cell.y <= Top,
+            WorkKind.Build => Fills && order.Cell.y > Bottom && order.Cell.y <= Level,
+            _ => false,
+        };
 
         /// <summary>
         /// Границы коробки по умолчанию для прямоугольника: верх — самый высокий блок в нём, низ — самая низкая земля
-        /// (верхний блок самого низкого столбца). Верх не ниже уровня, низ не выше. Пустые столбцы не считаются.
+        /// (верхний блок самого низкого столбца; если он неполный — блок под ним, чтобы его досыпали). Верх не ниже уровня,
+        /// низ не выше. Пустые столбцы не считаются.
         /// </summary>
         public static (int top, int bottom) DefaultBounds(VoxelWorld world, Vector2Int min, Vector2Int size, int level)
         {
@@ -167,7 +219,9 @@ namespace Emberhold.Gameplay.Workers
                 if (!TryTopBlock(world, x, z, world.SizeInBlocks.y - 1, -1, out var y))
                     continue;
                 top = Mathf.Max(top, y);
-                bottom = Mathf.Min(bottom, y);
+                // Неполный верхний блок (#78) — тоже что досыпать: низ под ним, чтобы он попал в (Низ, Уровень].
+                var shape = world.GetBlock(new Vector3Int(x, y, z)).Shape;
+                bottom = Mathf.Min(bottom, shape.IsFull || shape.IsCatalog ? y : y - 1);
             }
             return (top, bottom);
         }
@@ -189,22 +243,129 @@ namespace Emberhold.Gameplay.Workers
         internal static Vector2Int ClampSize(Vector2Int size) =>
             new(Mathf.Clamp(size.x, MinSize, MaxSize), Mathf.Clamp(size.y, MinSize, MaxSize));
 
-        internal override void Refresh(VoxelWorld world, Forest forest, WorkOrders orders, System.Func<WorkOrder, bool> take)
+        /// <summary>
+        /// Сейчас наращивают: режим это позволяет, и (в выравнивании) копать в зоне уже нечего. Ставит
+        /// <see cref="WorkZones.Update"/>; черновик и зона без работы — false.
+        /// </summary>
+        public bool IsFilling { get; private set; }
+
+        internal override void Refresh(ZoneRefresh refresh, Func<WorkOrder, bool> take)
         {
-            var work = false;
-            for (var z = Min.y; z < Min.y + Size.y; z++)
-            for (var x = Min.x; x < Min.x + Size.x; x++)
+            var world = refresh.World;
+            var orders = refresh.Orders;
+            var digWork = false;
+            if (Digs)
             {
-                if (!TryTopToDig(world, forest, x, z, Level, Top, out var cell))
-                    continue;
-                work = true;
-                var order = orders.At(cell);
-                if (order == null)
-                    take(orders.AddDig(cell));
-                else if (order.Kind == WorkKind.Dig)
-                    take(order);
+                for (var z = Min.y; z < Min.y + Size.y; z++)
+                for (var x = Min.x; x < Min.x + Size.x; x++)
+                {
+                    if (!TryTopToDig(world, refresh.Forest, x, z, Level, Top, out var cell))
+                        continue;
+                    digWork = true;
+                    var order = orders.At(cell);
+                    if (order == null)
+                        take(orders.AddDig(cell));
+                    else if (order.Kind == WorkKind.Dig)
+                        take(order);
+                }
             }
-            IsFinished = !work;
+
+            var fillWork = false;
+            IsFilling = Fills && !digWork;
+            if (IsFilling)
+            {
+                for (var z = Min.y; z < Min.y + Size.y; z++)
+                for (var x = Min.x; x < Min.x + Size.x; x++)
+                {
+                    if (!TryNextToFill(world, refresh.Forest, refresh.IsBlocked, x, z, Level, Bottom, out var cell, out var block, out var topUp))
+                        continue;
+                    fillWork = true;
+                    var order = orders.At(cell);
+                    if (order == null)
+                        take(orders.AddBuild(cell, block, topUp, refresh.CostOf?.Invoke(block.Material)));
+                    else if (order.Kind == WorkKind.Build)
+                        take(order);
+                }
+            }
+            else if (Fills)
+                // Пока есть что копать, не наращивают: чертежи, которые ещё никто не взял, снимаются (например, игрок
+                // поднял уровень во время копки), и встанут снова, когда копать будет нечего.
+                CancelUntaken(orders, WorkKind.Build);
+            IsFinished = !digWork && !fillWork;
+        }
+
+        private readonly List<WorkOrder> untaken = new();
+
+        private void CancelUntaken(WorkOrders orders, WorkKind kind)
+        {
+            untaken.Clear();
+            foreach (var order in Assignment.Orders)
+            {
+                if (order.Kind == kind && order.Worker == null)
+                    untaken.Add(order);
+            }
+            foreach (var order in untaken)
+                orders.Cancel(order);
+            untaken.Clear();
+        }
+
+        /// <summary>
+        /// Что наращивать следующим в столбце, снизу вверх по (bottom, level]:
+        /// неполный блок (не полный и не каталожной формы, #78) с пустой клеткой над ним — дополнить до полного тем же
+        /// материалом (topUp, чертёж <see cref="WorkOrder.FillsExisting"/>); иначе нижняя пустая клетка, под которой стоит
+        /// блок, — новый блок земли (<see cref="FillBlock"/>). Пустая клетка над пустой — класть не на что: выше в столбце
+        /// тоже не наращивают. false и тогда, когда клетку держит дерево, пень или isBlocked (костёр, поддон) — в ней или
+        /// над дополняемым блоком.
+        /// </summary>
+        internal static bool TryNextToFill(VoxelWorld world, Forest forest, Func<Vector3Int, bool> isBlocked, int x, int z,
+            int level, int bottom, out Vector3Int cell, out Block block, out bool topUp)
+        {
+            cell = default;
+            block = FillBlock;
+            topUp = false;
+            if (x < 0 || z < 0 || x >= world.SizeInBlocks.x || z >= world.SizeInBlocks.z)
+                return false;
+            var from = Mathf.Max(bottom + 1, 1);
+            var to = Mathf.Min(level, world.SizeInBlocks.y - 2);
+            for (var y = from; y <= to; y++)
+            {
+                var here = new Vector3Int(x, y, z);
+                var current = world.GetBlock(here);
+                if (!current.IsAir)
+                {
+                    // Неполный верхний блок досыпают до полного; погребённый под другим блоком не трогают.
+                    if (current.Shape.IsCatalog || current.Shape.IsFull || !world.GetBlock(here + Vector3Int.up).IsAir)
+                        continue;
+                    cell = here;
+                    block = Block.Full(current.Material);
+                    topUp = true;
+                    return IsFree(forest, isBlocked, here) && IsFree(forest, isBlocked, here + Vector3Int.up);
+                }
+                if (world.GetBlock(here + Vector3Int.down).IsAir)
+                    return false;
+                cell = here;
+                return IsFree(forest, isBlocked, here);
+            }
+            return false;
+        }
+
+        /// <summary>В клетке нет пня, стоящего дерева, и isBlocked её не держит.</summary>
+        private static bool IsFree(Forest forest, Func<Vector3Int, bool> isBlocked, Vector3Int cell) =>
+            !(forest != null && (forest.StumpAt(cell) != null
+                                 || forest.At(new Vector2Int(cell.x, cell.z)) is { IsStanding: true } tree && tree.Cell == cell))
+            && (isBlocked == null || !isBlocked(cell));
+
+        /// <summary>
+        /// С какой высоты в столбце (x, z) начнут наращивать — низ голубого объёма: у неполного блока — его верх
+        /// (surface — высота поверхности столбца), у пустой клетки — её пол. null — наращивать в столбце нечего. Та же
+        /// проверка, что у приказов (<see cref="TryNextToFill"/>): голубое — ровно то, что засыплют.
+        /// </summary>
+        public static float? FillFrom(VoxelWorld world, Forest forest, Func<Vector3Int, bool> isBlocked, Func<Vector2Int, float> surface,
+            int x, int z, int level, int bottom)
+        {
+            if (!TryNextToFill(world, forest, isBlocked, x, z, level, bottom, out var cell, out _, out var topUp))
+                return null;
+            return topUp ? Mathf.Clamp(surface(new Vector2Int(x, z)), cell.y, cell.y + 1f) : cell.y;
         }
 
         /// <summary>
@@ -224,7 +385,7 @@ namespace Emberhold.Gameplay.Workers
 
     /// <summary>
     /// Все зоны работ отряда: рубки (<see cref="ChopZone"/>) и с уровнем (<see cref="LevelZone"/>). <see cref="Update"/> раз
-    /// в кадр ставит в зонах приказы и забирает в зону уже стоящие там одиночные приказы того же вида, если их ещё никто
+    /// в кадр ставит в зонах приказы и забирает в зону уже стоящие там одиночные приказы видов зоны, если их ещё никто
     /// не взял. Клетка в нескольких зонах достаётся той, что поставлена раньше. Чистая логика, без сцены.
     /// </summary>
     public sealed class WorkZones
@@ -235,6 +396,12 @@ namespace Emberhold.Gameplay.Workers
         private readonly List<WorkOrder> scratch = new();
 
         public IReadOnlyList<WorkZone> All => zones;
+
+        /// <summary>Сколько стоит блок по чертежу (null — функции нет или блок бесплатный). Ставит отряд из таблицы цен.</summary>
+        public Func<byte, ItemDrop?> CostOf { get; set; }
+
+        /// <summary>Клетку нельзя наращивать: в ней костёр, поддон и т. п. Ставит отряд; null — можно везде.</summary>
+        public Func<Vector3Int, bool> IsBlocked { get; set; }
 
         /// <summary>Номер изменения: растёт, когда зону поставили, сняли или поменяли.</summary>
         public int Version { get; private set; }
@@ -261,18 +428,18 @@ namespace Emberhold.Gameplay.Workers
             Add(new ChopZone(cell, radius, maxWorkers) { IsDraft = draft });
 
         /// <summary>
-        /// Поставить зону копки на прямоугольник между столбцами двух блоков (в любом порядке); уровень — на блок ниже
+        /// Поставить зону с уровнем (по умолчанию — выравнивание) на прямоугольник между столбцами двух блоков (в любом порядке); уровень — на блок ниже
         /// блока from (снять один слой). С world верх и низ коробки — самый высокий блок и самая низкая земля прямоугольника
         /// (<see cref="LevelZone.DefaultBounds"/>), без него — блок from и уровень.
         /// </summary>
         public LevelZone AddLevel(Vector3Int from, Vector3Int to, int maxWorkers = DefaultMaxWorkers, bool draft = false,
-            VoxelWorld world = null)
+            VoxelWorld world = null, LevelZoneMode mode = LevelZoneMode.Level)
         {
             var min = new Vector2Int(Mathf.Min(from.x, to.x), Mathf.Min(from.z, to.z));
             var size = LevelZone.ClampSize(new Vector2Int(Mathf.Abs(to.x - from.x) + 1, Mathf.Abs(to.z - from.z) + 1));
             var level = from.y - 1;
             var (top, bottom) = world != null ? LevelZone.DefaultBounds(world, min, size, level) : (from.y, level);
-            return Add(new LevelZone(min, size, level, top, bottom, maxWorkers) { IsDraft = draft });
+            return Add(new LevelZone(min, size, level, top, bottom, maxWorkers, mode) { IsDraft = draft });
         }
 
         /// <summary>Начать черновик: со следующего <see cref="Update"/> зона ставит приказы. false — зона не черновик или её нет.</summary>
@@ -303,7 +470,7 @@ namespace Emberhold.Gameplay.Workers
             var point = new Vector2(cell.x + 0.5f, cell.z + 0.5f);
             foreach (var zone in zones)
             {
-                if (kind != null && zone.Kind != kind || !zone.Covers(cell))
+                if (kind != null && !zone.Accepts(kind.Value) || !zone.Covers(cell))
                     continue;
                 var distance = (zone.Center - point).sqrMagnitude;
                 if (distance >= bestDistance)
@@ -442,6 +609,18 @@ namespace Emberhold.Gameplay.Workers
             Reshaped(zone, orders);
         }
 
+        /// <summary>
+        /// Сменить режим зоны с уровнем; приказы, ненужные в новом режиме (копать — без копки, чертежи — без наращивания),
+        /// снимаются, новые встанут в <see cref="Update"/>.
+        /// </summary>
+        public void SetMode(LevelZone zone, LevelZoneMode mode, WorkOrders orders)
+        {
+            if (zone.Mode == mode)
+                return;
+            zone.Mode = mode;
+            Reshaped(zone, orders);
+        }
+
         /// <summary>Сменить уровень зоны: его получают все её приказы.</summary>
         public void SetPriority(WorkZone zone, OrderPriority priority)
         {
@@ -466,12 +645,13 @@ namespace Emberhold.Gameplay.Workers
         public int Update(VoxelWorld world, Forest forest, WorkOrders orders)
         {
             var added = 0;
+            var refresh = new ZoneRefresh(world, forest, orders, CostOf, IsBlocked);
             foreach (var zone in zones)
             {
                 // Черновик только виден и настраивается: приказов не ставит и не уходит.
                 if (zone.IsDraft)
                     continue;
-                zone.Refresh(world, forest, orders, order =>
+                zone.Refresh(refresh, order =>
                 {
                     if (!Take(zone, orders, order))
                         return false;
@@ -494,13 +674,13 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Забрать приказ в зону с её уровнем: только того же вида, ничей (не другой зоны), ещё не взятый, и если клетка
+        /// Забрать приказ в зону с её уровнем: только вида, который зона ставит, ничей (не другой зоны), ещё не взятый, и если клетка
         /// достаётся этой зоне (а не поставленной раньше).
         /// </summary>
         private bool Take(WorkZone zone, WorkOrders orders, WorkOrder order)
         {
-            if (order == null || order.Kind != zone.Kind || order.Assignment == zone.Assignment || IsZoneOrder(order)
-                || Owner(order.Cell, zone.Kind) != zone || !orders.Assign(order, zone.Assignment))
+            if (order == null || !zone.Accepts(order.Kind) || order.Assignment == zone.Assignment || IsZoneOrder(order)
+                || Owner(order.Cell, order.Kind) != zone || !orders.Assign(order, zone.Assignment))
                 return false;
             order.Priority = zone.Priority;
             return true;
@@ -511,7 +691,7 @@ namespace Emberhold.Gameplay.Workers
         {
             foreach (var zone in zones)
             {
-                if (zone.Kind == kind && !zone.IsDraft && zone.Covers(cell))
+                if (zone.Accepts(kind) && !zone.IsDraft && zone.Covers(cell))
                     return zone;
             }
             return null;
@@ -527,7 +707,7 @@ namespace Emberhold.Gameplay.Workers
             return false;
         }
 
-        private void CancelWhere(WorkZone zone, WorkOrders orders, System.Predicate<WorkOrder> match)
+        private void CancelWhere(WorkZone zone, WorkOrders orders, Predicate<WorkOrder> match)
         {
             scratch.Clear();
             foreach (var order in zone.Assignment.Orders)

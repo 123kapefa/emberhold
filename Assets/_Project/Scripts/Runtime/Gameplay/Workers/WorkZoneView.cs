@@ -96,15 +96,32 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Подпись над зоной: «рубка · люди 1/2», «копка до 5 · люди 0/2», у черновика — «черновик · копка до 5 · люди 0/2».
-        /// Приоритет — только в панели.
+        /// Подпись над зоной: «рубка · люди 1/2», «выровнять до 5 · люди 0/2» (или «выкопать до», «нарастить до» — по режиму),
+        /// у черновика — «черновик · выровнять до 5 · люди 0/2». Приоритет — только в панели.
         /// </summary>
         public static string Label(WorkZone zone)
         {
-            var what = zone is LevelZone level ? $"копка до {level.Level}" : "рубка";
+            var what = zone is LevelZone level ? $"{ModeVerb(level.Mode)} до {level.Level}" : "рубка";
             var draft = zone.IsDraft ? "черновик · " : "";
             return $"{draft}{what} · люди {zone.Assignment.Workers.Count}/{zone.Assignment.MaxWorkers}";
         }
+
+        /// <summary>Режим зоны с уровнем глаголом: «выкопать», «нарастить», «выровнять».</summary>
+        public static string ModeVerb(LevelZoneMode mode) => mode switch
+        {
+            LevelZoneMode.Dig => "выкопать",
+            LevelZoneMode.Fill => "нарастить",
+            _ => "выровнять",
+        };
+
+        private static string ModeHint(LevelZoneMode mode) => mode switch
+        {
+            LevelZoneMode.Dig => "Выкопать: всё выше уровня (жёлтое)",
+            LevelZoneMode.Fill => "Нарастить: землёй до уровня (голубое)",
+            _ => "Выровнять: сначала выкопать жёлтое, потом нарастить голубое",
+        };
+
+        private static readonly LevelZoneMode[] Modes = { LevelZoneMode.Dig, LevelZoneMode.Fill, LevelZoneMode.Level };
 
         private void OnBlockChanged(Vector3Int _) => worldStamp++;
 
@@ -119,7 +136,7 @@ namespace Emberhold.Gameplay.Workers
 
         private Rect PanelRect()
         {
-            var height = crew != null && crew.SelectedZone is LevelZone ? 278f : 178f;
+            var height = crew != null && crew.SelectedZone is LevelZone ? 330f : 178f;
             if (crew != null && crew.SelectedZone is { IsDraft: true })
                 height += 46f;
             return new Rect((Screen.width - PanelWidth) * 0.5f, Screen.height - height - PanelBottom, PanelWidth, height);
@@ -357,7 +374,7 @@ namespace Emberhold.Gameplay.Workers
                     volumes[level] = volume = CreateVolume($"Dig Zone Volume {volumes.Count + 1}");
                 Place(volume.Renderer.transform);
                 SetDraftLook(volume, level.IsDraft);
-                Rebuild(volume, level.Min, level.Size, level.Level, level.Top, level.Bottom);
+                Rebuild(volume, level.Min, level.Size, level.Level, level.Top, level.Bottom, level.Mode);
             }
             goneVolumes.Clear();
             foreach (var pair in volumes)
@@ -372,10 +389,13 @@ namespace Emberhold.Gameplay.Workers
             }
         }
 
-        /// <summary>Пересобрать объём, только если прямоугольник, уровень или мир поменялись с прошлой сборки, и показать его.</summary>
-        private void Rebuild(Volume volume, Vector2Int min, Vector2Int size, int level, int top, int bottom)
+        /// <summary>
+        /// Пересобрать объём, только если прямоугольник, уровень, режим или мир поменялись с прошлой сборки, и показать его.
+        /// Режим без копки не рисует жёлтое, без наращивания — голубое.
+        /// </summary>
+        private void Rebuild(Volume volume, Vector2Int min, Vector2Int size, int level, int top, int bottom, LevelZoneMode mode)
         {
-            var key = (min, size, level, top, bottom, worldStamp, crew.ForestVersion);
+            var key = (min, size, level, top, bottom, mode, worldStamp, crew.ForestVersion);
             if (!volume.Key.Equals(key))
             {
                 volume.Key = key;
@@ -383,7 +403,8 @@ namespace Emberhold.Gameplay.Workers
                 var forest = crew.ForestModel;
                 LevelZoneShape.Build(min, size, level, top, bottom, crew.GroundHeight,
                     column => LevelZone.TryTopToDig(world, forest, column.x, column.y, level, top, out _),
-                    volumeVertices, digTriangles, fillTriangles);
+                    volumeVertices, digTriangles, fillTriangles, mode != LevelZoneMode.Fill, mode != LevelZoneMode.Dig,
+                    column => LevelZone.FillFrom(world, forest, crew.Zones.IsBlocked, crew.GroundHeight, column.x, column.y, level, bottom));
                 var mesh = volume.Mesh;
                 mesh.Clear();
                 mesh.subMeshCount = 2;
@@ -430,7 +451,7 @@ namespace Emberhold.Gameplay.Workers
             var level = from.y - 1;
             var (top, bottom) = LevelZone.DefaultBounds(crew.World, min, size, level);
             AppendBox(min, size, bottom, top, 0f);
-            Rebuild(preview, min, size, level, top, bottom);
+            Rebuild(preview, min, size, level, top, bottom, LevelZoneMode.Level);
             return true;
         }
 
@@ -496,7 +517,17 @@ namespace Emberhold.Gameplay.Workers
             }
             else if (zone is LevelZone level)
             {
-                GUILayout.Label("Зона копки: всё выше уровня выкопать");
+                GUILayout.Label(ModeHint(level.Mode));
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Режим", GUILayout.Width(80f));
+                foreach (var mode in Modes)
+                {
+                    var name = ModeVerb(mode);
+                    var label = level.Mode == mode ? $"[{name}]" : name;
+                    if (GUILayout.Button(label, GUILayout.Width(84f)) && level.Mode != mode)
+                        crew.Zones.SetMode(level, mode, crew.Orders);
+                }
+                GUILayout.EndHorizontal();
                 var length = Stepper("Длина", level.Size.x.ToString(), level.Size.x > LevelZone.MinSize, level.Size.x < LevelZone.MaxSize);
                 if (length != 0)
                     crew.Zones.SetSize(level, level.Size + new Vector2Int(length, 0), crew.Orders);
@@ -743,7 +774,7 @@ namespace Emberhold.Gameplay.Workers
             public bool IsDraftLook { get; set; }
 
             /// <summary>С чем объём собран в последний раз: прямоугольник, уровень, отметка мира и леса.</summary>
-            public (Vector2Int, Vector2Int, int, int, int, int, int) Key { get; set; } = (default, default, int.MinValue, 0, 0, -1, -1);
+            public (Vector2Int, Vector2Int, int, int, int, LevelZoneMode, int, int) Key { get; set; } = (default, default, int.MinValue, 0, 0, default, -1, -1);
         }
 }
 }

@@ -60,7 +60,7 @@ namespace Emberhold.Tests.EditMode.Workers
             Assert.That(zone.Top, Is.EqualTo(Top), "Верх — самый высокий блок");
             Assert.That(zone.Bottom, Is.EqualTo(Top - 1), "Земля ровная и выше уровня — низ на уровне");
             Assert.That(zone.Kind, Is.EqualTo(WorkKind.Dig));
-            Assert.That(zone.Mode, Is.EqualTo(LevelZoneMode.Dig));
+            Assert.That(zone.Mode, Is.EqualTo(LevelZoneMode.Level), "По умолчанию — выровнять");
             Assert.That(zone.Covers(new Vector3Int(8, 0, 7)), Is.True);
             Assert.That(zone.Covers(new Vector3Int(9, 0, 7)), Is.False);
         }
@@ -239,7 +239,7 @@ namespace Emberhold.Tests.EditMode.Workers
 
             Assert.That(working.Assignment.Orders, Has.Count.EqualTo(2), "Клетки, накрытые черновиком, достаются работающей зоне");
             Assert.That(draft.Assignment.Orders, Is.Empty);
-            Assert.That(WorkZoneView.Label(draft), Is.EqualTo($"черновик · копка до {Top - 1} · люди 0/2"));
+            Assert.That(WorkZoneView.Label(draft), Is.EqualTo($"черновик · выровнять до {Top - 1} · люди 0/2"));
         }
 
         [Test]
@@ -305,7 +305,7 @@ namespace Emberhold.Tests.EditMode.Workers
         public void Label_ShowsLevelPriorityAndPeople()
         {
             var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(11, Top, 10), 3, world: world);
-            Assert.That(WorkZoneView.Label(zone), Is.EqualTo($"копка до {Top - 1} · люди 0/3"));
+            Assert.That(WorkZoneView.Label(zone), Is.EqualTo($"выровнять до {Top - 1} · люди 0/3"));
         }
 
         [Test]
