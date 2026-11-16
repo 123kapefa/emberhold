@@ -58,6 +58,8 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private Material workerMaterial;
         [Tooltip("Материал рамок чертежей и приказов (Unlit, цвет задаётся ниже).")]
         [SerializeField] private Material outlineMaterial;
+        [Tooltip("Прозрачный Unlit-материал объёмов зоны копки (цвет через _BaseColor); пусто — копия материала рамок.")]
+        [SerializeField] private Material zoneVolumeMaterial;
         [SerializeField] private Color blueprintColor = new(0.35f, 0.75f, 1f);
         [SerializeField] private Color digOrderColor = new(1f, 0.45f, 0.15f);
         [Tooltip("Насколько блёкнут рамки чертежей и приказов в темноте: 0 — как в свету, 1 — серые.")]
@@ -108,6 +110,15 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Можно ставить зоны рубки: в сцене есть лес.</summary>
         public bool HasForest => forest != null && forest.Forest != null;
 
+        /// <summary>Мир блоков отряда (для вида зон: что в зоне копки ещё можно копать).</summary>
+        internal VoxelWorld World => worldView != null ? worldView.World : null;
+
+        /// <summary>Лес сцены или null.</summary>
+        internal Forest ForestModel => HasForest ? forest.Forest : null;
+
+        /// <summary>Номер изменения леса (пень убрали — столбец под ним снова можно копать); без леса — 0.</summary>
+        internal int ForestVersion => HasForest ? forest.Forest.Version : 0;
+
         /// <summary>Высота земли в столбце мира блоков: на ней вид рисует круги зон.</summary>
         public float GroundHeight(Vector2Int column) => context != null ? context.Surface.Height(column) : 0f;
 
@@ -157,7 +168,7 @@ namespace Emberhold.Gameplay.Workers
             gameObject.AddComponent<WorkerStatusView>().Bind(this, worldView.transform, outlineMaterial, settings.Height);
             // Зоны работ (круги, прямоугольники и уровни), их подписи и панель зоны — тоже отдельный вид.
             zoneView = gameObject.AddComponent<WorkZoneView>();
-            zoneView.Bind(this, editor, worldView.transform, outlineMaterial);
+            zoneView.Bind(this, editor, worldView.transform, outlineMaterial, zoneVolumeMaterial);
         }
 
         private void OnDestroy()
@@ -772,6 +783,9 @@ namespace Emberhold.Gameplay.Workers
                     continue;
                 }
                 if (order.Kind != kind)
+                    continue;
+                // Приказы зоны копки не обводятся по блоку: зону показывает её вид (край и объёмы, WorkZoneView).
+                if (order.Kind == WorkKind.Dig && Zones.ZoneOf(order) is LevelZone)
                     continue;
                 // Чертёж — по форме будущего блока, приказ копать — по нынешнему блоку и чуть шире, чтобы не сливаться с рамкой курсора.
                 var block = kind == WorkKind.Build ? order.Block : worldView.World.GetBlock(order.Cell);

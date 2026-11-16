@@ -52,6 +52,14 @@ namespace Emberhold.Tests.PlayMode.Workers
                 Assert.That(zone.Covers(order.Cell), Is.True);
             }
 
+            // Вид зоны: жёлтый объём «выкопать» — одним мешем на зону, без рамок на каждом блоке.
+            var volume = crew.GetComponentsInChildren<MeshFilter>().FirstOrDefault(f => f.name.StartsWith("Dig Zone Volume"));
+            Assert.That(volume, Is.Not.Null, "У зоны копки есть объём");
+            Assert.That(volume.sharedMesh.subMeshCount, Is.EqualTo(2));
+            Assert.That(volume.sharedMesh.GetTriangles(0), Is.Not.Empty, "Жёлтая часть: есть что выкопать");
+            Assert.That(volume.GetComponent<MeshRenderer>().sharedMaterial.renderQueue, Is.GreaterThanOrEqualTo(3000), "Объём прозрачный");
+            Assert.That(WorkZoneView.Label(zone), Does.Not.Contain("обычный"), "Приоритет на карте не показывается");
+
             // Уровень вверх до начального блока: копать нечего, приказы уходят.
             crew.Zones.SetLevel(zone, from.y + 5, crew.Orders);
             Assert.That(zone.Assignment.Orders, Is.Empty);

@@ -141,7 +141,7 @@ namespace Emberhold.Gameplay.Workers
             for (var z = Min.y; z < Min.y + Size.y; z++)
             for (var x = Min.x; x < Min.x + Size.x; x++)
             {
-                if (!TryTopToDig(world, forest, x, z, out var cell))
+                if (!TryTopToDig(world, forest, x, z, Level, out var cell))
                     continue;
                 work = true;
                 var order = orders.At(cell);
@@ -153,13 +153,13 @@ namespace Emberhold.Gameplay.Workers
             IsFinished = !work;
         }
 
-        /// <summary>Верхний блок столбца выше уровня, если его можно копать: не скала и не под пнём.</summary>
-        private bool TryTopToDig(VoxelWorld world, Forest forest, int x, int z, out Vector3Int cell)
+        /// <summary>Верхний блок столбца выше уровня level, если его можно копать: не скала и не под пнём.</summary>
+        internal static bool TryTopToDig(VoxelWorld world, Forest forest, int x, int z, int level, out Vector3Int cell)
         {
             cell = default;
             if (x < 0 || z < 0 || x >= world.SizeInBlocks.x || z >= world.SizeInBlocks.z)
                 return false;
-            for (var y = world.SizeInBlocks.y - 1; y > Level; y--)
+            for (var y = world.SizeInBlocks.y - 1; y > level; y--)
             {
                 var block = world.GetBlock(new Vector3Int(x, y, z));
                 if (block.IsAir)
@@ -187,6 +187,17 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>Номер изменения: растёт, когда зону поставили, сняли или поменяли.</summary>
         public int Version { get; private set; }
+
+        /// <summary>Зона, в которую входит приказ, или null — приказ одиночный.</summary>
+        public WorkZone ZoneOf(WorkOrder order)
+        {
+            foreach (var zone in zones)
+            {
+                if (order.Assignment == zone.Assignment)
+                    return zone;
+            }
+            return null;
+        }
 
         /// <summary>Зона ещё стоит: её не сняли, и она не ушла сама.</summary>
         public bool Contains(WorkZone zone) => zones.Contains(zone);

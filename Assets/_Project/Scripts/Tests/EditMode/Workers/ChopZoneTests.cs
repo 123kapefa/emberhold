@@ -212,9 +212,9 @@ namespace Emberhold.Tests.EditMode.Workers
         public void Labels_ShowZoneLevelAndPeople()
         {
             var zone = zones.AddChop(Cell(10, 10), 4, 2);
-            Assert.That(WorkZoneView.Label(zone), Is.EqualTo("рубка · обычный · люди 0/2"));
+            Assert.That(WorkZoneView.Label(zone), Is.EqualTo("рубка · люди 0/2"));
             zones.SetPriority(zone, OrderPriority.High);
-            Assert.That(WorkZoneView.Label(zone), Is.EqualTo("рубка · высокий · люди 0/2"));
+            Assert.That(WorkZoneView.Label(zone), Is.EqualTo("рубка · люди 0/2"), "Приоритет на карте не показывается, только в панели");
             Assert.That(PriorityLabel.Name(OrderPriority.Urgent), Is.EqualTo("срочный"));
         }
 

@@ -205,7 +205,7 @@ namespace Emberhold.Tests.EditMode.Workers
         public void Label_ShowsLevelPriorityAndPeople()
         {
             var zone = zones.AddLevel(new Vector3Int(10, Top, 10), new Vector3Int(11, Top, 10), 3);
-            Assert.That(WorkZoneView.Label(zone), Is.EqualTo($"копка до {Top - 1} · обычный · люди 0/3"));
+            Assert.That(WorkZoneView.Label(zone), Is.EqualTo($"копка до {Top - 1} · люди 0/3"));
         }
 
         [Test]

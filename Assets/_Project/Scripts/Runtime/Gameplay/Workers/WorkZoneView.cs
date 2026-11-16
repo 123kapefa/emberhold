@@ -7,7 +7,9 @@ namespace Emberhold.Gameplay.Workers
 {
     /// <summary>
     /// Заглушка вида зон работ, пока у них нет своего облика. Зона рубки (#167) — круг по земле, зона копки (#136) —
-    /// рамка прямоугольника по земле и сетка плоскости целевого уровня; цвет рамки — по приоритету. Над зоной подпись,
+    /// линия по внешнему краю прямоугольника и полупрозрачные объёмы: жёлтый — что выкопать (выше уровня), голубой — что
+    /// нарастить до уровня (покажет и выравнивание #169). Объёмы — один меш на зону, пересобираются, только когда зона или
+    /// мир поменялись. Приоритет на карте не показывается (он виден в панели). Над зоной подпись,
     /// под курсором при инструменте 8 или 9 — будущая зона (у копки — вся протяжка ЛКМ), внизу экрана — панель выбранной
     /// зоны: размеры, уровень, приоритет и число людей кнопками «−» / «+», кнопка «Снять зону». Логику зон меняет только
     /// через <see cref="WorkerCrew"/> и <see cref="WorkZones"/>. Ставит и связывает его WorkerCrew при старте.
@@ -21,42 +23,64 @@ namespace Emberhold.Gameplay.Workers
         private const float PanelWidth = 360f;
         private const float PanelBottom = 16f;
 
-        // Линии: 0–2 — рамки по приоритету, 3 — выбранная зона, 4 — будущая зона, 5 — плоскости уровня.
-        private const int SelectedLines = 3;
-        private const int PreviewLines = 4;
-        private const int LevelLines = 5;
+        // Линии: 0 — края зон, 1 — выбранная зона, 2 — будущая зона.
+        private const int ZoneLines = 0;
+        private const int SelectedLines = 1;
+        private const int PreviewLines = 2;
 
-        [SerializeField] private Color normalColor = new(0.45f, 0.9f, 0.35f);
-        [SerializeField] private Color highColor = new(1f, 0.8f, 0.2f);
-        [SerializeField] private Color urgentColor = new(1f, 0.25f, 0.2f);
+        [SerializeField] private Color zoneColor = new(0.9f, 0.9f, 0.85f);
         [SerializeField] private Color selectedColor = Color.white;
-        [SerializeField] private Color previewColor = new(0.45f, 0.9f, 0.35f, 0.5f);
-        [SerializeField] private Color levelColor = new(0.35f, 0.85f, 1f, 0.6f);
+        [SerializeField] private Color previewColor = new(0.9f, 0.9f, 0.85f, 0.5f);
+        [SerializeField] private Color digColor = new(1f, 0.85f, 0.15f, 0.35f);
+        [SerializeField] private Color fillColor = new(0.3f, 0.8f, 1f, 0.35f);
 
         private readonly List<Vector3> vertices = new();
         private readonly List<int> indices = new();
-        private readonly GameObject[] lines = new GameObject[6];
+        private readonly List<Vector3> volumeVertices = new();
+        private readonly List<int> digTriangles = new();
+        private readonly List<int> fillTriangles = new();
+        private readonly GameObject[] lines = new GameObject[3];
+        private readonly Dictionary<LevelZone, Volume> volumes = new();
+        private readonly List<LevelZone> goneVolumes = new();
         private WorkerCrew crew;
         private BlockEditController editor;
         private Transform space;
         private Material material;
+        private Material volumeMaterial;
+        private bool ownsVolumeMaterial;
+        private Volume preview;
         private GUIStyle labelStyle;
+        // Растёт, когда в мире поставили или убрали блок: объёмы зон копки пора пересобрать.
+        private int worldStamp;
 
-        /// <summary>Связать с отрядом и редактором: space — мир блоков, material — Unlit-материал линий (цвет через _BaseColor).</summary>
-        public void Bind(WorkerCrew crew, BlockEditController editor, Transform space, Material material)
+        /// <summary>
+        /// Связать с отрядом и редактором: space — мир блоков, material — Unlit-материал линий (цвет через _BaseColor),
+        /// volumeMaterial — прозрачный Unlit-материал объёмов (null — сделать его из material).
+        /// </summary>
+        public void Bind(WorkerCrew crew, BlockEditController editor, Transform space, Material material, Material volumeMaterial = null)
         {
             this.crew = crew;
             this.editor = editor;
             this.space = space;
             this.material = material;
+            this.volumeMaterial = volumeMaterial;
+            if (editor != null)
+            {
+                editor.BlockChanged += OnBlockChanged;
+                editor.BlocksFell += OnBlocksFell;
+            }
         }
 
-        /// <summary>Подпись над зоной: «рубка · высокий · люди 1/2», «копка до 5 · обычный · люди 0/2».</summary>
+        /// <summary>Подпись над зоной: «рубка · люди 1/2», «копка до 5 · люди 0/2». Приоритет — только в панели.</summary>
         public static string Label(WorkZone zone)
         {
             var what = zone is LevelZone level ? $"копка до {level.Level}" : "рубка";
-            return $"{what} · {PriorityLabel.Name(zone.Priority)} · люди {zone.Assignment.Workers.Count}/{zone.Assignment.MaxWorkers}";
+            return $"{what} · люди {zone.Assignment.Workers.Count}/{zone.Assignment.MaxWorkers}";
         }
+
+        private void OnBlockChanged(Vector3Int _) => worldStamp++;
+
+        private void OnBlocksFell(IReadOnlyList<Emberhold.World.Editing.BlockFall> _) => worldStamp++;
 
         /// <summary>Указатель (экранные координаты Input System, y снизу) над панелью зоны.</summary>
         public bool IsOverPanel(Vector2 pointer) => PanelShown && PanelRect().Contains(new Vector2(pointer.x, Screen.height - pointer.y));
@@ -81,23 +105,11 @@ namespace Emberhold.Gameplay.Workers
                 lines[i].transform.SetPositionAndRotation(space.position, space.rotation);
                 lines[i].transform.localScale = space.lossyScale;
             }
-            foreach (var priority in new[] { OrderPriority.Normal, OrderPriority.High, OrderPriority.Urgent })
-            {
-                Begin();
-                foreach (var zone in crew.Zones.All)
-                {
-                    if (zone.Priority == priority)
-                        AppendOutline(zone, 0f);
-                }
-                End(lines[(int)priority]);
-            }
             Begin();
             foreach (var zone in crew.Zones.All)
-            {
-                if (zone is LevelZone level)
-                    AppendLevelPlane(level.Min, level.Size, level.Level);
-            }
-            End(lines[LevelLines]);
+                AppendOutline(zone, 0f);
+            End(lines[ZoneLines]);
+            UpdateVolumes();
             Begin();
             if (PanelShown)
                 AppendOutline(crew.SelectedZone, 0.15f);
@@ -107,31 +119,102 @@ namespace Emberhold.Gameplay.Workers
             End(lines[PreviewLines]);
         }
 
-        /// <summary>Будущая зона под курсором: круг рубки или прямоугольник копки от начала протяжки до курсора с уровнем.</summary>
+        /// <summary>Объёмы зон копки: новые — завести, ушедшие — убрать, изменившиеся (зона или мир) — пересобрать.</summary>
+        private void UpdateVolumes()
+        {
+            foreach (var zone in crew.Zones.All)
+            {
+                if (zone is not LevelZone level)
+                    continue;
+                if (!volumes.TryGetValue(level, out var volume))
+                    volumes[level] = volume = CreateVolume($"Dig Zone Volume {volumes.Count + 1}");
+                Place(volume.Renderer.transform);
+                Rebuild(volume, level.Min, level.Size, level.Level);
+            }
+            goneVolumes.Clear();
+            foreach (var pair in volumes)
+            {
+                if (!crew.Zones.Contains(pair.Key))
+                    goneVolumes.Add(pair.Key);
+            }
+            foreach (var zone in goneVolumes)
+            {
+                DestroyVolume(volumes[zone]);
+                volumes.Remove(zone);
+            }
+        }
+
+        /// <summary>Пересобрать объём, только если прямоугольник, уровень или мир поменялись с прошлой сборки, и показать его.</summary>
+        private void Rebuild(Volume volume, Vector2Int min, Vector2Int size, int level)
+        {
+            var key = (min, size, level, worldStamp, crew.ForestVersion);
+            if (!volume.Key.Equals(key))
+            {
+                volume.Key = key;
+                var world = crew.World;
+                var forest = crew.ForestModel;
+                LevelZoneShape.Build(min, size, level, crew.GroundHeight,
+                    column => LevelZone.TryTopToDig(world, forest, column.x, column.y, level, out _),
+                    volumeVertices, digTriangles, fillTriangles);
+                var mesh = volume.Mesh;
+                mesh.Clear();
+                mesh.subMeshCount = 2;
+                mesh.SetVertices(volumeVertices);
+                mesh.SetTriangles(digTriangles, 0, false);
+                mesh.SetTriangles(fillTriangles, 1, false);
+                mesh.RecalculateBounds();
+                volume.HasGeometry = volumeVertices.Count > 0;
+            }
+            volume.Renderer.gameObject.SetActive(volume.HasGeometry);
+        }
+
+        /// <summary>Будущая зона под курсором: круг рубки или прямоугольник копки от начала протяжки до курсора с объёмами.</summary>
         private void AppendPreview()
         {
+            preview ??= CreateVolume("Dig Zone Preview Volume");
+            Place(preview.Renderer.transform);
+            if (!AppendPreviewShape())
+                preview.Renderer.gameObject.SetActive(false);
+        }
+
+        /// <summary>Линии будущей зоны; true — показан и объём будущей зоны копки.</summary>
+        private bool AppendPreviewShape()
+        {
             if (editor == null || editor.Hovered is not { } hit)
-                return;
+                return false;
             if (editor.Tool == BlockTool.ChopZone)
             {
                 var cell = hit.Block + Vector3Int.up;
                 if (crew.Zones.At(cell, WorkKind.Chop) == null)
                     AppendCircle(cell, crew.NewZoneRadius);
-                return;
+                return false;
             }
             if (editor.Tool != BlockTool.DigZone)
-                return;
+                return false;
             var from = editor.DigZoneDragFrom ?? hit.Block;
             if (editor.DigZoneDragFrom == null && crew.Zones.At(from, WorkKind.Dig) != null)
-                return;
+                return false;
             var min = new Vector2Int(Mathf.Min(from.x, hit.Block.x), Mathf.Min(from.z, hit.Block.z));
             var size = new Vector2Int(Mathf.Abs(hit.Block.x - from.x) + 1, Mathf.Abs(hit.Block.z - from.z) + 1);
             AppendRect(min, size, 0f);
-            AppendLevelPlane(min, size, from.y - 1);
+            Rebuild(preview, min, size, from.y - 1);
+            return true;
         }
 
         private void OnDestroy()
         {
+            if (editor != null)
+            {
+                editor.BlockChanged -= OnBlockChanged;
+                editor.BlocksFell -= OnBlocksFell;
+            }
+            foreach (var volume in volumes.Values)
+                DestroyVolume(volume);
+            volumes.Clear();
+            if (preview != null)
+                DestroyVolume(preview);
+            if (ownsVolumeMaterial && volumeMaterial != null)
+                Destroy(volumeMaterial);
             foreach (var go in lines)
             {
                 if (go == null)
@@ -286,24 +369,6 @@ namespace Emberhold.Gameplay.Workers
             }
         }
 
-        /// <summary>Плоскость уровня: сетка по блокам на высоте верха блока level.</summary>
-        private void AppendLevelPlane(Vector2Int min, Vector2Int size, int level)
-        {
-            var y = level + 1f + 0.02f;
-            for (var x = 0; x <= size.x; x++)
-                AppendSegment(new Vector3(min.x + x, y, min.y), new Vector3(min.x + x, y, min.y + size.y));
-            for (var z = 0; z <= size.y; z++)
-                AppendSegment(new Vector3(min.x, y, min.y + z), new Vector3(min.x + size.x, y, min.y + z));
-        }
-
-        private void AppendSegment(Vector3 a, Vector3 b)
-        {
-            indices.Add(vertices.Count);
-            vertices.Add(a);
-            indices.Add(vertices.Count);
-            vertices.Add(b);
-        }
-
         private float Ground(float x, float z) => crew.GroundHeight(new Vector2Int(Mathf.FloorToInt(x), Mathf.FloorToInt(z))) + Lift;
 
         private void End(GameObject target)
@@ -320,12 +385,9 @@ namespace Emberhold.Gameplay.Workers
         {
             var color = index switch
             {
-                0 => normalColor,
-                1 => highColor,
-                2 => urgentColor,
+                ZoneLines => zoneColor,
                 SelectedLines => selectedColor,
-                PreviewLines => previewColor,
-                _ => levelColor,
+                _ => previewColor,
             };
             var go = new GameObject($"Work Zones {index}");
             go.transform.SetParent(transform, false);
@@ -342,5 +404,77 @@ namespace Emberhold.Gameplay.Workers
             go.SetActive(false);
             return go;
         }
-    }
+    
+        private void Place(Transform target)
+        {
+            target.SetPositionAndRotation(space.position, space.rotation);
+            target.localScale = space.lossyScale;
+        }
+
+        /// <summary>Объект объёма зоны копки: один меш, две части (жёлтая «выкопать», голубая «нарастить»).</summary>
+        private Volume CreateVolume(string name)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(transform, false);
+            var mesh = new Mesh { name = name };
+            mesh.MarkDynamic();
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = go.AddComponent<MeshRenderer>();
+            var shared = VolumeMaterial();
+            renderer.sharedMaterials = new[] { shared, shared };
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            var properties = new MaterialPropertyBlock();
+            properties.SetColor(BaseColorId, digColor);
+            renderer.SetPropertyBlock(properties, 0);
+            properties = new MaterialPropertyBlock();
+            properties.SetColor(BaseColorId, fillColor);
+            renderer.SetPropertyBlock(properties, 1);
+            go.SetActive(false);
+            return new Volume(renderer, mesh);
+        }
+
+        /// <summary>
+        /// Прозрачный материал объёмов: из сцены, а если не назначен — копия материала линий, переключённая в прозрачный
+        /// режим URP Unlit.
+        /// </summary>
+        private Material VolumeMaterial()
+        {
+            if (volumeMaterial != null)
+                return volumeMaterial;
+            volumeMaterial = new Material(material) { name = "Work Zone Volume (runtime)", renderQueue = (int)RenderQueue.Transparent };
+            volumeMaterial.SetFloat("_Surface", 1f);
+            volumeMaterial.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            volumeMaterial.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            volumeMaterial.SetFloat("_ZWrite", 0f);
+            volumeMaterial.SetOverrideTag("RenderType", "Transparent");
+            volumeMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            ownsVolumeMaterial = true;
+            return volumeMaterial;
+        }
+
+        private static void DestroyVolume(Volume volume)
+        {
+            if (volume.Renderer == null)
+                return;
+            Destroy(volume.Mesh);
+            Destroy(volume.Renderer.gameObject);
+        }
+
+        private sealed class Volume
+        {
+            public Volume(MeshRenderer renderer, Mesh mesh)
+            {
+                Renderer = renderer;
+                Mesh = mesh;
+            }
+
+            public MeshRenderer Renderer { get; }
+            public Mesh Mesh { get; }
+            public bool HasGeometry { get; set; }
+
+            /// <summary>С чем объём собран в последний раз: прямоугольник, уровень, отметка мира и леса.</summary>
+            public (Vector2Int, Vector2Int, int, int, int) Key { get; set; } = (default, default, int.MinValue, -1, -1);
+        }
+}
 }

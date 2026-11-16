@@ -172,7 +172,7 @@ namespace Emberhold.Gameplay.Workers
 
         public IReadOnlyList<WorkOrder> Orders => orders;
 
-        /// <summary>Номер изменения: растёт, когда задача появилась или исчезла.</summary>
+        /// <summary>Номер изменения: растёт, когда задача появилась, исчезла или перешла в другое задание.</summary>
         public int Version { get; private set; }
 
         /// <summary>
@@ -249,6 +249,8 @@ namespace Emberhold.Gameplay.Workers
             order.Assignment.RemoveOrder(order);
             order.Assignment = assignment;
             assignment.AddOrder(order);
+            // Вид рисует приказы зоны иначе, чем одиночные: пусть перерисует.
+            Version++;
             return true;
         }
 
