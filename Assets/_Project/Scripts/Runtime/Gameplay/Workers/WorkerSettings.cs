@@ -7,9 +7,9 @@ namespace Emberhold.Gameplay.Workers
     public sealed class WorkerSettings : ScriptableObject
     {
         [Header("Отряд")]
-        [Tooltip("Сколько рабочих появляется у первого источника света.")]
+        [Tooltip("Сколько рабочих появляется у первого источника света. Все свободные: класс даёт взятое задание.")]
         [Range(0, 8)]
-        [SerializeField] private int count = 2;
+        [SerializeField] private int count = 5;
 
         [Header("Ходьба")]
         [Tooltip("Скорость, блоков в секунду.")]
@@ -61,6 +61,9 @@ namespace Emberhold.Gameplay.Workers
         [Tooltip("Как часто свободный рабочий ищет задачу, в секундах.")]
         [Range(0.05f, 5f)]
         [SerializeField] private float idleSearchSeconds = 0.5f;
+        [Tooltip("Без подходящей задачи рабочий ждёт у ближайшего огня: не дальше стольких блоков от него.")]
+        [Range(1.5f, 6f)]
+        [SerializeField] private float fireWaitDistance = 3f;
 
         [Header("Вид")]
         [Tooltip("Рост рабочего, блоков. Дверь — 2 блока в высоту.")]
@@ -102,6 +105,7 @@ namespace Emberhold.Gameplay.Workers
         public float DigHitSeconds => digHitSeconds;
         public float DigHitDamage => digHitDamage;
         public float IdleSearchSeconds => idleSearchSeconds;
+        public float FireWaitDistance => fireWaitDistance;
         public string FuelItemId => string.IsNullOrEmpty(fuelItemId) ? "wood" : fuelItemId;
         public float Height => height;
 

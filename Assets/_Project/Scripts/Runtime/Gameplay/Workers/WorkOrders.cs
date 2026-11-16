@@ -38,6 +38,49 @@ namespace Emberhold.Gameplay.Workers
     }
 
     /// <summary>
+    /// Задание: группа приказов одного вида, за которую держится рабочий. Взяв приказ задания, рабочий получает класс
+    /// задания (<see cref="Role"/>) и берёт следующие приказы только из него, пока они есть; потом снова свободный.
+    /// Пока каждый приказ — своё задание из одного приказа на одного человека; зоны из многих приказов и число людей
+    /// на задание — #167.
+    /// </summary>
+    public sealed class WorkAssignment
+    {
+        private readonly List<WorkOrder> orders = new();
+        private readonly List<Worker> workers = new();
+
+        public WorkAssignment(WorkKind kind, int maxWorkers = 1)
+        {
+            Kind = kind;
+            MaxWorkers = Math.Max(1, maxWorkers);
+        }
+
+        public WorkKind Kind { get; }
+
+        /// <summary>Класс, который задание даёт рабочему.</summary>
+        public WorkerRole Role => WorkerRoles.For(Kind);
+
+        /// <summary>Сколько людей самое большее держат задание.</summary>
+        public int MaxWorkers { get; }
+
+        /// <summary>Невыполненные приказы задания.</summary>
+        public IReadOnlyList<WorkOrder> Orders => orders;
+
+        /// <summary>Кто держит задание.</summary>
+        public IReadOnlyList<Worker> Workers => workers;
+
+        /// <summary>Приказов не осталось: выполнены или сняты игроком.</summary>
+        public bool IsOver => orders.Count == 0;
+
+        /// <summary>Есть место ещё для одного человека.</summary>
+        public bool HasRoom => workers.Count < MaxWorkers;
+
+        internal void AddOrder(WorkOrder order) => orders.Add(order);
+        internal void RemoveOrder(WorkOrder order) => orders.Remove(order);
+        internal void Join(Worker worker) => workers.Add(worker);
+        internal void Leave(Worker worker) => workers.Remove(worker);
+    }
+
+    /// <summary>
     /// Задача для рабочих в одной клетке мира блоков. Задачу делает только один рабочий (<see cref="Worker"/>):
     /// пока он её держит, другие её не берут.
     /// </summary>
@@ -85,6 +128,9 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>Рабочий, который делает задачу, или null.</summary>
         public Worker Worker { get; internal set; }
+
+        /// <summary>Задание, в которое входит приказ; у одиночного приказа — своё, из него одного.</summary>
+        public WorkAssignment Assignment { get; internal set; }
     }
 
     /// <summary>
@@ -165,6 +211,20 @@ namespace Emberhold.Gameplay.Workers
             return Add(new WorkOrder(WorkKind.Campfire, cell, Block.Air, false, cost.ItemId, cost.Count));
         }
 
+        /// <summary>
+        /// Перенести приказ в задание (зона из многих приказов, #167). Только приказ того же вида, которого ещё никто
+        /// не взял. false — нельзя.
+        /// </summary>
+        public bool Assign(WorkOrder order, WorkAssignment assignment)
+        {
+            if (!Contains(order) || assignment == null || order.Worker != null || WorkerRoles.For(order.Kind) != assignment.Role)
+                return false;
+            order.Assignment.RemoveOrder(order);
+            order.Assignment = assignment;
+            assignment.AddOrder(order);
+            return true;
+        }
+
         /// <summary>Отменить задачу (игрок передумал или её нельзя выполнить).</summary>
         public bool Cancel(WorkOrder order)
         {
@@ -227,6 +287,8 @@ namespace Emberhold.Gameplay.Workers
         {
             orders.Add(order);
             byCell[order.Cell] = order;
+            order.Assignment ??= new WorkAssignment(order.Kind);
+            order.Assignment.AddOrder(order);
             Version++;
             return order;
         }
@@ -237,6 +299,7 @@ namespace Emberhold.Gameplay.Workers
                 return false;
             orders.Remove(order);
             byCell.Remove(order.Cell);
+            order.Assignment.RemoveOrder(order);
             Version++;
             return true;
         }

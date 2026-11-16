@@ -61,6 +61,8 @@ namespace Emberhold.Gameplay.Workers
             {
                 case WorkerState.Fleeing:
                     return "бежит к свету";
+                case WorkerState.ToFire:
+                    return "идёт к огню";
                 case WorkerState.ToPile:
                     return wantedItemId != null ? $"идёт за {Instrumental(wantedItemId)}" : "идёт";
                 case WorkerState.PickingUp:
