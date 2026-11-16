@@ -773,7 +773,7 @@ namespace Emberhold.Gameplay.Workers
             public bool IsDraftLook { get; set; }
 
             /// <summary>С чем объём собран в последний раз: прямоугольник, уровень, отметка мира и леса.</summary>
-            public (Vector2Int, Vector2Int, int, int, int, int, int) Key { get; set; } = (default, default, int.MinValue, 0, 0, -1, -1);
+            public (Vector2Int, Vector2Int, int, int, int, LevelZoneMode, int, int) Key { get; set; } = (default, default, int.MinValue, 0, 0, default, -1, -1);
         }
 }
 }
