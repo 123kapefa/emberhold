@@ -42,6 +42,21 @@ namespace Emberhold.Tests.PlayMode.Workers
             Assert.That(editor.ApplyDigZone(to, to), Is.SameAs(zone));
             Assert.That(crew.Zones.All.OfType<LevelZone>().Count(), Is.EqualTo(1));
 
+            // Ручка стороны больших x: навести, зажать и протянуть на два блока — зона шире на два столбца.
+            var handles = new System.Collections.Generic.List<ZoneHandle>();
+            ZoneHandleLayout.Build(zone, crew.GroundHeight, handles);
+            var east = handles.Single(h => h.Kind == ZoneHandleKind.Edge && h.Dx == 1 && h.Dz == 0);
+            var camera = Camera.main;
+            Vector2 ToScreen(Vector3 local) => camera.WorldToScreenPoint(view.transform.TransformPoint(local));
+            var width = zone.Size.x;
+            Assert.That(crew.UpdateZoneHandles(camera, ToScreen(east.Position), false, false), Is.True, "Курсор над ручкой — клик её");
+            Assert.That(crew.UpdateZoneHandles(camera, ToScreen(east.Position), true, true), Is.True);
+            crew.UpdateZoneHandles(camera, ToScreen(east.Position + new Vector3(2f, 0f, 0f)), false, true);
+            crew.UpdateZoneHandles(camera, ToScreen(east.Position + new Vector3(2f, 0f, 0f)), false, false);
+            Assert.That(zone.Size.x, Is.EqualTo(width + 2), "Сторона протянута на два блока");
+            Assert.That(crew.UpdateZoneHandles(camera, new Vector2(-100f, -100f), false, false), Is.False, "Мимо ручек — клик миру");
+            crew.Zones.SetSize(zone, new Vector2Int(width, zone.Size.y), crew.Orders);
+
             // Новая зона — черновик: видна, но приказов нет, рабочие не идут.
             Assert.That(zone.IsDraft, Is.True);
             yield return null;

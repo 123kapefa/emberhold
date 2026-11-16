@@ -29,6 +29,14 @@ namespace Emberhold.Gameplay.Workers
         private const int SelectedLines = 1;
         private const int PreviewLines = 2;
         private const int DraftLines = 3;
+        private const int HandleLines = 4;
+        private const int HoverHandleLines = 5;
+
+        /// <summary>Ближе скольких пикселей экрана к ручке курсор её берёт.</summary>
+        private const float HandlePickPixels = 16f;
+
+        /// <summary>Полуразмер квадратика ручки, в блоках.</summary>
+        private const float HandleSize = 0.22f;
 
         /// <summary>Во сколько раз бледнее объёмы черновика.</summary>
         private const float DraftAlpha = 0.45f;
@@ -37,6 +45,8 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private Color selectedColor = Color.white;
         [SerializeField] private Color previewColor = new(0.9f, 0.9f, 0.85f, 0.5f);
         [SerializeField] private Color draftColor = new(0.75f, 0.75f, 0.7f, 0.6f);
+        [SerializeField] private Color handleColor = Color.white;
+        [SerializeField] private Color hoverHandleColor = new(1f, 0.55f, 0.1f);
         [SerializeField] private Color digColor = new(1f, 0.85f, 0.15f, 0.35f);
         [SerializeField] private Color fillColor = new(0.3f, 0.8f, 1f, 0.35f);
 
@@ -45,7 +55,7 @@ namespace Emberhold.Gameplay.Workers
         private readonly List<Vector3> volumeVertices = new();
         private readonly List<int> digTriangles = new();
         private readonly List<int> fillTriangles = new();
-        private readonly GameObject[] lines = new GameObject[4];
+        private readonly GameObject[] lines = new GameObject[6];
         private readonly Dictionary<LevelZone, Volume> volumes = new();
         private readonly List<LevelZone> goneVolumes = new();
         private WorkerCrew crew;
@@ -56,6 +66,14 @@ namespace Emberhold.Gameplay.Workers
         private bool ownsVolumeMaterial;
         private Volume preview;
         private GUIStyle labelStyle;
+        private readonly List<ZoneHandle> handles = new();
+        // Ручка под курсором и та, которую тянут (номер в раскладке выбранной зоны); −1 — нет.
+        private int hoveredHandle = -1;
+        private int draggedHandle = -1;
+        private Plane dragPlane;
+        private Vector2 grabOffset;
+        private float grabHeight;
+        private int grabLevel;
         // Растёт, когда в мире поставили или убрали блок: объёмы зон копки пора пересобрать.
         private int worldStamp;
 
@@ -135,6 +153,182 @@ namespace Emberhold.Gameplay.Workers
             Begin();
             AppendPreview();
             End(lines[PreviewLines]);
+            DrawHandles();
+        }
+
+        /// <summary>
+        /// Ручки выбранной зоны (#136): навести и потянуть ЛКМ. Зовёт редактор раз в кадр раньше своих кликов;
+        /// true — курсор над ручкой или ручку тянут: клик и протяжка достаются ручке, а не миру. Изменения сразу идут в зону
+        /// (<see cref="WorkZones"/>): у работающей пересчитываются приказы, как от кнопок панели.
+        /// </summary>
+        public bool UpdateHandles(UnityEngine.Camera camera, Vector2 pointer, bool pressed, bool held)
+        {
+            if (!PanelShown || camera == null)
+            {
+                hoveredHandle = draggedHandle = -1;
+                return false;
+            }
+            var zone = crew.SelectedZone;
+            ZoneHandleLayout.Build(zone, crew.GroundHeight, handles);
+            var worldRay = camera.ScreenPointToRay(pointer);
+            var ray = new Ray(space.InverseTransformPoint(worldRay.origin), space.InverseTransformVector(worldRay.direction));
+            if (draggedHandle >= 0)
+            {
+                if (!held || draggedHandle >= handles.Count)
+                {
+                    draggedHandle = -1;
+                    return true;
+                }
+                Drag(zone, handles[draggedHandle], ray);
+                return true;
+            }
+            hoveredHandle = NearestHandle(camera, pointer);
+            if (hoveredHandle < 0)
+                return false;
+            if (pressed)
+                StartDrag(zone, handles[hoveredHandle], ray, camera);
+            return true;
+        }
+
+        private int NearestHandle(UnityEngine.Camera camera, Vector2 pointer)
+        {
+            var best = -1;
+            var bestDistance = HandlePickPixels;
+            for (var i = 0; i < handles.Count; i++)
+            {
+                var screen = camera.WorldToScreenPoint(space.TransformPoint(handles[i].Position));
+                if (screen.z <= 0f)
+                    continue;
+                var distance = Vector2.Distance(new Vector2(screen.x, screen.y), pointer);
+                if (distance >= bestDistance)
+                    continue;
+                best = i;
+                bestDistance = distance;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Взять ручку: стороны, перенос и радиус тянутся по горизонтальной плоскости на высоте ручки, уровень — по
+        /// вертикальной плоскости через стрелку, повёрнутой к камере. Так шаг не зависит от поворота камеры.
+        /// </summary>
+        private void StartDrag(WorkZone zone, ZoneHandle handle, Ray ray, UnityEngine.Camera camera)
+        {
+            if (handle.Kind == ZoneHandleKind.Level)
+            {
+                var facing = space.InverseTransformVector(camera.transform.forward);
+                facing.y = 0f;
+                if (facing.sqrMagnitude < 1e-6f)
+                    facing = Vector3.forward;
+                dragPlane = new Plane(facing.normalized, handle.Position);
+            }
+            else
+                dragPlane = new Plane(Vector3.up, handle.Position);
+            if (!dragPlane.Raycast(ray, out var enter))
+                return;
+            var hit = ray.GetPoint(enter);
+            grabHeight = hit.y;
+            grabLevel = zone is LevelZone level ? level.Level : 0;
+            grabOffset = zone switch
+            {
+                LevelZone levelZone => new Vector2(hit.x - levelZone.Min.x, hit.z - levelZone.Min.y),
+                ChopZone chop => new Vector2(hit.x - chop.Cell.x, hit.z - chop.Cell.z),
+                _ => Vector2.zero,
+            };
+            draggedHandle = hoveredHandle;
+        }
+
+        private void Drag(WorkZone zone, ZoneHandle handle, Ray ray)
+        {
+            if (!dragPlane.Raycast(ray, out var enter))
+                return;
+            var hit = ray.GetPoint(enter);
+            var orders = crew.Orders;
+            switch (handle.Kind)
+            {
+                case ZoneHandleKind.Edge when zone is LevelZone level:
+                    // Сторона встаёт на ближайшую к курсору границу столбцов.
+                    var column = new Vector2Int(Mathf.RoundToInt(hit.x) - (handle.Dx > 0 ? 1 : 0), Mathf.RoundToInt(hit.z) - (handle.Dz > 0 ? 1 : 0));
+                    crew.Zones.DragEdges(level, handle.Dx, handle.Dz, column, orders);
+                    break;
+                case ZoneHandleKind.Level when zone is LevelZone level:
+                    crew.Zones.SetLevel(level, Mathf.Max(0, grabLevel + Mathf.RoundToInt(hit.y - grabHeight)), orders);
+                    break;
+                case ZoneHandleKind.Move when zone is LevelZone level:
+                    crew.Zones.Move(level, new Vector2Int(Mathf.RoundToInt(hit.x - grabOffset.x), Mathf.RoundToInt(hit.z - grabOffset.y)), orders);
+                    break;
+                case ZoneHandleKind.Move when zone is ChopZone chop:
+                    crew.Zones.Move(chop, new Vector3Int(Mathf.RoundToInt(hit.x - grabOffset.x), chop.Cell.y, Mathf.RoundToInt(hit.z - grabOffset.y)), orders);
+                    break;
+                case ZoneHandleKind.Radius when zone is ChopZone chop:
+                    crew.Zones.SetRadiusTo(chop, new Vector2(hit.x, hit.z), orders);
+                    break;
+            }
+        }
+
+        /// <summary>Ручки выбранной зоны: квадратики (перенос — крест, уровень — стрелка), под курсором и в руке — другим цветом.</summary>
+        private void DrawHandles()
+        {
+            if (!PanelShown)
+            {
+                hoveredHandle = draggedHandle = -1;
+                lines[HandleLines].SetActive(false);
+                lines[HoverHandleLines].SetActive(false);
+                return;
+            }
+            ZoneHandleLayout.Build(crew.SelectedZone, crew.GroundHeight, handles);
+            var active = draggedHandle >= 0 ? draggedHandle : hoveredHandle;
+            foreach (var (index, hot) in new[] { (HandleLines, false), (HoverHandleLines, true) })
+            {
+                Begin();
+                for (var i = 0; i < handles.Count; i++)
+                {
+                    if ((i == active) == hot)
+                        AppendHandle(handles[i]);
+                }
+                End(lines[index]);
+            }
+        }
+
+        private void AppendHandle(ZoneHandle handle)
+        {
+            var p = handle.Position;
+            const float s = HandleSize;
+            switch (handle.Kind)
+            {
+                case ZoneHandleKind.Level:
+                    // Стрелка вверх-вниз.
+                    AppendSegment(p + Vector3.down * 0.7f, p + Vector3.up * 0.7f);
+                    AppendSegment(p + Vector3.up * 0.7f, p + new Vector3(-s, 0.7f - s, 0f));
+                    AppendSegment(p + Vector3.up * 0.7f, p + new Vector3(s, 0.7f - s, 0f));
+                    AppendSegment(p + Vector3.down * 0.7f, p + new Vector3(-s, -0.7f + s, 0f));
+                    AppendSegment(p + Vector3.down * 0.7f, p + new Vector3(s, -0.7f + s, 0f));
+                    break;
+                case ZoneHandleKind.Move:
+                    AppendSegment(p + new Vector3(-s * 2f, 0f, 0f), p + new Vector3(s * 2f, 0f, 0f));
+                    AppendSegment(p + new Vector3(0f, 0f, -s * 2f), p + new Vector3(0f, 0f, s * 2f));
+                    AppendSquare(p, s);
+                    break;
+                default:
+                    AppendSquare(p, s);
+                    break;
+            }
+        }
+
+        private void AppendSquare(Vector3 p, float s)
+        {
+            AppendSegment(p + new Vector3(-s, 0f, -s), p + new Vector3(s, 0f, -s));
+            AppendSegment(p + new Vector3(s, 0f, -s), p + new Vector3(s, 0f, s));
+            AppendSegment(p + new Vector3(s, 0f, s), p + new Vector3(-s, 0f, s));
+            AppendSegment(p + new Vector3(-s, 0f, s), p + new Vector3(-s, 0f, -s));
+        }
+
+        private void AppendSegment(Vector3 a, Vector3 b)
+        {
+            indices.Add(vertices.Count);
+            vertices.Add(a);
+            indices.Add(vertices.Count);
+            vertices.Add(b);
         }
 
         /// <summary>Объёмы зон копки: новые — завести, ушедшие — убрать, изменившиеся (зона или мир) — пересобрать.</summary>
@@ -201,7 +395,8 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Линии будущей зоны; true — показан и объём будущей зоны копки.</summary>
         private bool AppendPreviewShape()
         {
-            if (editor == null || editor.Hovered is not { } hit)
+            // Курсор на ручке выбранной зоны: новую зону не предлагаем.
+            if (editor == null || editor.Hovered is not { } hit || hoveredHandle >= 0 || draggedHandle >= 0)
                 return false;
             if (editor.Tool == BlockTool.ChopZone)
             {
@@ -417,6 +612,8 @@ namespace Emberhold.Gameplay.Workers
                 ZoneLines => zoneColor,
                 SelectedLines => selectedColor,
                 DraftLines => draftColor,
+                HandleLines => handleColor,
+                HoverHandleLines => hoverHandleColor,
                 _ => previewColor,
             };
             var go = new GameObject($"Work Zones {index}");

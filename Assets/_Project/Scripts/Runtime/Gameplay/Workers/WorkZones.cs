@@ -63,8 +63,8 @@ namespace Emberhold.Gameplay.Workers
             Radius = Mathf.Clamp(radius, MinRadius, MaxRadius);
         }
 
-        /// <summary>Клетка центра зоны: пустая клетка над землёй, куда кликнул игрок.</summary>
-        public Vector3Int Cell { get; }
+        /// <summary>Клетка центра зоны: пустая клетка над землёй, куда кликнул игрок (или куда перенесли зону).</summary>
+        public Vector3Int Cell { get; internal set; }
 
         /// <summary>Радиус в блоках: дерево или пень в зоне, если середина его клетки не дальше радиуса от середины центра.</summary>
         public int Radius { get; internal set; }
@@ -124,7 +124,7 @@ namespace Emberhold.Gameplay.Workers
         public LevelZoneMode Mode => LevelZoneMode.Dig;
 
         /// <summary>Ближний угол прямоугольника: наименьшие x и z столбцов.</summary>
-        public Vector2Int Min { get; }
+        public Vector2Int Min { get; internal set; }
 
         /// <summary>Длина (по x) и ширина (по z) в столбцах; угол <see cref="Min"/> при смене размера стоит на месте.</summary>
         public Vector2Int Size { get; internal set; }
@@ -299,6 +299,64 @@ namespace Emberhold.Gameplay.Workers
             }
             return size;
         }
+
+        /// <summary>Поставить прямоугольник зоны с уровнем целиком (угол и размер); лишние приказы снимаются.</summary>
+        public void SetRect(LevelZone zone, Vector2Int min, Vector2Int size, WorkOrders orders)
+        {
+            size = LevelZone.ClampSize(size);
+            if (zone.Min == min && zone.Size == size)
+                return;
+            zone.Min = min;
+            zone.Size = size;
+            Reshaped(zone, orders);
+        }
+
+        /// <summary>
+        /// Протянуть стороны прямоугольника к столбцу column (ручка на стороне или угле): dx = −1 — двигается сторона меньших x,
+        /// +1 — больших, 0 — по x ничего; так же dz. Противоположная сторона стоит; сторону нельзя протянуть за противоположную
+        /// (остаётся хотя бы столбец), и не шире <see cref="LevelZone.MaxSize"/>.
+        /// </summary>
+        public void DragEdges(LevelZone zone, int dx, int dz, Vector2Int column, WorkOrders orders)
+        {
+            var (minX, sizeX) = DragAxis(zone.Min.x, zone.Size.x, dx, column.x);
+            var (minZ, sizeZ) = DragAxis(zone.Min.y, zone.Size.y, dz, column.y);
+            SetRect(zone, new Vector2Int(minX, minZ), new Vector2Int(sizeX, sizeZ), orders);
+        }
+
+        private static (int min, int size) DragAxis(int min, int size, int side, int column)
+        {
+            var max = min + size - 1;
+            if (side < 0)
+            {
+                var newMin = Mathf.Clamp(column, max - LevelZone.MaxSize + 1, max);
+                return (newMin, max - newMin + 1);
+            }
+            if (side > 0)
+            {
+                var newMax = Mathf.Clamp(column, min, min + LevelZone.MaxSize - 1);
+                return (min, newMax - min + 1);
+            }
+            return (min, size);
+        }
+
+        /// <summary>
+        /// Перенести зону: у зоны с уровнем ближний угол встаёт в столбец min (размер и уровень прежние), у зоны рубки центр —
+        /// в клетку center. Приказы, оставшиеся вне зоны, снимаются, новые встанут в <see cref="Update"/>.
+        /// </summary>
+        public void Move(LevelZone zone, Vector2Int min, WorkOrders orders) => SetRect(zone, min, zone.Size, orders);
+
+        /// <inheritdoc cref="Move(LevelZone, Vector2Int, WorkOrders)"/>
+        public void Move(ChopZone zone, Vector3Int center, WorkOrders orders)
+        {
+            if (zone.Cell == center)
+                return;
+            zone.Cell = center;
+            Reshaped(zone, orders);
+        }
+
+        /// <summary>Радиус зоны рубки — до точки point на карте (x, z в координатах мира блоков), с округлением до блока.</summary>
+        public int SetRadiusTo(ChopZone zone, Vector2 point, WorkOrders orders) =>
+            SetRadius(zone, Mathf.RoundToInt(Vector2.Distance(zone.Center, point)), orders);
 
         /// <summary>Сменить целевой уровень; приказы на уровне и ниже снимаются, новые встанут в <see cref="Update"/>.</summary>
         public void SetLevel(LevelZone zone, int level, WorkOrders orders)

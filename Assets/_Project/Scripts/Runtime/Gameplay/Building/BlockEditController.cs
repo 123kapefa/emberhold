@@ -290,7 +290,13 @@ namespace Emberhold.Gameplay.Building
             HoveredStump = HoveredTree == null ? PickStump(point.ReadValue<Vector2>()) : null;
             Hovered = Tool != BlockTool.None && HoveredTree == null && HoveredStump == null ? Pick(point.ReadValue<Vector2>()) : null;
             UpdatePlan();
-            if (use.WasPressedThisFrame() && raisePriority != null && raisePriority.IsPressed() && !IsCameraDragging() && !IsStrikingCrawler()
+            // Ручки выбранной зоны забирают клик и протяжку раньше мира.
+            if (Tool is BlockTool.ChopZone or BlockTool.DigZone && workers != null && DigZoneDragFrom == null
+                && workers.UpdateZoneHandles(targetCamera, point.ReadValue<Vector2>(), use.WasPressedThisFrame() && !IsCameraDragging(), use.IsPressed()))
+            {
+                // Ручку тянут: ни постановки блоков, ни новой зоны.
+            }
+            else if (use.WasPressedThisFrame() && raisePriority != null && raisePriority.IsPressed() && !IsCameraDragging() && !IsStrikingCrawler()
                 && HoveredOrderCell() is { } orderCell && RaisePriority(orderCell))
             {
                 // Shift+ЛКМ по своему приказу поднял его уровень; по пустому месту Shift+ЛКМ ставит как обычный клик.

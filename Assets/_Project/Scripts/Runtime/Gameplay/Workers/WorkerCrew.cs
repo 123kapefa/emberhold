@@ -125,6 +125,13 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Указатель (экранные координаты Input System) над панелью зоны: клик достаётся ей, а не миру.</summary>
         public bool IsOverZonePanel(Vector2 pointer) => zoneView != null && zoneView.IsOverPanel(pointer);
 
+        /// <summary>
+        /// Ручки выбранной зоны (стороны, углы, уровень, перенос, радиус): редактор зовёт раз в кадр раньше своих кликов.
+        /// true — курсор над ручкой или её тянут: клик достаётся ручке.
+        /// </summary>
+        public bool UpdateZoneHandles(UnityEngine.Camera camera, Vector2 pointer, bool pressed, bool held) =>
+            zoneView != null && zoneView.UpdateHandles(camera, pointer, pressed, held);
+
         public IReadOnlyList<Worker> Workers => workers;
 
         /// <summary>Поддоны для ресурсов; создаются в Start, до этого null.</summary>
