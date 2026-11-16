@@ -93,9 +93,11 @@ namespace Emberhold.Tests.PlayMode.Workers
             Assert.That(volume.GetComponent<MeshRenderer>().sharedMaterial.renderQueue, Is.GreaterThanOrEqualTo(3000), "Объём прозрачный");
             Assert.That(WorkZoneView.Label(zone), Does.Not.Contain("обычный"), "Приоритет на карте не показывается");
 
-            // Выравнивание (#169), режим по умолчанию: уровень на блок выше земли — копать нечего, зона наращивает землёй.
+            // Выравнивание (#169), режим по умолчанию: уровень на блок выше земли, верх коробки — на уровне. Копать нечего
+            // (бугры выше верха не трогают), и зона наращивает землёй; пока было бы что копать, наращивать бы не начали.
             Assert.That(zone.Mode, Is.EqualTo(LevelZoneMode.Level));
             crew.Zones.SetLevel(zone, from.y + 1, crew.Orders);
+            crew.Zones.SetTop(zone, from.y + 1, crew.Orders);
             yield return null;
             Assert.That(zone.IsFilling, Is.True);
             Assert.That(zone.Assignment.Orders, Is.Not.Empty, "Чертежи земли до уровня");
