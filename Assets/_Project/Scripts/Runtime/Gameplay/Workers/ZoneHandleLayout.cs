@@ -58,7 +58,7 @@ namespace Emberhold.Gameplay.Workers
         public static void Build(WorkZone zone, Func<Vector2Int, float> ground, List<ZoneHandle> into)
         {
             into.Clear();
-            if (zone is ChopZone chop)
+            if (zone is CircleZone chop)
             {
                 var c = chop.Center;
                 into.Add(new ZoneHandle(ZoneHandleKind.Move, OnGround(ground, c, c)));

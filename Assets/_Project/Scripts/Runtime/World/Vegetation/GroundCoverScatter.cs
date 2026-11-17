@@ -52,7 +52,7 @@ namespace Emberhold.World.Vegetation
                     continue;
                 if (ForestScatter.Random01(seed, x, z, 30) >= PatchChance)
                     continue;
-                if (forest != null && forest.At(column) != null || keepClear != null && keepClear(column))
+                if (forest != null && (forest.At(column) != null || forest.Thicket.At(column) != null) || keepClear != null && keepClear(column))
                     continue;
                 if (!ForestScatter.TryGroundTop(world, x, z, mix.GrowsOnStone, out var cell))
                     continue;

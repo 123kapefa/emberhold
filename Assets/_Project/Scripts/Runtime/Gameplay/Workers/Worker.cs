@@ -33,7 +33,7 @@ namespace Emberhold.Gameplay.Workers
     /// (<see cref="OrderPriority"/>: срочный, высокий — по умолчанию топливо для огня, обычный), среди равных ближайшую.
     /// Срочный приказ может снять его с несрочной работы (<see cref="Answer"/>). Для чертежа приносит ресурс из ближайшей кучки и ставит блок (или костёр), для топлива приносит
     /// полено и кладёт в огонь (за ходку — одна единица ресурса, положить её — PutSeconds), для приказа копать бьёт блок через <see cref="Emberhold.World.Editing.BlockDamage"/>,
-    /// для приказа рубить бьёт дерево; один удар за анимацию копки. Ресурс для задачи берёт из кучки на земле или с поддона, что ближе.
+    /// для приказа рубить бьёт дерево, для приказа собрать срезает траву с куста (#88); один удар за анимацию копки. Ресурс для задачи берёт из кучки на земле или с поддона, что ближе.
     /// Взяв приказ, держится за его задание (<see cref="WorkAssignment"/>) и получает его класс (<see cref="Role"/>): следующие
     /// приказы берёт только из этого задания, пока они есть и до них можно добраться; потом снова свободный.
     /// Что выбил из блока или дерева, сам относит на поддоны (<see cref="Pallets"/>) раньше следующих приказов, по одной единице
@@ -321,7 +321,7 @@ namespace Emberhold.Gameplay.Workers
             from = default;
             if (order.Worker != null || !Suits(order) || !context.IsOrderLit(order)
                 || !WorkOrders.IsValid(context.World, order)
-                || order.Kind == WorkKind.Chop && context.Forest == null
+                || order.Kind is WorkKind.Chop or WorkKind.Gather && context.Forest == null
                 || order.Kind == WorkKind.Dig && context.HasReachableDigAbove(order.Cell)
                 || !context.TryStandSpot(order.Cell, false, out stand, out cost))
             {
@@ -499,7 +499,7 @@ namespace Emberhold.Gameplay.Workers
                         timer = context.Settings.PutSeconds;
                         break;
                     }
-                    if (Order.Kind is WorkKind.Dig or WorkKind.Chop)
+                    if (Order.Kind is WorkKind.Dig or WorkKind.Chop or WorkKind.Gather)
                     {
                         State = WorkerState.Working;
                         timer = context.Settings.DigHitSeconds;
@@ -573,6 +573,18 @@ namespace Emberhold.Gameplay.Workers
                     : context.Forest.Hit(context.World, Order.Tree, context.Settings.DigHitDamage);
                 context.Miner = null;
                 if (done)
+                    FinishMining();
+                return;
+            }
+
+            if (Order.Kind == WorkKind.Gather)
+            {
+                // Урон копится на кусте; срезанный куст сам кладёт траву у основания и остаётся голым — приказ выполнен.
+                timer += context.Settings.DigHitSeconds;
+                context.Miner = this;
+                var cut = context.Forest.Thicket.Hit(context.World, Order.Bush, context.Settings.DigHitDamage);
+                context.Miner = null;
+                if (cut)
                     FinishMining();
                 return;
             }

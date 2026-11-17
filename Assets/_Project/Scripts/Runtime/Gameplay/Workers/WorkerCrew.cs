@@ -5,6 +5,7 @@ using Emberhold.Gameplay.Items;
 using Emberhold.Gameplay.Lighting;
 using Emberhold.Gameplay.Trees;
 using Emberhold.World;
+using Emberhold.World.Bushes;
 using Emberhold.World.Editing;
 using Emberhold.World.Items;
 using Emberhold.World.Trees;
@@ -97,15 +98,15 @@ namespace Emberhold.Gameplay.Workers
         public WorkOrders Orders { get; } = new();
 
         /// <summary>
-        /// Зоны работ: рубки (#167, инструмент 8) и копки (#136, инструмент 9); отряд каждый кадр ставит в них приказы.
+        /// Зоны работ: рубки (#167, инструмент 8), копки (#136, инструмент 9) и сбора травы (#88, H); отряд каждый кадр ставит в них приказы.
         /// </summary>
         public WorkZones Zones { get; } = new();
 
         /// <summary>Зона, открытая в панели зоны, или null.</summary>
         public WorkZone SelectedZone { get; set; }
 
-        /// <summary>С каким радиусом встанет новая зона рубки; меняют [ ] при инструменте 8, пока ни одна зона не выбрана.</summary>
-        public int NewZoneRadius { get; set; } = ChopZone.DefaultRadius;
+        /// <summary>С каким радиусом встанет новая зона рубки или сбора; меняют [ ] при инструменте 8 или H, пока ни одна зона не выбрана.</summary>
+        public int NewZoneRadius { get; set; } = CircleZone.DefaultRadius;
 
         /// <summary>Можно ставить зоны рубки: в сцене есть лес.</summary>
         public bool HasForest => forest != null && forest.Forest != null;
@@ -436,6 +437,19 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
+        /// Инструмент H (#88): как <see cref="PlaceOrSelectZone"/>, но зона сбора травы — берёт только кусты. Null — нет леса (и кустов).
+        /// </summary>
+        public GatherZone PlaceOrSelectGatherZone(Vector3Int cell)
+        {
+            if (!HasForest)
+                return null;
+            var zone = Zones.At(cell, WorkKind.Gather) as GatherZone
+                       ?? Zones.AddGather(cell, NewZoneRadius, Mathf.Min(WorkZones.DefaultMaxWorkers, workers.Count), draft: true);
+            SelectedZone = zone;
+            return zone;
+        }
+
+        /// <summary>
         /// Инструмент 9: поставить черновик зоны копки на прямоугольник между столбцами блоков from и to (протяжка ЛКМ) с уровнем на
         /// блок ниже from и выбрать её. Если протяжки не было (from и to в одном столбце), а там уже есть зона копки,
         /// выбирается она.
@@ -476,6 +490,18 @@ namespace Emberhold.Gameplay.Workers
             if (Orders.At(tree.Cell) is { } existing)
                 return existing.Kind == WorkKind.Chop && Orders.Cancel(existing);
             return Orders.AddChop(tree) != null;
+        }
+
+        /// <summary>
+        /// Поручить собрать траву с куста или снять приказ (#88). Голый куст поручить нельзя: он ещё не отрос. true — что-то изменилось.
+        /// </summary>
+        public bool ToggleGather(Bush bush)
+        {
+            if (bush == null)
+                return false;
+            if (Orders.At(bush.Cell) is { } existing)
+                return existing.Kind == WorkKind.Gather && Orders.Cancel(existing);
+            return Orders.AddGather(bush) != null;
         }
 
         /// <summary>
@@ -782,10 +808,16 @@ namespace Emberhold.Gameplay.Workers
             {
                 if (darkOrders.Contains(order) != dark)
                     continue;
-                // Приказы рубить и корчевать рисуются вместе с приказами копать, рамкой вокруг дерева или пня.
+                // Приказы рубить, корчевать и собирать траву рисуются вместе с приказами копать, рамкой вокруг дерева, пня или куста.
                 if (kind == WorkKind.Dig && order.Kind == WorkKind.Chop && forest != null)
                 {
                     var (min, max) = order.Stump != null ? forest.LocalBounds(order.Stump) : forest.LocalBounds(order.Tree);
+                    BlockOutlineMesh.AppendBox(order.Cell + min, order.Cell + max, outlinePadding, lineVertices, lineIndices);
+                    continue;
+                }
+                if (kind == WorkKind.Dig && order.Kind == WorkKind.Gather && forest != null)
+                {
+                    var (min, max) = forest.LocalBounds(order.Bush);
                     BlockOutlineMesh.AppendBox(order.Cell + min, order.Cell + max, outlinePadding, lineVertices, lineIndices);
                     continue;
                 }

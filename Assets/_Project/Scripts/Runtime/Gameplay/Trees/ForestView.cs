@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using Emberhold.Gameplay.DayNight;
 using Emberhold.Gameplay.Items;
 using Emberhold.Gameplay.Lighting;
 using Emberhold.World;
+using Emberhold.World.Bushes;
 using Emberhold.World.Meshing;
 using Emberhold.World.Trees;
 using UnityEngine;
@@ -15,6 +17,9 @@ namespace Emberhold.Gameplay.Trees
     /// показывает каждое гранёной моделью вида (<see cref="TreeMeshBuilder"/>) и убирает упавшие. Упавшее дерево кладёт поленья
     /// в те же ресурсы на земле, что и камень (<see cref="DroppedItemsView"/>). На месте срубленного остаётся пень. Рубят деревья рабочие (WorkerCrew),
     /// приказ рубить ставит игрок инструментом 5 (BlockEditController).
+    /// Здесь же кусты (#88, <see cref="Thicket"/>): рассаживаются после деревьев (<see cref="BushScatter"/>; у каждого огня несколько
+    /// в свету), показываются гранёной моделью (<see cref="BushMeshBuilder"/>): зелёный — с листвой, срезанный — голые ветки.
+    /// Голые кусты отрастают по игровому времени смены суток (<see cref="DayNightCycle"/>).
     /// </summary>
     public sealed class ForestView : MonoBehaviour
     {
@@ -25,6 +30,11 @@ namespace Emberhold.Gameplay.Trees
         [Tooltip("Вокруг огней в этом радиусе (в блоках) деревья не растут: место для лагеря.")]
         [Min(0f)]
         [SerializeField] private float clearAroundFire = 3f;
+        [Tooltip("Вокруг огней в этом радиусе (в блоках) кусты не растут сами; у огня в свету растут несколько своих (BushScatter).")]
+        [Min(0f)]
+        [SerializeField] private float bushClearAroundFire = 2f;
+        [Tooltip("Смена суток: по её времени отрастают кусты. Если пусто — ищется в сцене; нет и там — сутки по 12 минут реального времени.")]
+        [SerializeField] private DayNightCycle dayNight;
 
         [Header("Вид")]
         [Tooltip("Материал деревьев на шейдере Emberhold/World/Tree: цвет из вершин сетки, _BaseColor красит крону.")]
@@ -42,9 +52,18 @@ namespace Emberhold.Gameplay.Trees
         private readonly Dictionary<TreeStump, GameObject> stumps = new();
         private readonly List<TreeStump> stumpsGone = new();
         private readonly Dictionary<TreeSpecies, Mesh> stumpMeshes = new();
+        private readonly Dictionary<Bush, BushVisual> bushVisuals = new();
+        private readonly List<Bush> bushesGone = new();
+        private readonly Dictionary<(BushSpecies species, int variant, bool bare), Mesh> bushMeshes = new();
         private MaterialPropertyBlock properties;
         private Forest forest;
         private int shownVersion = -1;
+        private int shownBushVersion = -1;
+        private float? lastClock;
+        private bool dayNightSearched;
+
+        /// <summary>Без смены суток в сцене сутки длятся столько секунд (как сумма фаз в Data/DayNight).</summary>
+        public const float FallbackDaySeconds = 720f;
 
         /// <summary>
         /// Деревья мира. Рассаживаются при первом обращении: мир и ресурсы на земле создаются в Awake,
@@ -87,6 +106,13 @@ namespace Emberhold.Gameplay.Trees
                 Destroy(mesh);
             foreach (var mesh in stumpMeshes.Values)
                 Destroy(mesh);
+            foreach (var visual in bushVisuals.Values)
+            {
+                if (visual.Root != null)
+                    Destroy(visual.Root);
+            }
+            foreach (var mesh in bushMeshes.Values)
+                Destroy(mesh);
         }
 
         private void LateUpdate()
@@ -95,6 +121,8 @@ namespace Emberhold.Gameplay.Trees
                 return;
             // Под деревом могли выкопать землю или поставить блок в его клетку.
             forest.Settle(worldView.World);
+            forest.Thicket.Grow(DaysPassed());
+            ShowBushes();
             if (shownVersion == forest.Version)
                 return;
             shownVersion = forest.Version;
@@ -149,6 +177,45 @@ namespace Emberhold.Gameplay.Trees
             return (new Vector3(center.x - half, bottom, center.y - half), new Vector3(center.x + half, bottom + tree.Species.Height, center.y + half));
         }
 
+        /// <summary>Куст, в который попадает луч из сцены, ближе maxDistance; distance — в единицах сцены.</summary>
+        public bool RaycastBush(Ray ray, float maxDistance, out Bush bush, out float distance)
+        {
+            bush = null;
+            distance = maxDistance;
+            if (Forest == null)
+                return false;
+            var space = worldView.transform;
+            return forest.Thicket.Raycast(worldView.World, space.InverseTransformPoint(ray.origin),
+                space.InverseTransformDirection(ray.direction), maxDistance, out bush, out distance);
+        }
+
+        /// <summary>Коробка куста для рамки, в долях клетки куста.</summary>
+        public (Vector3 min, Vector3 max) LocalBounds(Bush bush)
+        {
+            var (min, max) = Thicket.Bounds(worldView.World, bush);
+            return (min - bush.Cell, max - bush.Cell);
+        }
+
+        /// <summary>
+        /// Сколько игровых суток прошло с прошлого кадра: по часам смены суток (номер суток и время в них, поэтому пропуск
+        /// фазы клавишей N тоже считается), без неё — по реальному времени.
+        /// </summary>
+        private float DaysPassed()
+        {
+            if (dayNight == null && !dayNightSearched)
+            {
+                dayNightSearched = true;
+                dayNight = FindAnyObjectByType<DayNightCycle>();
+            }
+            if (dayNight == null || dayNight.Cycle == null)
+                return Time.deltaTime / FallbackDaySeconds;
+            var length = dayNight.Cycle.Length;
+            var clock = (dayNight.DayNumber - 1) * length + dayNight.TimeOfDay;
+            var days = lastClock is { } last && length > 0f ? Mathf.Max(0f, clock - last) / length : 0f;
+            lastClock = clock;
+            return days;
+        }
+
         private void Plant()
         {
             forest = new Forest(droppedItems.Items);
@@ -181,6 +248,21 @@ namespace Emberhold.Gameplay.Trees
                 return false;
             }, starts);
             Debug.Log($"[Forest] Посажено деревьев: {planted}.", this);
+
+            var bushClear = bushClearAroundFire * bushClearAroundFire;
+            var bushes = BushScatter.Scatter(worldView.World, terrain.Seed, worldView.ForestAt, forest, column =>
+            {
+                if (worldView.AboveTreeLine(column))
+                    return true;
+                foreach (var fire in fires)
+                {
+                    var d = new Vector2(column.x + 0.5f - fire.x, column.y + 0.5f - fire.z);
+                    if (d.sqrMagnitude <= bushClear)
+                        return true;
+                }
+                return false;
+            }, starts);
+            Debug.Log($"[Forest] Посажено кустов: {bushes}.", this);
         }
 
         private void OnFelled(TreeStand tree)
@@ -275,6 +357,88 @@ namespace Emberhold.Gameplay.Trees
             mesh.AddPrism(7, Vector3.down * 0.15f, radius * 1.18f, radius * 1.02f, TreeStump.Height + 0.15f, radius * 0.06f, random, _ => bark);
             mesh.AddPrism(7, Vector3.up * (TreeStump.Height - 0.01f), radius * 0.95f, radius * 0.92f, 0.03f, 0f, random, _ => cut);
             return mesh.ToMesh($"Stump {species.DisplayName}");
+        }
+
+        /// <summary>Кусты: новые ставим, пропавшие убираем, у срезанных и отросших меняем сетку.</summary>
+        private void ShowBushes()
+        {
+            var thicket = forest.Thicket;
+            if (shownBushVersion == thicket.Version)
+                return;
+            shownBushVersion = thicket.Version;
+            foreach (var bush in thicket.Bushes)
+            {
+                if (!bushVisuals.TryGetValue(bush, out var visual))
+                    bushVisuals[bush] = visual = CreateBush(bush);
+                var bare = !bush.IsGrown;
+                if (visual.Bare != bare)
+                {
+                    visual.Bare = bare;
+                    visual.Filter.sharedMesh = BushMeshFor(bush.Species, visual.Variant, bare);
+                }
+            }
+            bushesGone.Clear();
+            foreach (var bush in bushVisuals.Keys)
+            {
+                if (!bush.IsPresent)
+                    bushesGone.Add(bush);
+            }
+            foreach (var bush in bushesGone)
+            {
+                Destroy(bushVisuals[bush].Root);
+                bushVisuals.Remove(bush);
+            }
+        }
+
+        /// <summary>Модель куста: общая сетка формы вида, свои поворот и размер по клетке, оттенок листвы с оттенком травы локации.</summary>
+        private BushVisual CreateBush(Bush bush)
+        {
+            properties ??= new MaterialPropertyBlock();
+            var species = bush.Species;
+            var seed = CellSeed(bush.Cell);
+            var random = new System.Random(seed);
+            var root = new GameObject($"Bush {species.DisplayName}");
+            root.transform.SetParent(transform, false);
+            var space = worldView.transform;
+            var position = bush.Position;
+            root.transform.SetPositionAndRotation(space.TransformPoint(new Vector3(position.x, Thicket.BaseHeight(worldView.World, bush), position.y)),
+                space.rotation * Quaternion.Euler(0f, Range(random, 0f, 360f), 0f));
+            root.transform.localScale = Vector3.one * Range(random, 1f - sizeSpread, 1f + sizeSpread * 0.5f);
+            var variant = random.Next(species.Variants);
+            var filter = root.AddComponent<MeshFilter>();
+            filter.sharedMesh = BushMeshFor(species, variant, !bush.IsGrown);
+            var renderer = root.AddComponent<MeshRenderer>();
+            if (material != null)
+                renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.On;
+            var grass = worldView.World.GrassTint?.Sample(position.x, position.y) ?? Color.white;
+            properties.SetColor(BaseColorId, TreeMeshBuilder.CrownTint(species.LeafColor, grass, seed ^ 0x5bd1e995));
+            renderer.SetPropertyBlock(properties);
+            // Без коллайдера: куст выбирается лучом по коробке (Thicket.Raycast) и не мешает ходить и выбирать блок.
+            return new BushVisual(root, filter, variant, !bush.IsGrown);
+        }
+
+        private Mesh BushMeshFor(BushSpecies species, int variant, bool bare)
+        {
+            if (!bushMeshes.TryGetValue((species, variant, bare), out var mesh))
+                bushMeshes[(species, variant, bare)] = mesh = BushMeshBuilder.Build(species, variant, bare);
+            return mesh;
+        }
+
+        private sealed class BushVisual
+        {
+            public BushVisual(GameObject root, MeshFilter filter, int variant, bool bare)
+            {
+                Root = root;
+                Filter = filter;
+                Variant = variant;
+                Bare = bare;
+            }
+
+            public GameObject Root { get; }
+            public MeshFilter Filter { get; }
+            public int Variant { get; }
+            public bool Bare { get; set; }
         }
 
         private static Color Untinted(Color color) => new(color.r, color.g, color.b, 0f);

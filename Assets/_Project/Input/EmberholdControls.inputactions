@@ -1419,6 +1419,15 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "ToolGatherZone",
+                    "type": "Button",
+                    "id": "295b4bff-313e-435d-9e5c-6e47c51b59e6",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "StartZone",
                     "type": "Button",
                     "id": "d1d3b145-7847-4f0c-b6e7-1a5e3a6f58e0",
@@ -1610,6 +1619,17 @@
                     "processors": "",
                     "groups": "Keyboard&Mouse",
                     "action": "ToolDigZone",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "845a9cb8-34f4-44be-b84a-cb0464ef2efc",
+                    "path": "<Keyboard>/h",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "ToolGatherZone",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

@@ -26,7 +26,7 @@ namespace Emberhold.Tests.EditMode.Workers
         /// <summary>Столько вершин на одну пару частей в кадре ещё касание, а не прорыв.</summary>
         private const int Contact = 3;
 
-        private static readonly WorkerCarry[] Loads = { WorkerCarry.None, WorkerCarry.Log, WorkerCarry.StoneBasket, WorkerCarry.GrassBasket };
+        private static readonly WorkerCarry[] Loads = { WorkerCarry.None, WorkerCarry.Log, WorkerCarry.StoneBasket, WorkerCarry.GrassBasket, WorkerCarry.Sheaf };
 
         [Test]
         public void EveryRoleClipAndLoad_NothingGoesThroughAnything()
@@ -61,7 +61,9 @@ namespace Emberhold.Tests.EditMode.Workers
                     }
                 }
 
-                var carried = role == WorkerRole.Free ? Loads : new[] { WorkerCarry.None };
+                // Сборщик (#88) носит свою траву снопом.
+                var carried = role == WorkerRole.Free ? Loads
+                    : role == WorkerRole.Gatherer ? new[] { WorkerCarry.None, WorkerCarry.Sheaf } : new[] { WorkerCarry.None };
                 // Рабочая анимация — только у своей роли: в руке нужный инструмент; у истопника в работе ещё полено.
                 bool Foreign(WorkerClip clip) => WorkerAnimation.RoleOf(clip) is { } owner && owner != role;
                 WorkerCarry[] LoadsIn(WorkerClip clip) => WorkerAnimation.RoleOf(clip) == null ? carried
@@ -217,7 +219,7 @@ namespace Emberhold.Tests.EditMode.Workers
                 var fists = new Vector3[WorkerPose.PartCount];
                 foreach (var (part, side) in new[] { (WorkerPart.ForearmLeft, -1f), (WorkerPart.ForearmRight, 1f) })
                     fists[(int)part] = matrices[(int)part].MultiplyPoint3x4(WorkerSkeleton.FistCenter(side, Height) - WorkerSkeleton.Pivot(part, Height));
-                bool Held(int part, Vector3 p) => (part == (int)WorkerPart.ForearmLeft || (part == (int)WorkerPart.ForearmRight && carry != WorkerCarry.Log)) &&
+                bool Held(int part, Vector3 p) => (part == (int)WorkerPart.ForearmLeft || (part == (int)WorkerPart.ForearmRight && !WorkerCarryBuilder.OnShoulder(carry))) &&
                                                   Vector3.Distance(p, fists[part]) < 0.05f * Height;
                 foreach (var b in rigid)
                 {

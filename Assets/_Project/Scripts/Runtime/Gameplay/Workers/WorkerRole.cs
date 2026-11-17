@@ -15,6 +15,8 @@ namespace Emberhold.Gameplay.Workers
         Swordsman,
         Archer,
         Spearman,
+        /// <summary>Сборщик травы с кустов (#88).</summary>
+        Gatherer,
     }
 
     /// <summary>Какой класс даёт работа. Чистая логика, без сцены.</summary>
@@ -22,7 +24,7 @@ namespace Emberhold.Gameplay.Workers
     {
         /// <summary>
         /// Класс по виду работы: копать — копатель, рубить и корчевать — лесоруб, чертежи блоков и костров (с подносом
-        /// ресурса) — строитель, топливо — истопник.
+        /// ресурса) — строитель, топливо — истопник, сбор травы с кустов — сборщик.
         /// </summary>
         public static WorkerRole For(WorkKind kind) => kind switch
         {
@@ -30,6 +32,7 @@ namespace Emberhold.Gameplay.Workers
             WorkKind.Chop => WorkerRole.Woodcutter,
             WorkKind.Build or WorkKind.Campfire => WorkerRole.Builder,
             WorkKind.Fuel => WorkerRole.Stoker,
+            WorkKind.Gather => WorkerRole.Gatherer,
             _ => WorkerRole.Free,
         };
     }

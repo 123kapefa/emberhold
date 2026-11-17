@@ -712,8 +712,14 @@ MonoBehaviour:
   itemLooks:
   - itemId: wood
     material: {fileID: 2100000, guid: 932ae790c9e7a4b1480d98f70518d09f, type: 2}
+    shape: 0
+  - itemId: grass
+    material: {fileID: 2100000, guid: e92f40ea9c964ab69da7990fb50db554, type: 2}
+    shape: 1
   itemSize: 0.35
   maxStack: 5
+  unitsPerSheaf: 3
+  sheafWorkerHeight: 1.9
   blockFalls: {fileID: 1836935976}
 --- !u!4 &1950212303
 Transform:

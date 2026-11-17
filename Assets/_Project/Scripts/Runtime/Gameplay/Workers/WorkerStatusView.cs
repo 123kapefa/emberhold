@@ -28,6 +28,7 @@ namespace Emberhold.Gameplay.Workers
         [SerializeField] private Color campfireColor = new(1f, 0.6f, 0.55f);
         [SerializeField] private Color haulColor = new(0.95f, 0.8f, 0.45f);
         [SerializeField] private Color fleeColor = new(1f, 0.2f, 0.2f);
+        [SerializeField] private Color gatherColor = new(0.75f, 0.95f, 0.4f);
 
         private readonly List<GameObject> routes = new();
         private readonly List<Vector3> points = new();
@@ -57,6 +58,7 @@ namespace Emberhold.Gameplay.Workers
             WorkerActivity.Campfire => campfireColor,
             WorkerActivity.Haul => haulColor,
             WorkerActivity.Flee => fleeColor,
+            WorkerActivity.Gather => gatherColor,
             _ => idleColor,
         };
 

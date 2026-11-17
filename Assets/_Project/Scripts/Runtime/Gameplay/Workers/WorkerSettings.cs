@@ -82,6 +82,7 @@ namespace Emberhold.Gameplay.Workers
             new(WorkerRole.Swordsman, new Color(0.5f, 0.15f, 0.15f)),
             new(WorkerRole.Archer, new Color(0.5f, 0.15f, 0.15f)),
             new(WorkerRole.Spearman, new Color(0.5f, 0.15f, 0.15f)),
+            new(WorkerRole.Gatherer, new Color(0.55f, 0.62f, 0.25f)),
         };
         [Tooltip("Цвета кожи: каждому рабочему достаётся один по его номеру.")]
         [SerializeField] private Color[] skinColors = { new(0.910f, 0.753f, 0.604f), new(0.851f, 0.655f, 0.486f), new(0.769f, 0.541f, 0.376f), new(0.941f, 0.812f, 0.682f) };

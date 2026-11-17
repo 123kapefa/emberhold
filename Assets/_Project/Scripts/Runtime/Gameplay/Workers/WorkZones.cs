@@ -36,7 +36,7 @@ namespace Emberhold.Gameplay.Workers
         /// </summary>
         public bool IsDraft { get; internal set; }
 
-        /// <summary>Зона сделала всё, что могла, и уходит (у зоны рубки так не бывает: она ждёт новых деревьев).</summary>
+        /// <summary>Зона сделала всё, что могла, и уходит (у зон рубки и сбора так не бывает: они ждут новых деревьев и травы).</summary>
         public bool IsFinished { get; private protected set; }
 
         /// <summary>Столбец клетки в зоне (высота не важна).</summary>
@@ -53,16 +53,16 @@ namespace Emberhold.Gameplay.Workers
     }
 
     /// <summary>
-    /// Зона рубки (#167): круг, в котором рабочие рубят все деревья и корчуют все пни, в том числе те, что
-    /// появятся в нём позже (пень срубленного дерева тоже).
+    /// Зона-круг: центр в клетке и радиус в блоках. Общее у зоны рубки (<see cref="ChopZone"/>) и зоны сбора
+    /// (<see cref="GatherZone"/>): ручки переноса и радиуса, радиус кнопками и [ ].
     /// </summary>
-    public sealed class ChopZone : WorkZone
+    public abstract class CircleZone : WorkZone
     {
         public const int MinRadius = 1;
         public const int MaxRadius = 16;
         public const int DefaultRadius = 4;
 
-        internal ChopZone(Vector3Int cell, int radius, int maxWorkers) : base(maxWorkers, WorkKind.Chop)
+        private protected CircleZone(Vector3Int cell, int radius, int maxWorkers, WorkKind kind) : base(maxWorkers, kind)
         {
             Cell = cell;
             Radius = Mathf.Clamp(radius, MinRadius, MaxRadius);
@@ -71,7 +71,7 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Клетка центра зоны: пустая клетка над землёй, куда кликнул игрок (или куда перенесли зону).</summary>
         public Vector3Int Cell { get; internal set; }
 
-        /// <summary>Радиус в блоках: дерево или пень в зоне, если середина его клетки не дальше радиуса от середины центра.</summary>
+        /// <summary>Радиус в блоках: дерево, пень или куст в зоне, если середина его клетки не дальше радиуса от середины центра.</summary>
         public int Radius { get; internal set; }
 
         public override Vector2 Center => new(Cell.x + 0.5f, Cell.z + 0.5f);
@@ -81,6 +81,17 @@ namespace Emberhold.Gameplay.Workers
             var dx = cell.x - Cell.x;
             var dz = cell.z - Cell.z;
             return dx * dx + dz * dz <= Radius * Radius;
+        }
+    }
+
+    /// <summary>
+    /// Зона рубки (#167): круг, в котором рабочие рубят все деревья и корчуют все пни, в том числе те, что
+    /// появятся в нём позже (пень срубленного дерева тоже). Кусты не трогает.
+    /// </summary>
+    public sealed class ChopZone : CircleZone
+    {
+        internal ChopZone(Vector3Int cell, int radius, int maxWorkers) : base(cell, radius, maxWorkers, WorkKind.Chop)
+        {
         }
 
         internal override void Refresh(ZoneRefresh refresh, Func<WorkOrder, bool> take)
@@ -98,6 +109,31 @@ namespace Emberhold.Gameplay.Workers
             {
                 if (stump.IsPresent && Covers(stump.Cell))
                     take(orders.At(stump.Cell) ?? orders.AddUproot(stump));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Зона сбора (#88, клавиша H): круг, в котором рабочие собирают траву со всех зелёных кустов. Деревья и пни не трогает.
+    /// Голый куст ждёт: зона не уходит, и когда куст снова зелёный, в нём снова встаёт приказ. Как у рубки, тёмные кусты
+    /// ждут света (приказ стоит, но рабочие берут только освещённые).
+    /// </summary>
+    public sealed class GatherZone : CircleZone
+    {
+        internal GatherZone(Vector3Int cell, int radius, int maxWorkers) : base(cell, radius, maxWorkers, WorkKind.Gather)
+        {
+        }
+
+        internal override void Refresh(ZoneRefresh refresh, Func<WorkOrder, bool> take)
+        {
+            var thicket = refresh.Forest?.Thicket;
+            var orders = refresh.Orders;
+            if (thicket == null)
+                return;
+            foreach (var bush in thicket.Bushes)
+            {
+                if (bush.IsPresent && bush.IsGrown && Covers(bush.Cell))
+                    take(orders.At(bush.Cell) ?? orders.AddGather(bush));
             }
         }
     }
@@ -314,7 +350,7 @@ namespace Emberhold.Gameplay.Workers
         /// неполный блок (не полный и не каталожной формы, #78) с пустой клеткой над ним — дополнить до полного тем же
         /// материалом (topUp, чертёж <see cref="WorkOrder.FillsExisting"/>); иначе нижняя пустая клетка, под которой стоит
         /// блок, — новый блок земли (<see cref="FillBlock"/>). Пустая клетка над пустой — класть не на что: выше в столбце
-        /// тоже не наращивают. false и тогда, когда клетку держит дерево, пень или isBlocked (костёр, поддон) — в ней или
+        /// тоже не наращивают. false и тогда, когда клетку держит дерево, пень, куст или isBlocked (костёр, поддон) — в ней или
         /// над дополняемым блоком.
         /// </summary>
         internal static bool TryNextToFill(VoxelWorld world, Forest forest, Func<Vector3Int, bool> isBlocked, int x, int z,
@@ -349,9 +385,9 @@ namespace Emberhold.Gameplay.Workers
             return false;
         }
 
-        /// <summary>В клетке нет пня, стоящего дерева, и isBlocked её не держит.</summary>
+        /// <summary>В клетке нет пня, стоящего дерева, куста (#88), и isBlocked её не держит.</summary>
         private static bool IsFree(Forest forest, Func<Vector3Int, bool> isBlocked, Vector3Int cell) =>
-            !(forest != null && (forest.StumpAt(cell) != null
+            !(forest != null && (forest.StumpAt(cell) != null || forest.Thicket.BlocksPlace(cell)
                                  || forest.At(new Vector2Int(cell.x, cell.z)) is { IsStanding: true } tree && tree.Cell == cell))
             && (isBlocked == null || !isBlocked(cell));
 
@@ -384,7 +420,7 @@ namespace Emberhold.Gameplay.Workers
     }
 
     /// <summary>
-    /// Все зоны работ отряда: рубки (<see cref="ChopZone"/>) и с уровнем (<see cref="LevelZone"/>). <see cref="Update"/> раз
+    /// Все зоны работ отряда: рубки (<see cref="ChopZone"/>), сбора (<see cref="GatherZone"/>) и с уровнем (<see cref="LevelZone"/>). <see cref="Update"/> раз
     /// в кадр ставит в зонах приказы и забирает в зону уже стоящие там одиночные приказы видов зоны, если их ещё никто
     /// не взял. Клетка в нескольких зонах достаётся той, что поставлена раньше. Чистая логика, без сцены.
     /// </summary>
@@ -426,6 +462,10 @@ namespace Emberhold.Gameplay.Workers
         /// </summary>
         public ChopZone AddChop(Vector3Int cell, int radius, int maxWorkers = DefaultMaxWorkers, bool draft = false) =>
             Add(new ChopZone(cell, radius, maxWorkers) { IsDraft = draft });
+
+        /// <summary>Поставить зону сбора травы (#88) с центром в клетке cell; как <see cref="AddChop"/>, но берёт только кусты.</summary>
+        public GatherZone AddGather(Vector3Int cell, int radius, int maxWorkers = DefaultMaxWorkers, bool draft = false) =>
+            Add(new GatherZone(cell, radius, maxWorkers) { IsDraft = draft });
 
         /// <summary>
         /// Поставить зону с уровнем (по умолчанию — выравнивание) на прямоугольник между столбцами двух блоков (в любом порядке); уровень — на блок ниже
@@ -491,10 +531,10 @@ namespace Emberhold.Gameplay.Workers
             return true;
         }
 
-        /// <summary>Сменить радиус зоны рубки; приказы, оставшиеся за кругом, снимаются. Возвращает новый радиус.</summary>
-        public int SetRadius(ChopZone zone, int radius, WorkOrders orders)
+        /// <summary>Сменить радиус зоны-круга (рубки, сбора); приказы, оставшиеся за кругом, снимаются. Возвращает новый радиус.</summary>
+        public int SetRadius(CircleZone zone, int radius, WorkOrders orders)
         {
-            radius = Mathf.Clamp(radius, ChopZone.MinRadius, ChopZone.MaxRadius);
+            radius = Mathf.Clamp(radius, CircleZone.MinRadius, CircleZone.MaxRadius);
             if (zone.Radius != radius)
             {
                 zone.Radius = radius;
@@ -555,13 +595,13 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Перенести зону: у зоны с уровнем ближний угол встаёт в столбец min (размер и уровень прежние), у зоны рубки центр —
+        /// Перенести зону: у зоны с уровнем ближний угол встаёт в столбец min (размер и уровень прежние), у зоны-круга центр —
         /// в клетку center. Приказы, оставшиеся вне зоны, снимаются, новые встанут в <see cref="Update"/>.
         /// </summary>
         public void Move(LevelZone zone, Vector2Int min, WorkOrders orders) => SetRect(zone, min, zone.Size, orders);
 
         /// <inheritdoc cref="Move(LevelZone, Vector2Int, WorkOrders)"/>
-        public void Move(ChopZone zone, Vector3Int center, WorkOrders orders)
+        public void Move(CircleZone zone, Vector3Int center, WorkOrders orders)
         {
             if (zone.Cell == center)
                 return;
@@ -569,8 +609,8 @@ namespace Emberhold.Gameplay.Workers
             Reshaped(zone, orders);
         }
 
-        /// <summary>Радиус зоны рубки — до точки point на карте (x, z в координатах мира блоков), с округлением до блока.</summary>
-        public int SetRadiusTo(ChopZone zone, Vector2 point, WorkOrders orders) =>
+        /// <summary>Радиус зоны-круга — до точки point на карте (x, z в координатах мира блоков), с округлением до блока.</summary>
+        public int SetRadiusTo(CircleZone zone, Vector2 point, WorkOrders orders) =>
             SetRadius(zone, Mathf.RoundToInt(Vector2.Distance(zone.Center, point)), orders);
 
         /// <summary>
@@ -640,7 +680,7 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>
         /// Поставить приказы во всех зонах; зоны, которым делать больше нечего, уходят. Возвращает, сколько приказов
-        /// добавлено в зоны. forest может быть null (тогда зоны рубки ничего не ставят).
+        /// добавлено в зоны. forest может быть null (тогда зоны рубки и сбора ничего не ставят).
         /// </summary>
         public int Update(VoxelWorld world, Forest forest, WorkOrders orders)
         {

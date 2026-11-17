@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Emberhold.World.Bushes;
 using Emberhold.World.Items;
 using Emberhold.World.Voxels;
 using UnityEngine;
@@ -89,8 +90,8 @@ namespace Emberhold.World.Trees
     /// Деревья на карте. Срубленное дерево целиком падает кучкой поленьев у основания (в <see cref="DroppedItems"/>)
     /// и оставляет пень (<see cref="Stumps"/>). Если под деревом выкопали землю или в его клетку поставили блок,
     /// дерево падает так же, но без пня (<see cref="Settle"/>).
-    /// Деревья не отрастают. Чистая логика без Unity-объектов: показывает её ForestView, рубят рабочие.
-    /// Координаты — мира блоков.
+    /// Деревья не отрастают. Здесь же кусты (<see cref="Thicket"/>, #88): они отрастают после сбора.
+    /// Чистая логика без Unity-объектов: показывает её ForestView, рубят рабочие. Координаты — мира блоков.
     /// </summary>
     public sealed class Forest
     {
@@ -103,7 +104,11 @@ namespace Emberhold.World.Trees
         public Forest(DroppedItems items)
         {
             this.items = items;
+            Thicket = new Thicket(items);
         }
+
+        /// <summary>Кусты (#88): растут рядом с лесом, с них собирают траву.</summary>
+        public Thicket Thicket { get; }
 
         public IReadOnlyList<TreeStand> Trees => trees;
 
@@ -197,6 +202,7 @@ namespace Emberhold.World.Trees
         /// </summary>
         public int Settle(VoxelWorld world)
         {
+            Thicket.Settle(world);
             for (var i = stumps.Count - 1; i >= 0; i--)
             {
                 if (HasGround(world, stumps[i].Cell))
@@ -231,8 +237,12 @@ namespace Emberhold.World.Trees
             return null;
         }
 
-        /// <summary>Клетку cell менять нельзя: в ней стоит пень (не поставить блок) или пень стоит на ней (не выкопать).</summary>
-        public bool BlocksEdit(Vector3Int cell) => StumpAt(cell) != null || StumpAt(cell + Vector3Int.up) != null;
+        /// <summary>
+        /// Клетку cell менять нельзя: в ней стоит пень или куст (не поставить блок) или пень стоит на ней (не выкопать).
+        /// Землю под кустом копать можно: куст пропадёт.
+        /// </summary>
+        public bool BlocksEdit(Vector3Int cell) =>
+            StumpAt(cell) != null || StumpAt(cell + Vector3Int.up) != null || Thicket.BlocksPlace(cell);
 
         /// <summary>
         /// Ударить пень на damage ХП. Выкорчеванный пень исчезает и кладёт одно полено в свою клетку.
@@ -336,7 +346,7 @@ namespace Emberhold.World.Trees
                 && world.GetBlock(cell).IsAir && !world.GetBlock(below).IsAir;
         }
 
-        private static bool RayBox(Vector3 origin, Vector3 direction, Vector3 min, Vector3 max, out float t)
+        internal static bool RayBox(Vector3 origin, Vector3 direction, Vector3 min, Vector3 max, out float t)
         {
             var near = 0f;
             var far = float.PositiveInfinity;

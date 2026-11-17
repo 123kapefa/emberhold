@@ -35,8 +35,12 @@ namespace Emberhold.Tests.PlayMode.Trees
 
             // Каждое дерево — гранёная модель вида на шейдере деревьев.
             yield return null;
-            var renderers = Object.FindAnyObjectByType<ForestView>().GetComponentsInChildren<MeshRenderer>();
+            // Кусты (#88) — тоже дети вида леса: считаем деревья и кусты отдельно.
+            var all = Object.FindAnyObjectByType<ForestView>().GetComponentsInChildren<MeshRenderer>();
+            var renderers = System.Array.FindAll(all, r => r.name.StartsWith("Tree "));
             Assert.That(renderers.Length, Is.EqualTo(forest.Trees.Count), "У каждого дерева своя модель");
+            Assert.That(System.Array.FindAll(all, r => r.name.StartsWith("Bush ")).Length, Is.EqualTo(forest.Thicket.Bushes.Count),
+                "У каждого куста своя модель");
             Assert.That(renderers[0].sharedMaterial.shader.name, Is.EqualTo("Emberhold/World/Tree"));
             Assert.That(renderers[0].GetComponent<MeshFilter>().sharedMesh.vertexCount, Is.GreaterThan(0));
 
