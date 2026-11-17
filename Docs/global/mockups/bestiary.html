@@ -1,0 +1,2167 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Бестиарий Emberhold</title>
+<style>
+:root{--bg:#141c28;--panel:rgba(18,24,32,.84);--text:#e9edf2;--muted:#9aa6b4;--accent:#f0a24a;--line:rgba(255,255,255,.12)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141c28}}
+:root[data-theme="dark"]{--bg:#141c28}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;overflow:hidden}
+canvas{display:block}
+#ui{position:absolute;left:16px;top:12px;right:16px;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.row{display:flex;flex-wrap:wrap;gap:6px}
+.grp{pointer-events:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;display:flex;gap:2px;flex-wrap:wrap;align-items:center;backdrop-filter:blur(6px)}
+.grp span{font-size:12px;color:var(--muted);padding:0 6px}
+button{font:inherit;font-size:13px;color:var(--text);background:transparent;border:0;border-radius:7px;padding:5px 9px;cursor:pointer}
+button:hover{background:rgba(255,255,255,.08)}
+button.on{background:var(--accent);color:#1a1209;font-weight:600}
+#labels{position:absolute;inset:0;pointer-events:none}
+.lab{position:absolute;transform:translate(-50%,-100%);text-align:center;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.95);font-size:15px;font-weight:600}
+.lab i{display:block;font-style:normal;font-weight:400;font-size:12px;color:var(--muted)}
+#info{position:absolute;left:16px;bottom:14px;max-width:min(560px,calc(100% - 32px));background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.45;pointer-events:none}
+#info b{font-size:15px}#info .w{color:var(--muted)}
+#info p{margin:4px 0 0}
+#hint{position:absolute;right:16px;bottom:14px;font-size:12px;color:var(--muted);text-shadow:0 1px 3px #000;pointer-events:none}
+body.noui #ui,body.noui #hint{display:none}
+body.noinfo #info{display:none}
+@media (max-width:700px){#hint{display:none}button{padding:5px 7px;font-size:12px}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="ui">
+  <div class="row"><div class="grp" id="groups"><span>Где</span></div></div>
+  <div class="row"><div class="grp" id="creatures"><span>Кто</span></div>
+    <div class="grp" id="levels"><span>Уровень</span><button data-v="0">Обычный</button><button data-v="1">Матёрый</button><button data-v="2">Древний</button></div>
+    <div class="grp" id="times"><span>Время</span><button data-v="day">День</button><button data-v="night">Ночь</button></div></div>
+</div>
+<div id="labels"></div>
+<div id="info"></div>
+<div id="hint">Рабочий справа ростом 1.9 блока · тянуть, чтобы крутить · колесо или щипок для зума</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+// ===== Бестиарий Emberhold: модели в гранёном стиле (1 единица = 1 блок) =====
+const V3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
+function rngC(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+// ---------- палитра ----------
+const C = {
+  fog: 0x2b333f, fogDark: 0x1d232c, fogBelly: 0x46515f, frost: 0xb3cde3, bone: 0xcfc6b0, claw: 0x8f99a6,
+  mud: 0x4e5634, mudDark: 0x363b24, weed: 0x5f7a3a, bark: 0x5a3e2c, barkDark: 0x3c2a1f, root: 0x6b4a33, moss: 0x5d7034,
+  stone: 0x8a8e92, stoneDark: 0x5f6368, stoneWarm: 0x9a9284, snow: 0xe8eef2, rust: 0x7a4a2e, iron: 0x5b5f63,
+  slime: 0x7f9a5a, amber: 0xc98a2e, pale: 0xbac7c9, drown: 0x7d958c, feather: 0x24262b, owl: 0x9aa0a0, cedar: 0x37574b,
+  wisp: 0xbfe8c8, deer: 0xdfe3e2, gold: 0xb08d4a,
+};
+const EYE_COL = [0xcff4ff, 0xa8ecff, 0xe6fbff];
+
+// ---------- материалы ----------
+const matCache = new Map();
+function M(color, opts = {}) {
+  const key = color + JSON.stringify(opts);
+  if (!matCache.has(key)) {
+    const o = { color, roughness: opts.rough ?? 0.85, flatShading: true };
+    if (opts.emissive) { o.emissive = new THREE.Color(opts.emissive); o.emissiveIntensity = opts.ei ?? 1; }
+    if (opts.opacity) { o.transparent = true; o.opacity = opts.opacity; o.depthWrite = opts.opacity > .7; }
+    if (opts.metal) o.metalness = opts.metal;
+    matCache.set(key, new THREE.MeshStandardMaterial(o));
+  }
+  return matCache.get(key);
+}
+const eyeMat = (l) => new THREE.MeshBasicMaterial({ color: EYE_COL[l] });
+let glowTexC;
+function glowSprite(color, size, opacity = 1) {
+  if (!glowTexC) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.25, 'rgba(255,255,255,.45)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); glowTexC = new THREE.CanvasTexture(c); }
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexC, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity }));
+  s.scale.setScalar(size); s.userData.glow = opacity; return s;
+}
+
+// ---------- примитивы ----------
+function jitter(g, amt, seed) {
+  const r = rngC(seed), p = g.attributes.position, map = new Map();
+  for (let i = 0; i < p.count; i++) {
+    const k = p.getX(i).toFixed(3) + ',' + p.getY(i).toFixed(3) + ',' + p.getZ(i).toFixed(3);
+    if (!map.has(k)) map.set(k, [(r() - .5) * amt, (r() - .5) * amt, (r() - .5) * amt]);
+    const d = map.get(k); p.setXYZ(i, p.getX(i) * (1 + d[0]), p.getY(i) * (1 + d[1]), p.getZ(i) * (1 + d[2]));
+  }
+  g.computeVertexNormals(); return g;
+}
+class Builder {
+  constructor(level, seed = 1) { this.g = new THREE.Group(); this.level = level; this.seed = seed; this.n = 0; this.frostPts = []; }
+  add(m, parent) { m.castShadow = true; m.receiveShadow = true; (parent || this.g).add(m); return m; }
+  // эллипсоид
+  E(c, r, color, rot, o = {}) {
+    const m = new THREE.Mesh(jitter(new THREE.IcosahedronGeometry(1, o.detail ?? 1), o.j ?? .16, this.seed * 97 + this.n++), M(color, o));
+    m.scale.set(...(Array.isArray(r) ? r : [r, r, r])); m.position.set(...c); if (rot) m.rotation.set(...rot); return this.add(m, o.parent);
+  }
+  // отрезок между точками (конечность)
+  S(a, b, r0, r1, color, o = {}) {
+    const A = V3(a), B = V3(b), len = A.distanceTo(B);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r1 ?? r0 * .75, r0, len, o.sides ?? 5), M(color, o));
+    m.position.copy(A).add(B).multiplyScalar(.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+    return this.add(m, o.parent);
+  }
+  // цепочка: суставы с шарами
+  chain(pts, r0, r1, color, o = {}) {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const t0 = i / (pts.length - 1), t1 = (i + 1) / (pts.length - 1);
+      this.S(pts[i], pts[i + 1], r0 + (r1 - r0) * t0, r0 + (r1 - r0) * t1, color, o);
+      if (i > 0 && !o.noJoints) this.E(pts[i], (r0 + (r1 - r0) * t0) * 1.15, color, null, { ...o, detail: 0 });
+    }
+  }
+  // конус: из точки base в направлении dir
+  K(base, dir, r, h, color, o = {}) {
+    const d = V3(dir).normalize();
+    const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, o.sides ?? 5), M(color, o));
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d); m.position.copy(V3(base)).addScaledVector(d, h / 2);
+    return this.add(m, o.parent);
+  }
+  // коробка
+  B(c, s, color, rot, o = {}) {
+    const g = new THREE.BoxGeometry(...s); if (o.j) jitter(g, o.j, this.seed * 13 + this.n++);
+    const m = new THREE.Mesh(g, M(color, o)); m.position.set(...c); if (rot) m.rotation.set(...rot); return this.add(m, o.parent);
+  }
+  // глаз со свечением
+  eye(c, r, o = {}) {
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), o.mat || eyeMat(this.level)); m.position.set(...c); (o.parent || this.g).add(m);
+    const s = glowSprite(o.color ?? EYE_COL[this.level], r * (8 + this.level * 3), .9); s.position.set(...c); (o.parent || this.g).add(s); return m;
+  }
+  // зубы вдоль дуги
+  teeth(center, w, n, h, dir = [0, -1, 0], color = C.bone, r = .025) {
+    for (let i = 0; i < n; i++) { const x = center[0] + (n === 1 ? 0 : (i / (n - 1) - .5) * w); this.K([x, center[1], center[2]], dir, r, h * (i % 2 ? .7 : 1), color, { sides: 4 }); }
+  }
+  // крыло на шарнире (для взмахов)
+  wing(root, side, len, width, color, o = {}) {
+    const pivot = new THREE.Group(); pivot.position.set(...root); pivot.userData.flap = side; pivot.userData.flapAmp = o.amp ?? .6; this.g.add(pivot);
+    const n = o.feathers ?? 4;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1 || 1);
+      const m = new THREE.Mesh(jitter(new THREE.IcosahedronGeometry(1, 0), .1, this.n++), M(i % 2 ? color : (o.color2 ?? color), o));
+      m.scale.set(len * (.55 - t * .25), .025, width * (.55 - t * .1)); m.position.set(side * len * (.45 + t * .2), 0, -t * width * .5 + width * .15);
+      m.rotation.y = side * t * .35; this.add(m, pivot);
+    }
+    return pivot;
+  }
+  // ледяные кристаллы роста по уровням: точки с направлениями
+  frost(pts) { this.frostPts.push(...pts); }
+  finish(def) {
+    const l = this.level, r = rngC(this.seed * 7 + l);
+    const want = [0, 1, 2][l] * (def.frostPer ?? 3);
+    for (let i = 0; i < Math.min(want, this.frostPts.length * 3); i++) {
+      const [p, d] = this.frostPts[i % this.frostPts.length];
+      const jit = [(r() - .5) * .12, 0, (r() - .5) * .12];
+      const dir = [d[0] + (r() - .5) * .5, d[1] + (r() - .5) * .3, d[2] + (r() - .5) * .5];
+      const size = (def.frostSize ?? .1) * (1 + l * .25) * (.7 + r() * .6);
+      this.K([p[0] + jit[0], p[1], p[2] + jit[2]], dir, size * .45, size * 2.6, C.frost, { emissive: 0x3d6488, ei: .35 + l * .3, sides: 4 });
+    }
+    if (l >= 1) {
+      const box = new THREE.Box3().setFromObject(this.g);
+      const glow = new THREE.PointLight(0x9fd8ff, .15 + l * .2, 2 + l * 1.5, 2); glow.position.set(0, box.max.y * .85, 0); this.g.add(glow);
+    }
+    levelLook(this);
+    return this.g;
+  }
+}
+const mir = (fn) => { fn(-1); fn(1); };
+
+const CREATURES = [];
+function def(d) { CREATURES.push(d); }
+
+// Рост относительно рабочего (1.9 блока): h — высота модели, w — размах крыльев, f — готовый множитель для стаи
+const SIZE = {
+  crawler: ['h', 1], tarblob: ['h', 1.3], tinnik: ['h', 1.8], rootling: ['h', 2], stoneeater: ['h', 2],
+  drowned: ['h', 2.4], lamplighter: ['h', 2.4], armor: ['h', 2.5], avalanche: ['h', 2.5], shade: ['h', 2.8],
+  mistmother: ['h', 3], stag: ['h', 3], brute: ['h', 3.5], stilt: ['h', 5], golem: ['h', 6], cedarguard: ['h', 7], keeper: ['h', 10],
+  slimes: ['h', 2.2], moths: ['f', 1.5], jackdaws: ['f', 2], owl: ['w', 3.5],
+};
+const sizeCache = new Map();
+function sizeFactor(d) {
+  const s = SIZE[d.id]; if (!s) return 1;
+  if (s[0] === 'f') return s[1];
+  if (!sizeCache.has(d.id)) {
+    const b = new Builder(0, d.id.length * 7 + 1); d.build(b, 0);
+    const box = new THREE.Box3().setFromObject(b.g);
+    const cur = s[0] === 'h' ? box.max.y : box.max.x - box.min.x;
+    sizeCache.set(d.id, s[1] / cur);
+    b.g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  }
+  return sizeCache.get(d.id);
+}
+function buildCreatureV2(d, level) {
+  const b = new Builder(level, d.id.length * 7 + 1);
+  d.build(b, level);
+  const g = b.finish(d);
+  g.scale.setScalar([1, 1.18, 1.36][level] * sizeFactor(d));
+  g.userData.def = d;
+  return g;
+}
+
+// ================= облик уровней: туман забирает существо =================
+// Матёрый: иней и синеватый отлив, ледяная броня сверху, светящиеся трещины, изморозь под ногами.
+// Древний: полупрозрачное туманное тело, ледяное ядро, корона кристаллов, кружащие осколки,
+// кольцо инея и тёмный круг на земле — вокруг древнего свет слабеет.
+const ICE = { color: 0xd4ecfa, emissive: 0x4a88c0 };
+function levelLook(b) {
+  const l = b.level; if (l === 0) return;
+  const g = b.g, r = rngC(b.seed * 31 + l * 7);
+  g.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(g), size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  const sz = Math.max(size.x, size.y, size.z), R = Math.max(size.x, size.z) * .55;
+  const add = (m) => { m.userData.lvlAdd = true; m.castShadow = false; g.add(m); return m; };
+  const meshes = []; g.traverse(o => { if (o.isMesh && o.material.isMeshStandardMaterial) meshes.push(o); });
+  // 1. отлив и иней, у древнего — туманное тело
+  const mats = new Map();
+  for (const m of meshes) {
+    const src = m.material;
+    if (!mats.has(src)) {
+      const c = src.clone();
+      c.color.lerp(new THREE.Color(l === 1 ? 0x8fb4d4 : 0xb8d8f0), l === 1 ? .3 : .45);
+      if (c.emissive.getHex() === 0) { c.emissive = new THREE.Color(l === 1 ? 0x0e2034 : 0x24527c); c.emissiveIntensity = 1; }
+      if (l === 2 && !src.transparent) { c.transparent = true; c.opacity = .6; c.depthWrite = true; }
+      mats.set(src, c);
+    }
+    m.material = mats.get(src);
+  }
+  // точки на поверхности крупных частей
+  const big = meshes.filter(m => { const s = new THREE.Vector3(); m.getWorldScale(s); const gp = m.geometry.parameters || {}; return (gp.radius || gp.width || gp.radiusBottom || .3) * Math.max(s.x, s.y, s.z) > sz * .05; });
+  if (!big.length) return;
+  const nm = new THREE.Matrix3();
+  function surfacePoint(wantUp) {
+    for (let tries = 0; tries < 40; tries++) {
+      const m = big[Math.floor(r() * big.length)]; const pos = m.geometry.attributes.position, nor = m.geometry.attributes.normal; if (!nor) continue;
+      const i = Math.floor(r() * pos.count);
+      const p = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+      const n = new THREE.Vector3().fromBufferAttribute(nor, i).applyMatrix3(nm.getNormalMatrix(m.matrixWorld)).normalize();
+      if (p.y < size.y * .08) continue;
+      if (wantUp && n.y < .45) continue;
+      return [p, n];
+    }
+    return null;
+  }
+  // 2. светящиеся трещины
+  const crackMat = new THREE.MeshStandardMaterial({ color: 0x9fd8ff, emissive: 0x7fc3ff, emissiveIntensity: l === 1 ? 1 : 1.6, flatShading: true });
+  for (let i = 0; i < (l === 1 ? 10 : 16); i++) {
+    const sp = surfacePoint(false); if (!sp) continue; const [p, n] = sp;
+    const dir = new THREE.Vector3(r() - .5, r() - .5, r() - .5).cross(n).normalize();
+    for (let k = 0; k < 3; k++) {
+      const len = sz * (.035 + r() * .03);
+      const c = new THREE.Mesh(new THREE.BoxGeometry(sz * .008, len, sz * .008), crackMat);
+      c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir); c.position.copy(p).addScaledVector(n, sz * .004).addScaledVector(dir, len / 2); add(c);
+      p.addScaledVector(dir, len); dir.applyAxisAngle(n, (r() - .5) * 1.6);
+    }
+  }
+  // 3. ледяная броня сверху
+  const iceMat = new THREE.MeshStandardMaterial({ color: ICE.color, emissive: ICE.emissive, emissiveIntensity: l === 1 ? .35 : .7, roughness: .2, transparent: true, opacity: .85, flatShading: true });
+  for (let i = 0; i < (l === 1 ? 7 : 12); i++) {
+    const sp = surfacePoint(true); if (!sp) continue; const [p, n] = sp;
+    const plate = new THREE.Mesh(jitter(new THREE.IcosahedronGeometry(1, 0), .3, b.n++), iceMat);
+    const w = sz * (.05 + r() * .04); plate.scale.set(w, w * .3, w * .8);
+    plate.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n); plate.position.copy(p).addScaledVector(n, w * .12); add(plate);
+    if (r() < .5) { const k = new THREE.Mesh(new THREE.ConeGeometry(w * .25, w * 1.2, 4), iceMat); k.quaternion.copy(plate.quaternion); k.position.copy(p).addScaledVector(n, w * .6); add(k); }
+  }
+  // 4. изморозь на земле
+  const frostGround = new THREE.Mesh(new THREE.CircleGeometry(R * (l === 1 ? 1 : 1.15), 18), new THREE.MeshStandardMaterial({ color: 0xdcecf6, emissive: 0x2a4a68, transparent: true, opacity: l === 1 ? .4 : .5, depthWrite: false, roughness: .4 }));
+  frostGround.rotation.x = -Math.PI / 2; frostGround.position.set(ctr.x, .015, ctr.z); add(frostGround);
+  for (let i = 0; i < (l === 1 ? 8 : 14); i++) { const a = r() * 6.28, d = R * (.4 + r() * .7); const k = new THREE.Mesh(new THREE.ConeGeometry(sz * .012, sz * (.03 + r() * .04), 4), iceMat); k.position.set(ctr.x + Math.cos(a) * d, sz * .015, ctr.z + Math.sin(a) * d); k.rotation.set((r() - .5) * .6, 0, (r() - .5) * .6); add(k); }
+  if (l < 2) return;
+  // 5. древний: ледяное ядро
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(sz * .07, 0), new THREE.MeshBasicMaterial({ color: 0xe6f8ff })); core.position.copy(ctr); core.position.y = box.min.y + size.y * .55; add(core);
+  const cg = glowSprite(0x9fd8ff, sz * .45, .8); cg.position.copy(core.position); g.add(cg);
+  // корона кристаллов
+  const top = new THREE.Vector3(ctr.x, box.max.y, ctr.z);
+  for (let i = 0; i < 7; i++) { const a = i / 7 * 6.28; const h = sz * (.09 + (i % 2) * .05); const k = new THREE.Mesh(new THREE.ConeGeometry(sz * .02, h, 4), iceMat); k.position.set(top.x + Math.cos(a) * sz * .06, top.y - sz * .01 + h / 2, top.z + Math.sin(a) * sz * .06); k.rotation.set(Math.sin(a) * .35, 0, -Math.cos(a) * .35); add(k); }
+  // кружащие осколки льда
+  for (let i = 0; i < 9; i++) { const k = new THREE.Mesh(new THREE.OctahedronGeometry(sz * (.018 + r() * .015), 0), iceMat); k.userData.orbit = { cx: ctr.x, cz: ctr.z, r: R * (.95 + r() * .2), y: box.min.y + size.y * (.25 + r() * .55), ph: i / 9 * 6.28, sp: .5 + r() * .3 }; k.position.set(ctr.x + R, k.userData.orbit.y, ctr.z); add(k); }
+  // кольцо инея и тёмный круг: свет вокруг слабеет
+  const ring = new THREE.Mesh(new THREE.RingGeometry(R * 1.12, R * 1.24, 32), new THREE.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: .55, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.set(ctr.x, .025, ctr.z); add(ring);
+  const dark = new THREE.Mesh(new THREE.CircleGeometry(R * 1.5, 32), new THREE.MeshBasicMaterial({ color: 0x02040a, transparent: true, opacity: .35, depthWrite: false }));
+  dark.rotation.x = -Math.PI / 2; dark.position.set(ctr.x, .01, ctr.z); add(dark);
+  for (let i = 0; i < 12; i++) { const a = i / 12 * 6.28; const k = new THREE.Mesh(new THREE.ConeGeometry(sz * .015, sz * .06, 4), iceMat); k.position.set(ctr.x + Math.cos(a) * R * 1.18, sz * .03, ctr.z + Math.sin(a) * R * 1.18); add(k); }
+}
+
+// ===== base: общие помощники этого файла =====
+const BASE_CRACK = 0x9fd8ff, BASE_GLOW = 0x7fc3ff, BASE_WISP = 0xaabfd2;
+// светящаяся трещина-ломаная
+function base_crack(b, pts, w, l, o = {}) {
+  for (let i = 0; i < pts.length - 1; i++) b.S(pts[i], pts[i + 1], w, w * .7, BASE_CRACK, { emissive: BASE_GLOW, ei: (o.ei ?? .7) + l * .4, sides: 4, parent: o.parent });
+}
+// плоская полоса (ткань, ремень) между точками; yaw поворачивает ширину вокруг оси
+function base_plank(b, a, c, w, t, color, yaw = 0, o = {}) {
+  const A = V3(a), B = V3(c), len = A.distanceTo(B);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, len, t), M(color, o));
+  m.position.copy(A).add(B).multiplyScalar(.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()); m.rotateY(yaw);
+  return b.add(m, o.parent);
+}
+// рваная тканевая лента: два сужающихся куска и зубец
+function base_strip(b, top, len, w, color, yaw, out = [0, 0], o = {}) {
+  const mid = [top[0] + out[0] * .5, top[1] - len * .55, top[2] + out[1] * .5], end = [top[0] + out[0], top[1] - len, top[2] + out[1]];
+  base_plank(b, top, mid, w, .015, color, yaw, o);
+  base_plank(b, mid, end, w * .7, .015, color, yaw, o);
+  b.K([end[0], end[1] + .03, end[2]], [out[0] * .3, -1, out[1] * .3], w * .35, len * .2, color, { sides: 3, ...o });
+}
+// кольцо (тор)
+function base_ring(b, c, r, tube, color, rot, o = {}) {
+  const m = new THREE.Mesh(new THREE.TorusGeometry(r, tube, o.rs ?? 4, o.ts ?? 10), M(color, o));
+  m.position.set(...c); if (rot) m.rotation.set(...rot); if (o.scale) m.scale.set(...o.scale); return b.add(m, o.parent);
+}
+// пучок шерсти из маленьких конусов
+function base_tuft(b, c, dir, n, r, h, color, seed, o = {}) {
+  const rr = rngC(seed);
+  for (let i = 0; i < n; i++) {
+    const d = [dir[0] + (rr() - .5) * .9, dir[1] + (rr() - .5) * .9, dir[2] + (rr() - .5) * .9];
+    b.K([c[0] + (rr() - .5) * r * 3, c[1] + (rr() - .5) * r * 2, c[2] + (rr() - .5) * r * 3], d, r, h * (.7 + rr() * .6), color, { sides: 3, ...o });
+  }
+}
+// клок тумана
+// клочья тумана убраны у всех существ: выглядели как твёрдые шары
+function base_wisp() { return null; }
+// сустав-цепочка с чередованием цветов сегментов и отдельным цветом суставов
+function base_limb(b, pts, r0, r1, colors, jointColor, o = {}) {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ra = r0 + (r1 - r0) * i / (pts.length - 1), rb = r0 + (r1 - r0) * (i + 1) / (pts.length - 1);
+    b.S(pts[i], pts[i + 1], ra, rb, colors[i % colors.length], o);
+    if (i > 0) b.E(pts[i], ra * 1.3, jointColor, null, { ...o, detail: 0, j: .25 });
+  }
+}
+
+// ----- 1. Ползун -----
+def({ id: 'crawler', name: 'Ползун', group: 'base', where: 'Везде', threat: 'Мелкий и быстрый. Ползёт к огню и гасит его, вытягивая жар.', height: .55, frostPer: 3, frostSize: .07,
+  build(b, l) {
+    const shell = 0x323b48, plate = 0x262d38, spike = 0x6c7682;
+    // сегментированное брюшко
+    const segs = [[-.06, .24, .16], [-.18, .22, .15], [-.3, .18, .13], [-.41, .13, .1]];
+    segs.forEach(([z, rx, ry], i) => {
+      b.E([0, .3 + i * .005, z], [rx, ry, .09], i % 2 ? shell : C.fog);
+      b.E([0, .3 + ry * .85, z - .01], [rx * .85, .04, .08], plate, [.25, 0, 0], { detail: 0 });          // спинная пластина
+      b.K([0, .3 + ry * .95, z - .02], [0, 1, -.5], .022, .07 - i * .01, spike, { sides: 4 });           // гребень
+      mir(s => { b.E([s * rx * .93, .3, z], .014, BASE_CRACK, null, { emissive: BASE_GLOW, ei: .5 + l * .3, detail: 0 }); }); // дыхальца
+    });
+    // хвост-жало
+    b.chain([[0, .3, -.48], [0, .36, -.58], [0, .46, -.6], [0, .52, -.55]], .045, .015, shell);
+    b.K([0, .52, -.55], [0, .2, 1], .018, .07, C.bone, { sides: 4 });
+    // грудь с пластиной
+    b.E([0, .32, .1], [.17, .13, .14], C.fog);
+    b.E([0, .42, .1], [.14, .04, .12], plate, [.1, 0, 0], { detail: 0 });
+    mir(s => b.K([s * .06, .44, .1], [s * .3, 1, -.3], .016, .05, spike, { sides: 4 }));
+    // голова
+    b.E([0, .3, .25], [.12, .1, .1], 0x262d38);
+    b.E([0, .37, .3], [.12, .03, .05], C.fogDark, [.3, 0, 0], { detail: 0 });                              // надбровье
+    b.E([0, .24, .32], [.065, .028, .03], 0x5a2a36);                                                     // дёсны
+    b.teeth([0, .26, .345], .08, 5, .035, [0, -1, .2], C.bone, .008);
+    b.teeth([0, .22, .34], .06, 4, .025, [0, 1, .2], 0xb8ae96, .007);
+    b.E([0, .225, .02], [.1, .05, .2], C.fogBelly, null, { emissive: 0x5a86a8, ei: .4 + l * .2 });       // холодное брюхо
+    base_crack(b, [[.03, .4, .02], [.08, .39, -.05], [.06, .43, -.14], [.1, .42, -.24]], .008, l);
+    base_crack(b, [[-.04, .38, .12], [-.1, .36, .05]], .007, l);
+    mir(s => {
+      b.K([s * .07, .38, .28], [s * .5, 1, -.6], .016, .09, C.bone, { sides: 4 });                        // рожки
+      b.chain([[s * .05, .27, .33], [s * .1, .22, .42], [s * .05, .14, .46]], .025, .012, C.bone);       // жвалы
+      b.K([s * .095, .22, .42], [-s, -.2, 0], .008, .035, 0xe0d8c4, { sides: 3 });                         // зазубрины
+      b.K([s * .075, .18, .45], [-s, -.2, .2], .007, .03, 0xe0d8c4, { sides: 3 });
+      b.chain([[s * .08, .26, .32], [s * .14, .2, .37], [s * .13, .13, .4]], .012, .006, C.fogBelly);    // щупики
+      b.chain([[s * .05, .36, .3], [s * .12, .5, .36], [s * .2, .6, .33]], .01, .005, C.fogBelly, { noJoints: true }); // усики
+      b.E([s * .2, .6, .33], .012, BASE_CRACK, null, { emissive: BASE_GLOW, ei: .6 + l * .3, detail: 0 });
+      for (let i = 0; i < 3; i++) {
+        const z = .14 - i * .14, sp = (i - 1) * .12, col = i === 1 ? C.fogDark : C.fog;
+        const p = [[s * .12, .3, z], [s * .3, .44, z + sp * .4], [s * .42, .47, z + sp * .7], [s * .55, .26, z + sp * 1.1], [s * .6, .05, z + sp * 1.3]];
+        base_limb(b, p, .035, .014, [col, shell, col, plate], 0x3e4856);
+        b.K(p[2], [s * .3, 1, 0], .012, .06, spike, { sides: 4 });                                           // шип колена
+        b.E([s * .21, .38, z + sp * .2], [.03, .025, .03], C.fogBelly, null, { detail: 0 });                // полоса на бедре
+        b.K(p[4], [s * .4, -.6, .6], .01, .045, C.claw, { sides: 4 });                                     // два когтя
+        b.K(p[4], [s * .4, -.6, -.6], .01, .045, C.claw, { sides: 4 });
+        base_tuft(b, [s * .15, .32, z], [s, .4, 0], 3, .012, .05, 0x1a2029, 10 + i * 3 + (s > 0 ? 1 : 0));
+      }
+    });
+    base_wisp(b, [0, .25, -.62], .09, .14); base_wisp(b, [.06, .18, -.78], .07, .1); base_wisp(b, [-.05, .12, -.9], .05, .08);
+    const eyes = [[.05, .35, .33], [-.05, .35, .33], [.09, .32, .31], [-.09, .32, .31], [0, .38, .32], [.03, .4, .3], [-.03, .4, .3]];
+    eyes.slice(0, [2, 4, 7][l]).forEach(e => b.eye(e, .02));
+    b.frost([[[0, .45, -.05], [0, 1, -.3]], [[.1, .43, -.2], [.4, 1, -.2]], [[-.1, .43, -.2], [-.4, 1, -.2]], [[0, .45, .1], [0, 1, .2]], [[0, .42, -.32], [0, 1, -.5]]]);
+  } });
+
+// ----- 2. Громила -----
+def({ id: 'brute', name: 'Громила', group: 'base', where: 'Холмы, Каменоломня, Горы, плато', threat: 'Медленный и тяжёлый. Идёт напролом и ломает стены и постройки.', height: 2.3, frostPer: 4, frostSize: .16,
+  build(b, l) {
+    const hide = 0x353e4b, plateA = C.stoneDark, plateB = 0x6e7378, gum = 0x5c2c34, rope = C.bark;
+    b.E([0, 1.38, -.05], [.78, .6, .58], C.fog, [.3, 0, 0]);
+    b.E([0, 1.0, .05], [.58, .42, .44], C.fogBelly);
+    for (let i = 0; i < 3; i++) b.E([0, 1.1 - i * .14, .43 - i * .01], [.36 - i * .05, .06, .1], i % 2 ? C.fogDark : hide, [-.1, 0, 0], { detail: 0 }); // полосы брюха
+    mir(s => b.E([s * .26, 1.3, .4], [.26, .2, .13], hide, [-.3, 0, s * .2], { detail: 0, j: .2 }));              // грудные плиты
+    // каменные плиты спины в три ряда
+    for (let i = 0; i < 4; i++) {
+      const y = 1.82 - i * .08, z = -.35 - i * .12;
+      b.E([0, y, z], [.5 - i * .06, .14, .22], i % 2 ? plateB : C.fogDark, [.6, 0, 0], { detail: 0, j: .25 });
+      b.K([0, y + .1, z + .02], [0, 1, -.7], .06, .2 - i * .03, i % 2 ? C.stone : plateB, { sides: 4 });
+      mir(s => b.E([s * .45, y - .14, z + .06], [.24, .1, .17], i % 2 ? plateA : plateB, [.6, 0, s * .55], { detail: 0, j: .3 }));
+    }
+    b.E([.3, 1.86, -.35], [.12, .04, .1], C.moss, [.6, 0, 0], { detail: 0 }); b.E([-.2, 1.66, -.68], [.1, .04, .08], C.moss, [.6, 0, 0], { detail: 0 });
+    base_tuft(b, [0, 1.84, .1], [0, 1, .3], 7, .04, .16, C.fogDark, 21);
+    // голова
+    b.E([0, 1.42, .58], [.27, .22, .24], C.fog);
+    b.E([0, 1.57, .72], [.25, .07, .09], C.fogDark, [.2, 0, 0], { detail: 0 });            // надбровье
+    mir(s => b.E([s * .1, 1.5, .76], .055, 0x0a0d12, null, { detail: 0 }));               // глазницы
+    b.E([0, 1.43, .8], [.08, .07, .07], hide);                                               // нос
+    mir(s => b.E([s * .035, 1.41, .865], .017, 0x05070a, null, { detail: 0 }));            // ноздри
+    b.E([0, 1.37, .76], [.2, .06, .1], C.fog);                                              // морда
+    b.E([0, 1.28, .7], [.22, .1, .14], C.fogDark);                                          // челюсть
+    b.E([0, 1.33, .8], [.17, .025, .05], gum);                                              // дёсны
+    b.teeth([0, 1.36, .82], .18, 6, .05, [0, -1, .1], 0xd9d2bf, .015);                      // верхний ряд
+    b.teeth([0, 1.3, .8], .24, 5, .06, [0, 1, .1], C.bone, .02);                            // нижние клыки вверх
+    b.E([0, 1.3, .86], [.06, .02, .07], 0x7a3a44, [-.4, 0, 0]);                              // язык
+    base_tuft(b, [0, 1.2, .72], [0, -1, .3], 4, .03, .1, C.fogDark, 22);                   // борода
+    b.S([.06, 1.62, .78], [.16, 1.48, .8], .012, .01, 0x8a8f99);                            // шрам через бровь
+    // трещины
+    base_crack(b, [[-.25, 1.25, .5], [-.05, 1.14, .5], [.12, 1.12, .5], [.22, .98, .47], [.18, .84, .46]], .022, l, { ei: .5 });
+    base_crack(b, [[.12, 1.12, .5], [.25, 1.24, .5], [.36, 1.22, .45]], .016, l, { ei: .5 });
+    base_crack(b, [[-.05, 1.14, .5], [-.1, 1.0, .5], [-.22, .92, .46]], .016, l, { ei: .5 });
+    base_crack(b, [[.15, 1.62, -.72], [.25, 1.42, -.72], [.2, 1.2, -.66]], .02, l, { ei: .5 });
+    mir(s => {
+      // уши и рога
+      b.K([s * .23, 1.5, .55], [s, .4, -.3], .06, .15, C.fogDark, { sides: 4 });
+      b.chain([[s * .17, 1.6, .58], [s * .3, 1.72, .54], [s * .39, 1.79, .62]], .05, .03, C.bone);
+      b.K([s * .39, 1.79, .62], [-s * .1, .5, 1], .03, .14, 0xe0d8c4, { sides: 4 });
+      b.K([s * .26, 1.29, .8], [s * .2, 1, .25], .035, .17, C.bone, { sides: 4 });           // большие клыки
+      // плечо с каменным наплечником
+      b.E([s * .8, 1.66, .08], [.33, .29, .31], C.fog);
+      for (let i = 0; i < 3; i++) b.E([s * (.78 + i * .1), 1.88 - i * .13, .08], [.3 - i * .04, .08, .3 - i * .03], [plateA, plateB, plateA][i], [0, 0, s * (-.35 - i * .25)], { detail: 0, j: .25 });
+      b.K([s * .92, 1.85, .05], [s * .4, 1, 0], .07, .3, C.bone);                              // рог на плече
+      b.K([s * .72, 1.92, -.05], [s * .2, 1, -.3], .04, .16, 0xb8ae96, { sides: 4 });
+      base_tuft(b, [s * .62, 1.76, .25], [s * .3, .6, .6], 4, .035, .12, C.fogDark, 30 + s);
+      // рука
+      b.chain([[s * .9, 1.6, .15], [s * 1.08, .95, .45], [s * 1.02, .36, .58]], .24, .27, C.fog);
+      b.E([s * 1.06, 1.25, .3], [.2, .26, .2], C.fog, [.4, 0, s * .2]);                        // бицепс
+      b.K([s * 1.13, .98, .28], [s * .3, -.2, -1], .07, .2, C.stone, { sides: 4 });          // шип локтя
+      b.E([s * 1.2, .75, .5], [.13, .17, .19], plateA, [.2, 0, 0], { detail: 0, j: .3 });     // наручи
+      b.E([s * 1.2, .52, .56], [.12, .14, .18], plateB, [.1, 0, 0], { detail: 0, j: .3 });
+      base_ring(b, [s * 1.03, .44, .58], .27, .05, C.iron, [Math.PI / 2 + .15, 0, 0], { metal: .4, rough: .6 }); // кандалы
+      b.E([s * 1.02, .2, .66], [.32, .21, .32], C.stoneDark, null, { j: .3 });                // кулак-валун
+      for (let k = 0; k < 4; k++) {
+        const x = s * (.83 + k * .12);
+        b.E([x, .3, .88], .075, k % 2 ? 0x6a6f75 : hide, null, { detail: 0, j: .2 });       // костяшки
+        b.K([x, .3, .93], [0, -.5, 1], .03, .1, C.claw, { sides: 4 });
+      }
+      b.chain([[s * .78, .3, .58], [s * .74, .25, .8]], .08, .06, C.fog);                     // большой палец
+      b.K([s * .74, .25, .84], [-s * .2, -.3, 1], .025, .08, C.claw, { sides: 4 });
+      // нога
+      b.chain([[s * .35, .85, -.2], [s * .42, .45, -.05], [s * .44, .12, -.15]], .2, .17, C.fog);
+      b.E([s * .43, .47, .12], [.13, .13, .08], plateA, null, { detail: 0, j: .3 });          // наколенник
+      b.E([s * .44, .07, -.08], [.17, .08, .22], C.fogDark, null, { detail: 0 });
+      for (let k = 0; k < 3; k++) {
+        const x = s * (.36 + k * .08);
+        b.E([x, .06, .12], .06, k === 1 ? hide : C.fogDark, null, { detail: 0 });
+        b.K([x, .05, .17], [0, -.25, 1], .025, .07, C.claw, { sides: 4 });
+      }
+      base_tuft(b, [s * .44, .2, -.1], [0, -.3, 1], 4, .035, .1, C.fogDark, 40 + s);
+    });
+    // рубцы на левой руке, трещины на правой
+    b.S([-1.22, 1.38, .3], [-1.28, 1.12, .4], .015, .012, 0x8a8f99); b.S([-1.28, 1.3, .25], [-1.2, 1.2, .45], .012, .01, 0x8a8f99);
+    base_crack(b, [[1.3, .85, .42], [1.26, .7, .5], [1.3, .55, .45]], .016, l, { ei: .5 });
+    // обрывок цепи на правых кандалах
+    for (let i = 0; i < 3; i++) base_ring(b, [1.3, .4 - i * .08, .6 + i * .02], .045, .015, C.iron, [0, i % 2 ? Math.PI / 2 : 0, 0], { metal: .4, rough: .6 });
+    // пояс с рваной набедренной тканью
+    base_ring(b, [0, .86, .05], 1, .05, rope, [Math.PI / 2, 0, 0], { scale: [.57, .44, 1], ts: 12 });
+    const cloth = [0x3b3430, 0x4a3f35, 0x2e2a28];
+    [[-.2, .47, 0, .5], [-.07, .5, .1, .58], [.08, .5, -.05, .52], [.21, .46, 0, .45]].forEach(([x, z, dx, len], i) => base_strip(b, [x, .86, z], len, .13, cloth[i % 3], 0, [dx * .3, .06]));
+    [[-.25, -.38, .5], [0, -.42, .6], [.25, -.38, .45]].forEach(([x, z, len], i) => base_strip(b, [x, .86, z], len, .15, cloth[(i + 1) % 3], 0, [0, -.05]));
+    // туман у ног
+    base_wisp(b, [.6, .12, .3], .25, .12); base_wisp(b, [-.7, .1, .1], .28, .1); base_wisp(b, [0, .15, -.6], .3, .1);
+    const eyes = [[.1, 1.5, .78], [-.1, 1.5, .78], [0, 1.62, .76]]; eyes.slice(0, l >= 2 ? 3 : 2).forEach(e => b.eye(e, .045));
+    b.frost([[[0, 1.92, -.2], [0, 1, -.3]], [[.45, 1.75, -.3], [.6, 1, -.3]], [[-.45, 1.75, -.3], [-.6, 1, -.3]], [[0, 1.75, -.6], [0, .6, -1]], [[.85, 1.95, .1], [.3, 1, 0]], [[-.85, 1.95, .1], [-.3, 1, 0]], [[1.2, .8, .55], [.6, 1, 0]], [[-1.2, .8, .55], [-.6, 1, 0]]]);
+  } });
+
+// ----- 3. Тень -----
+def({ id: 'shade', name: 'Тень', group: 'base', where: 'Мёртвый город, плато, Топи', threat: 'Проходит сквозь слабый свет, видна только в ярком. Крадётся к огню в обход фонарей.', height: 2.3, frostPer: 2, frostSize: .07, float: .12,
+  build(b, l) {
+    const robe = 0x151a22, robe2 = 0x1d232c, robe3 = 0x242b36, bone = 0xa49c8a;
+    for (let i = 0; i < 3; i++) b.K([0, .15 + i * .08, 0], [0, 1, 0], .5 - i * .1, 1.75 - i * .1, [robe, C.fogDark, robe][i], { sides: 7 });
+    for (let i = 0; i < 11; i++) { const a = i / 11 * Math.PI * 2; b.K([Math.cos(a) * .42, .3, Math.sin(a) * .42], [Math.cos(a) * .3, -1, Math.sin(a) * .3], .07, .45 + (i % 3) * .12, i % 2 ? robe : robe2, { sides: 3 }); } // рваный подол
+    for (let i = 0; i < 7; i++) { const a = (i + .5) / 7 * Math.PI * 2; b.K([Math.cos(a) * .33, .55, Math.sin(a) * .33], [Math.cos(a) * .25, -1, Math.sin(a) * .25], .05, .4 + (i % 2) * .15, robe3, { sides: 3 }); } // второй ярус лохмотьев
+    // приоткрытая грудь: рёбра и холодное сердце
+    b.B([0, 1.38, .12], [.13, .3, .04], 0x07090c, [-.08, 0, 0]);
+    for (let i = 0; i < 4; i++) b.S([-.06 + i * 0, 1.28 + i * .07, .145 - i * .006], [.06, 1.28 + i * .07, .145 - i * .006], .009, .009, bone, { sides: 4 });
+    b.S([0, 1.24, .14], [0, 1.52, .12], .012, .012, bone, { sides: 4 });
+    b.E([0, 1.4, .155], .028, BASE_CRACK, null, { emissive: BASE_GLOW, ei: 1 + l * .4, detail: 0 });
+    base_crack(b, [[0, 1.4, .15], [.09, 1.47, .13], [.13, 1.6, .1]], .007, l);
+    base_crack(b, [[0, 1.4, .15], [-.08, 1.3, .15], [-.1, 1.12, .19]], .007, l);
+    // пояс с погасшим фонарём и костяным амулетом
+    base_ring(b, [0, 1.13, 0], .225, .022, C.bark, [Math.PI / 2, 0, 0], { ts: 9 });
+    b.S([.2, 1.12, .08], [.36, .98, .1], .008, .008, C.bark);
+    b.B([.36, .9, .1], [.09, .12, .09], C.iron, null, { metal: .4, rough: .6 });
+    b.B([.36, .9, .1], [.1, .08, .06], 0x2a3340, null, { rough: .3 });
+    b.K([.36, .96, .1], [0, 1, 0], .07, .06, C.iron, { sides: 4, metal: .4 });
+    b.S([-.18, 1.12, .12], [-.27, .95, .14], .006, .006, C.bark);
+    b.E([-.27, .92, .14], [.03, .045, .02], bone, null, { detail: 0 });
+    b.K([-.27, .88, .14], [0, -1, 0], .012, .06, bone, { sides: 3 });
+    // капюшон
+    b.E([0, 1.95, 0], [.25, .29, .25], robe);
+    b.K([0, 2.1, -.12], [0, .5, -1], .18, .45, robe);                       // хвост капюшона
+    b.K([.04, 2.0, -.2], [.2, -.6, -1], .1, .4, robe2, { sides: 4 });       // второй рваный хвост
+    base_ring(b, [0, 1.92, .17], .15, .04, robe3, [-.15, 0, 0], { scale: [1, 1.3, 1], ts: 9 }); // край капюшона
+    b.E([0, 1.92, .13], [.16, .19, .1], 0x05070a);                          // пустота лица
+    b.teeth([0, 1.79, .2], .08, 5, .03, [0, 1, .15], bone, .008);           // челюсть во тьме
+    // наплечная накидка в два слоя с лентами
+    b.E([0, 1.6, .05], [.3, .12, .22], C.fogDark, null, { detail: 0 });
+    b.E([0, 1.68, .02], [.24, .09, .19], robe3, null, { detail: 0 });
+    for (let i = 0; i < 9; i++) {
+      const a = -Math.PI * .1 + i / 8 * Math.PI * 1.2 + Math.PI, ca = Math.cos(a), sa = Math.sin(a);
+      base_strip(b, [ca * .25, 1.58, sa * .18 - .02], .25 + (i % 3) * .1, .1, i % 2 ? robe2 : robe3, -a - Math.PI / 2, [ca * .06, sa * .06]);
+    }
+    mir(s => {
+      b.chain([[s * .25, 1.62, .05], [s * .48, 1.2, .2], [s * .6, .74, .32]], .055, .035, robe);
+      b.K([s * .57, .86, .29], [-s * .25, 1, -.25], .12, .42, robe2, { sides: 5 });  // рукав, расширяется книзу
+      base_strip(b, [s * .62, .86, .25], .28, .06, robe3, 0, [s * .03, -.04]);
+      base_strip(b, [s * .52, .86, .3], .36, .05, robe, 0, [s * .01, -.03]);
+      // кисть: ладонь, четыре пальца по три фаланги с ногтями
+      b.E([s * .6, .7, .32], [.045, .07, .04], 0x2a3038, null, { detail: 0 });
+      for (let f = 0; f < 4; f++) {
+        const t = f / 3 - .5, x0 = s * (.6 + t * .06), z0 = .32 + t * .08;
+        const p = [[x0, .66, z0], [s * (.62 + t * .1), .54, z0 + t * .05 + .02], [s * (.63 + t * .13), .43, z0 + t * .09 + .04], [s * (.62 + t * .14), .34, z0 + t * .12 + .07]];
+        b.chain(p, .014, .007, C.claw);
+        b.K(p[3], [0, -1, .3], .007, .05, 0x5b636e, { sides: 3 });
+      }
+      b.chain([[s * .57, .68, .35], [s * .52, .6, .4], [s * .5, .52, .42]], .012, .007, C.claw);  // большой палец
+    });
+    // туман у подола
+    const r = rngC(31);
+    for (let i = 0; i < 7; i++) { const a = r() * 6.28; base_wisp(b, [Math.cos(a) * (.4 + r() * .2), .05 + r() * .25, Math.sin(a) * (.4 + r() * .2) - .1], .12 + r() * .1, .1 + r() * .08); }
+    base_wisp(b, [0, .3, -.7], .2, .08); base_wisp(b, [.1, .5, -1.0], .15, .06);
+    const eyes = [[.06, 1.95, .21], [-.06, 1.95, .21], [0, 2.03, .2], [.11, 1.88, .19], [-.11, 1.88, .19]];
+    eyes.slice(0, [2, 3, 5][l]).forEach(e => b.eye(e, .022));
+    b.frost([[[0, 2.2, -.1], [0, 1, -.4]], [[.15, 2.15, -.05], [.5, 1, -.2]], [[-.15, 2.15, -.05], [-.5, 1, -.2]], [[.25, 1.68, 0], [.6, 1, 0]], [[-.25, 1.68, 0], [-.6, 1, 0]]]);
+  } });
+
+// ----- 4. Мотыльки -----
+def({ id: 'moths', name: 'Мотыльки тумана', group: 'base', where: 'Везде, чаще у воды', threat: 'Стайка летит на свет и облепляет фонарь: огонь тускнеет и светит слабее. Стены их не держат.', height: 2.4, frostPer: 1, frostSize: .03,
+  build(b, l) {
+    const r = rngC(4), n = [4, 5, 6][l];
+    for (let i = 0; i < n; i++) {
+      const sub = new Builder(l, 50 + i); const s = .9 + r() * .3;
+      sub.E([0, 0, .05], [.075, .065, .085], C.fog);                                                   // грудь
+      for (let k = 0; k < 4; k++) sub.E([0, -.005 - k * .006, -.04 - k * .065], [.06 - k * .011, .052 - k * .009, .045], k % 2 ? 0x5a6573 : C.fogBelly, null, { detail: 0 }); // брюшко сегментами
+      sub.K([0, -.03, -.27], [0, -.2, -1], .015, .05, C.fogDark, { sides: 4 });
+      sub.E([0, .01, .15], .055, C.fog);                                                                // голова
+      base_tuft(sub, [0, .04, .1], [0, 1, .4], 6, .015, .06, 0x9aa3ad, 60 + i);                          // меховой воротник
+      sub.chain([[0, -.02, .19], [0, -.06, .22], [0, -.07, .19]], .006, .004, C.bone);                    // хоботок
+      mir(sd => {
+        const pv = sub.wing([sd * .04, .02, .03], sd, .42, .3, 0x8f98a3, { color2: 0x6f7884, amp: .9, feathers: 4 });
+        sub.E([sd * .22, .03, .04], [.05, .012, .045], 0x3a4250, null, { parent: pv, detail: 0 });       // кольцо глазка
+        sub.E([sd * .22, .04, .04], [.028, .012, .025], BASE_CRACK, null, { parent: pv, detail: 0, emissive: BASE_GLOW, ei: .6 + l * .3 });
+        sub.S([sd * .05, .03, .03], [sd * .36, .03, -.04], .004, .003, 0x4a525e, { parent: pv, sides: 3 }); // жилка
+        sub.wing([sd * .03, -.01, -.06], sd, .3, .22, 0x7a8390, { color2: 0x5d6672, amp: .7, feathers: 3 }); // задние крылья
+        // перистые усики
+        sub.S([sd * .02, .04, .18], [sd * .12, .12, .32], .006, .003, C.bone);
+        for (let k = 1; k <= 3; k++) { const t = k / 4; sub.K([sd * (.02 + .1 * t), .04 + .08 * t, .18 + .14 * t], [sd, .3, .2], .004, .035, 0xd9d2bf, { sides: 3 }); }
+        // три пары ножек
+        for (let k = 0; k < 3; k++) sub.chain([[sd * .04, -.04, .09 - k * .05], [sd * .1, -.07, .1 - k * .06], [sd * .11, -.13, .12 - k * .08]], .006, .003, C.fogDark, { noJoints: true });
+      });
+      sub.eye([.03, .03, .19], .015); sub.eye([-.03, .03, .19], .015);
+      base_wisp(sub, [0, -.04, -.35], .06, .14); base_wisp(sub, [.02, -.06, -.5], .04, .1);
+      const g = sub.g; g.scale.setScalar(s); g.position.set((r() - .5) * 1.4, 1.1 + r() * 1.1, (r() - .5) * 1.2); g.rotation.y = r() * 6; g.userData.bob = { ph: r() * 6 }; b.g.add(g);
+    }
+    { const gs = glowSprite(0xffc070, 1.2, .5); gs.position.set(0, 1.6, 0); b.g.add(gs); }
+    // пыльца-иней, сыплющаяся вниз
+    const r2 = rngC(44);
+    for (let i = 0; i < 6 + l * 3; i++) b.E([(r2() - .5) * 1.2, .3 + r2() * 1.1, (r2() - .5) * 1.0], .02, BASE_CRACK, null, { emissive: BASE_GLOW, ei: .5, detail: 0, opacity: .5 });
+  } });
+
+// ----- 5. Туманница -----
+def({ id: 'mistmother', name: 'Туманница', group: 'base', where: 'Везде, с середины кампании', threat: 'Сама не нападает: выдыхает туман и подтягивает его к огню. Рядом с ней остальные сильнее, рабочие бросают работу.', height: 2.2, frostPer: 2, frostSize: .08,
+  build(b, l) {
+    const hide = 0x353e4b, rib = 0x26303c, shawl = 0x3a4250;
+    b.E([0, 1.05, -.15], [.45, .5, .4], C.fog);                                  // тело
+    for (let i = 0; i < 3; i++) b.E([0, 1.12 - i * .15, .2 - i * .02], [.3 - i * .04, .07, .1], i % 2 ? C.fogDark : hide, [-.2, 0, 0], { detail: 0 }); // пластины груди
+    for (let i = 0; i < 3; i++) b.E([0, .7 + i * .05, -.2 - i * .12], [.3 - i * .04, .08, .14], i % 2 ? C.fogBelly : 0x56616f, null, { detail: 0 }); // брюшные кольца
+    // мешок с туманом, рёбра-обручи и светящиеся жилы
+    b.E([0, 1.55, -.45], [.62, .55, .55], 0x8fa6bd, null, { opacity: .55, emissive: 0x4a6a8a, ei: .35 + l * .2, detail: 2, j: .08 });
+    b.E([0, 1.55, -.45], [.3, .28, .3], 0x6f88a4, null, { opacity: .5, detail: 1 });
+    [-.38, 0, .38].forEach(xo => { const k = Math.sqrt(1 - (xo / .64) ** 2); base_ring(b, [xo, 1.55, -.45], 1, .028, rib, [0, Math.PI / 2, 0], { scale: [.56 * k, .57 * k, 1], ts: 12 }); });
+    base_ring(b, [0, 1.25, -.45], 1, .03, rib, [Math.PI / 2, 0, 0], { scale: [.5, .45, 1], ts: 12 });
+    for (let k = 0; k < 5; k++) {
+      const a = -.9 + k * .45, pts = [];
+      for (let t = 0; t <= 3; t++) { const th = .5 + t * .45; pts.push([Math.sin(th) * Math.sin(a) * .64, 1.55 + Math.cos(th) * .57, -.45 + Math.sin(th) * Math.cos(a) * .57 * (k % 2 ? 1 : -1)]); }
+      base_crack(b, pts, .01, l, { ei: .5 });
+    }
+    // трубы-выдохи с раструбами
+    mir(s => {
+      b.chain([[s * .3, 1.92, -.5], [s * .4, 2.08, -.6], [s * .46, 2.2, -.62]], .07, .05, C.fogDark, { sides: 6 });
+      b.K([s * .47, 2.25, -.62], [-s * .2, -1, 0], .1, .14, hide, { sides: 6 });
+      base_ring(b, [s * .37, 2.04, -.57], .07, .015, rib, [Math.PI / 2, 0, s * .5]);
+      base_wisp(b, [s * .5, 2.4, -.65], .14, .18);
+    });
+    b.chain([[0, 2.02, -.7], [0, 2.12, -.8]], .05, .04, C.fogDark, { sides: 6 });
+    b.K([0, 2.16, -.82], [0, -1, .2], .07, .1, hide, { sides: 6 });
+    // накидка на загривке с лентами
+    b.E([0, 1.42, .02], [.36, .12, .26], shawl, [.2, 0, 0], { detail: 0, j: .25 });
+    for (let i = 0; i < 6; i++) { const x = (i / 5 - .5) * .7; base_strip(b, [x, 1.36, .12 - Math.abs(x) * .2], .25 + (i % 3) * .1, .07, i % 2 ? shawl : 0x2b333f, 0, [x * .2, .03]); }
+    // голова, опущенная вниз
+    b.E([0, 1.35, .25], [.2, .22, .2], C.fogDark);
+    b.E([0, 1.47, .37], [.17, .05, .07], hide, [.3, 0, 0], { detail: 0 });         // надбровье
+    for (let i = 0; i < 3; i++) b.E([0, 1.53 + i * .04, .3 - i * .05], [.14 - i * .02, .025, .06], i % 2 ? C.fog : hide, null, { detail: 0 }); // морщины лба
+    mir(s => {
+      b.K([s * .17, 1.42, .2], [s, -.6, -.4], .05, .16, C.fogDark, { sides: 4 });  // висячие уши
+      b.S([s * .08, 1.25, .4], [s * .2, 1.1, .45], .005, .003, C.fogBelly);        // вибриссы
+      b.S([s * .06, 1.22, .42], [s * .16, 1.04, .5], .005, .003, C.fogBelly);
+    });
+    // хобот-выдох из колец
+    const tr = [[0, 1.28, .4], [0, 1.12, .5], [0, .97, .55], [0, .85, .52]];
+    b.chain(tr, .075, .04, C.fogDark);
+    for (let i = 0; i < 3; i++) { const p = tr[i + 1]; base_ring(b, p, .065 - i * .008, .016, i % 2 ? hide : C.fog, [Math.PI / 2 - .5 + i * .3, 0, 0]); }
+    b.K([0, .8, .5], [0, 1, .15], .065, .1, hide, { sides: 6 });                    // раструб
+    mir(s => b.E([s * .02, .78, .5], .012, 0x05070a, null, { detail: 0 }));       // ноздри
+    base_wisp(b, [0, .62, .58], .14, .2); base_wisp(b, [.05, .45, .7], .18, .14);
+    // ноги с шипами и когтями
+    mir(s => {
+      const fl = [[s * .3, .9, 0], [s * .48, .62, .1], [s * .52, .35, .17], [s * .45, .05, .2]];
+      const bl = [[s * .25, .85, -.4], [s * .46, .58, -.55], [s * .52, .3, -.66], [s * .48, .05, -.7]];
+      [fl, bl].forEach((p, k) => {
+        base_limb(b, p, .065, .03, [C.fogDark, C.fog, C.fogDark], hide);
+        b.K(p[1], [s * .5, .6, k ? -.4 : .3], .02, .08, C.bone, { sides: 4 });
+        b.K(p[3], [s * .2, -.5, .8], .015, .06, C.claw, { sides: 4 }); b.K(p[3], [s * .6, -.5, .2], .015, .06, C.claw, { sides: 4 });
+        base_tuft(b, [s * .34, .85, p[0][2]], [s, -.2, 0], 4, .025, .09, 0x1a2029, 70 + k * 2 + (s > 0));
+      });
+    });
+    // свисающие из мешка нити с каплями тумана
+    [[.2, -.3], [-.25, -.55], [.05, -.75]].forEach(([x, z], i) => { const y0 = 1.1, y1 = .6 - i * .1; b.S([x, y0, z], [x, y1, z], .008, .004, C.fogBelly); b.E([x, y1 - .03, z], .03, BASE_CRACK, null, { emissive: BASE_GLOW, ei: .5 + l * .3, detail: 0, opacity: .7 }); });
+    const r = rngC(9);
+    b.eye([.07, 1.38, .42], .025); b.eye([-.07, 1.38, .42], .025); if (l >= 1) b.eye([0, 1.45, .42], .02);
+    if (l >= 2) { b.eye([.13, 1.43, .38], .015); b.eye([-.13, 1.43, .38], .015); }
+    b.frost([[[0, 2.08, -.4], [0, 1, 0]], [[.38, 2.0, -.45], [.5, 1, -.3]], [[-.38, 2.0, -.45], [-.5, 1, -.3]], [[0, 1.5, .1], [0, 1, .3]]]);
+  } });
+
+// ----- 6. Ходуля -----
+def({ id: 'stilt', name: 'Ходуля', group: 'base', where: 'Холмы, Горы, плато', threat: 'Маленькое тело на длинных ногах. Перешагивает стены до трёх блоков и садится прямо на костёр.', height: 3.4, frostPer: 2, frostSize: .07,
+  build(b, l) {
+    const plate = 0x3a4452, joint = 0x6c7480, dark = 0x262d38;
+    b.E([0, 2.9, 0], [.32, .2, .36], C.fog); b.E([0, 2.8, 0], [.25, .12, .28], C.fogBelly);
+    for (let i = 0; i < 3; i++) b.E([0, 2.73 - i * .015, .1 - i * .12], [.2 - i * .03, .05, .07], i % 2 ? C.fogBelly : 0x56616f, null, { detail: 0 }); // брюшные кольца
+    // карапакс из налегающих пластин с гребнем
+    for (let i = 0; i < 4; i++) {
+      const z = .2 - i * .13;
+      b.E([0, 3.06 - Math.abs(z) * .25, z], [.26 - Math.abs(i - 1.5) * .03, .06, .11], i % 2 ? plate : C.fogDark, [.25, 0, 0], { detail: 0, j: .2 });
+      b.K([0, 3.1 - Math.abs(z) * .25, z], [0, 1, -.5], .025, .1, joint, { sides: 4 });
+    }
+    mir(s => b.E([s * .22, 2.97, -.02], [.1, .05, .26], dark, [0, 0, s * .5], { detail: 0 }));
+    base_crack(b, [[.08, 3.08, .12], [.12, 3.06, 0], [.08, 3.04, -.15], [.14, 3.0, -.25]], .009, l);
+    base_tuft(b, [0, 2.95, -.32], [0, .3, -1], 6, .025, .12, 0x1a2029, 80);
+    // голова с жвалами
+    b.E([0, 2.8, .2], [.14, .09, .08], dark);
+    b.E([0, 2.85, .24], [.13, .03, .05], C.fogDark, [.3, 0, 0], { detail: 0 });
+    b.E([0, 2.7, .26], [.05, .02, .025], 0x5a2a36);
+    b.teeth([0, 2.71, .275], .06, 4, .03, [0, -1, .2], C.bone, .007);
+    mir(s => {
+      b.chain([[s * .05, 2.72, .25], [s * .1, 2.62, .32], [s * .05, 2.52, .34]], .02, .01, C.bone);
+      b.chain([[s * .09, 2.74, .22], [s * .15, 2.62, .25], [s * .14, 2.5, .26]], .01, .005, C.fogBelly);
+    });
+    // четыре ноги с лишним суставом
+    for (let i = 0; i < 4; i++) {
+      const a = i / 4 * Math.PI * 2 + Math.PI / 4, ca = Math.cos(a), sa = Math.sin(a), P = (k, y) => [ca * k, y, sa * k];
+      const pts = [P(.2, 2.85), P(.55, 3.2), P(.85, 3.36), P(1.15, 2.5), P(1.36, 1.5), P(1.47, .62), P(1.5, .08)];
+      base_limb(b, pts, .05, .014, i % 2 ? [C.fogDark, C.fog] : [C.fog, dark], joint);
+      b.K(pts[2], [ca * .4, 1, sa * .4], .025, .14, C.bone, { sides: 4 });                   // шип колена
+      b.K(pts[4], [ca, .2, sa], .015, .08, joint, { sides: 4 });
+      b.E(P(1.0, 2.95), [.045, .045, .045], plate, null, { detail: 0 });                    // утолщение бедра
+      base_tuft(b, P(.33, 2.98), [ca, .5, sa], 3, .015, .07, 0x1a2029, 90 + i);
+      for (let t = -1; t <= 1; t++) { const ta = a + t * .7; b.K(P(1.5, .08), [Math.cos(ta), -.6, Math.sin(ta)], .012, .07, C.claw, { sides: 4 }); } // три когтя
+    }
+    // свисающие нити-щупальца с каплями, костяной оберег
+    for (let i = 0; i < 7; i++) {
+      const a = i / 7 * 6.28, y1 = 2.0 - (i % 3) * .25;
+      b.chain([[Math.cos(a) * .12, 2.75, Math.sin(a) * .12], [Math.cos(a) * .17, 2.35, Math.sin(a) * .17], [Math.cos(a) * .2, y1, Math.sin(a) * .2]], .015, .004, i % 2 ? C.fogBelly : 0x56616f, { noJoints: true });
+      if (i % 2 === 0) b.E([Math.cos(a) * .2, y1 - .02, Math.sin(a) * .2], .02, BASE_CRACK, null, { emissive: BASE_GLOW, ei: .5 + l * .3, detail: 0 });
+      else base_wisp(b, [Math.cos(a) * .2, y1 - .05, Math.sin(a) * .2], .06, .2);
+    }
+    b.S([.05, 2.74, -.1], [.08, 2.35, -.12], .005, .005, C.bark);
+    b.S([.02, 2.33, -.12], [.14, 2.37, -.12], .015, .012, C.bone); b.S([.08, 2.3, -.12], [.08, 2.18, -.12], .012, .008, C.bone);
+    base_wisp(b, [0, 2.6, -.3], .2, .1); base_wisp(b, [.1, 2.4, -.5], .14, .08);
+    const eyes = [[.08, 2.8, .26], [-.08, 2.8, .26], [0, 2.75, .28], [.13, 2.84, .21], [-.13, 2.84, .21]];
+    eyes.slice(0, [2, 3, 5][l]).forEach(e => b.eye(e, .025));
+    b.frost([[[0, 3.12, 0], [0, 1, 0]], [[.15, 3.05, -.15], [.4, 1, -.4]], [[-.15, 3.05, .15], [-.4, 1, .4]], [[.6, 3.3, .6], [.3, 1, .3]], [[-.6, 3.3, -.6], [-.3, 1, -.3]]]);
+  } });
+
+// ================= местные =================
+
+// ===== local1: Тинник, Галки тумана, Корневик, Смоляк, Утопец (детализированные) =====
+// --- локальные помощники ---
+function local1_n(v) { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; }
+// точка на поверхности эллипсоида c,r в направлении dir (k — множитель радиуса)
+function local1_onE(c, r, dir, k = 1) { const u = local1_n(dir); return [c[0] + r[0] * u[0] * k, c[1] + r[1] * u[1] * k, c[2] + r[2] * u[2] * k]; }
+// бугорки/бородавки по поверхности эллипсоида
+function local1_bumps(b, c, r, n, size, colors, seed, ok, o = {}) {
+  const R = rngC(seed); let placed = 0, tries = 0;
+  while (placed < n && tries < n * 40) {
+    tries++; const d = [R() * 2 - 1, R() * 2 - 1, R() * 2 - 1]; if (Math.hypot(d[0], d[1], d[2]) > 1) continue;
+    const u = local1_n(d); if (ok && !ok(u)) continue;
+    const p = local1_onE(c, r, u, o.k ?? .97), s = size * (.6 + R() * .8);
+    b.E(p, [s, s * (o.flat ?? .7), s], colors[placed % colors.length], null, { detail: 0, j: .25, ...(o.mat || {}) }); placed++;
+  }
+}
+// светящаяся холодная трещина по точкам
+function local1_crack(b, pts, l, w = .012) {
+  for (let i = 0; i < pts.length - 1; i++) b.S(pts[i], pts[i + 1], w, w * .8, 0x9fd8ff, { emissive: 0x7fc3ff, ei: .6 + l * .35, sides: 4 });
+}
+// трещина по поверхности эллипсоида (направления -> точки)
+function local1_crackE(b, c, r, dirs, l, w = .012, k = 1.02) { local1_crack(b, dirs.map(d => local1_onE(c, r, d, k)), l, w); }
+// свисающая капля/прядь с утолщением на конце
+function local1_drip(b, top, len, r, color, o = {}) {
+  const end = [top[0] + (o.dx ?? 0), top[1] - len, top[2] + (o.dz ?? 0)];
+  b.S(top, end, r, r * .55, color, o); b.E(end, [r * 1.3, r * 1.7, r * 1.3], color, null, { ...o, detail: 0 }); return end;
+}
+// перепончатая лапа: пальцы веером от точки, с подушечками и перепонкой
+function local1_webFoot(b, base, s, n, len, spread, aim, col, padCol, webCol, o = {}) {
+  const a0 = Math.atan2(aim[0] * s, aim[1]);
+  const tips = [];
+  for (let k = 0; k < n; k++) {
+    const a = a0 + (k / (n - 1) - .5) * spread, L = len * (k === 0 || k === n - 1 ? .8 : 1);
+    const mid = [base[0] + Math.sin(a) * L * .5, base[1] + .015, base[2] + Math.cos(a) * L * .5];
+    const tip = [base[0] + Math.sin(a) * L, o.y ?? .02, base[2] + Math.cos(a) * L];
+    b.S(base, mid, o.r ?? .018, (o.r ?? .018) * .8, col, { sides: 4 }); b.S(mid, tip, (o.r ?? .018) * .8, (o.r ?? .018) * .55, col, { sides: 4 });
+    b.E(tip, [.022, .014, .022], padCol, null, { detail: 0 });
+    if (o.claw) b.K(tip, [Math.sin(a), -.3, Math.cos(a)], .01, .035, o.claw, { sides: 4 });
+    tips.push(tip);
+  }
+  // перепонки между пальцами
+  for (let k = 0; k < tips.length - 1; k++) {
+    const m = [(tips[k][0] + tips[k + 1][0] + base[0]) / 3, (o.y ?? .02) + .006, (tips[k][2] + tips[k + 1][2] + base[2]) / 3];
+    b.E(m, [len * .22, .008, len * .3], webCol, [0, a0 + ((k + .5) / (n - 1) - .5) * spread, 0], { detail: 0, j: .1 });
+  }
+}
+
+// ----- Тинник (Пойма) -----
+def({ id: 'tinnik', name: 'Тинник', group: 'Речная пойма', where: 'Речная пойма', threat: 'Выходит из воды и плюёт тиной в огонь издалека: гасит костры у берега, не подходя вплотную.', height: 1.2, frostPer: 3, frostSize: .07,
+  build(b, l) {
+    const body = [0, .55, -.1], bR = [.5, .38, .5], head = [0, .78, .3], hR = [.32, .18, .26];
+    const MUD2 = 0x5c6438, MUD3 = 0x6e7040, BELLY = 0x8a8a58, DARK = 0x2a2e1a;
+    b.E(body, bR, C.mud);
+    // лужа грязи под ним
+    b.E([0, .008, -.05], [.75, .008, .7], 0x2f3420, null, { detail: 1, j: .2, rough: .2 });
+    b.E([.45, .01, .35], [.18, .006, .14], 0x3a4026, null, { detail: 0, rough: .2 });
+    // слоистые складки кожи на спине
+    for (let i = 1; i < 5; i++) b.E([0, .87 - i * .05, -.1 - i * .13], [.3 - i * .02, .06, .12], [C.mudDark, MUD2, 0x454c2c][i % 3], [.3 + i * .14, 0, 0], { detail: 0, j: .22 });
+    // гребень спины — ряд бугров
+    for (let i = 0; i < 6; i++) mir(s => b.E(local1_onE(body, bR, [s * .35, 1, -.15 - i * .22], 1.0), .04 + (i % 2) * .01, i % 2 ? MUD3 : C.mudDark, null, { detail: 0, j: .3 }));
+    // боковые складки
+    mir(s => { b.E([s * .44, .48, -.12], [.1, .18, .34], 0x454c2c, null, { detail: 0, j: .2 }); b.E([s * .4, .36, .02], [.1, .06, .26], DARK, [0, 0, s * .4], { detail: 0 }); });
+    // брюхо и горловой мешок со складками
+    b.E([0, .45, .2], [.42, .25, .35], C.mudDark);
+    b.E([0, .3, .1], [.33, .13, .32], BELLY, null, { detail: 0, j: .2 });
+    b.E([0, .4, .35], [.3, .2, .2], 0x8a8c5a, null, { opacity: .85 });   // горловой мешок
+    for (let k = 0; k < 4; k++) b.B([0, .3 + k * .05, .53 - Math.abs(k - 1.5) * .02], [.36 - Math.abs(k - 1.5) * .07, .012, .03], 0x60623c);
+    // голова
+    b.E(head, hR, C.mud);
+    b.E([0, .73, .42], [.34, .07, .17], MUD2, [.1, 0, 0], { detail: 0, j: .15 });    // верхняя губа
+    b.E([0, .63, .4], [.3, .06, .16], C.mudDark, null, { detail: 0, j: .15 });       // нижняя челюсть
+    b.E([0, .675, .45], [.31, .02, .14], 0x1a1c12, null, { detail: 1, j: .05 });       // широкая пасть
+    mir(s => b.E([s * .26, .66, .4], [.06, .016, .05], 0x1a1c12, [0, s * .6, s * -.3], { detail: 0 }));  // уголки пасти вниз
+    b.E([.05, .63, .57], [.06, .018, .07], 0x6e4a3c, [.3, 0, 0], { detail: 0 });      // язык
+    b.E([.07, .6, .62], [.035, .03, .035], 0x7a5244, null, { detail: 0 });
+    // плевок тины из пасти
+    local1_drip(b, [.07, .6, .62], .12, .026, C.mudDark, { rough: .2 });
+    local1_drip(b, [-.18, .64, .5], .2, .012, 0x3f4628, { rough: .2 });
+    local1_drip(b, [.22, .64, .48], .11, .01, C.weed, {});
+    // ноздри
+    mir(s => { b.E([s * .06, .86, .52], [.03, .02, .025], MUD3, null, { detail: 0 }); b.E([s * .06, .87, .54], [.016, .01, .012], 0x10120a, null, { detail: 0 }); });
+    // глазные бугры, веки, надбровья, барабанные перепонки
+    mir(s => {
+      b.E([s * .2, .92, .32], [.1, .09, .09], C.mud);
+      b.E([s * .2, 1.0, .33], [.11, .035, .075], 0x3f4528, [.35, 0, s * -.25], { detail: 0 });     // надбровье
+      b.E([s * .2, .935, .37], [.075, .025, .05], MUD2, [-.3, 0, 0], { detail: 0 });              // нижнее веко
+      b.E([s * .29, .81, .2], [.015, .06, .065], 0x7a7848, [0, 0, s * .2], { detail: 0 });       // барабанная перепонка
+      b.E([s * .3, .81, .2], [.008, .035, .04], 0x4e5032, [0, 0, s * .2], { detail: 0 });
+    });
+    // бородавки
+    local1_bumps(b, body, bR, 34, .045, [MUD2, MUD3, C.mudDark, 0x4a5a30, 0x7a7a46], 7, u => u[1] > -.15 && !(u[2] > .55 && u[1] < .5));
+    local1_bumps(b, head, hR, 12, .025, [MUD3, 0x7a7a46, C.mudDark], 9, u => u[1] > .3 && u[2] < .7);
+    // холодные трещины на боках
+    mir(s => local1_crackE(b, body, bR, [[s * .8, .45, .1], [s * .85, .3, -.15], [s * .78, .45, -.35], [s * .7, .25, -.6]], l, .011));
+    local1_crackE(b, body, bR, [[.1, .5, -.85], [-.05, .3, -.95], [.08, .1, -1]], l, .01);
+    // передние лапы: плечо, локоть, кисть с перепонками
+    mir(s => {
+      b.E([s * .42, .52, .14], [.12, .14, .12], MUD2, null, { detail: 0 });
+      b.chain([[s * .4, .55, .15], [s * .55, .3, .35], [s * .5, .06, .45]], .08, .05, C.mud);
+      b.E([s * .53, .3, .33], [.07, .07, .07], C.mudDark, null, { detail: 0 });
+      b.E([s * .5, .04, .48], [.07, .035, .06], C.mud, null, { detail: 0 });
+      local1_webFoot(b, [s * .5, .04, .48], s, 4, .16, 1.6, [.35, 1], C.mud, BELLY, 0x3d4226);
+      // задние лапы: бедро, голень, длинная ступня
+      b.E([s * .4, .42, -.38], [.17, .19, .25], MUD2, [0, s * .4, 0], { detail: 1 });
+      b.chain([[s * .35, .4, -.4], [s * .7, .35, -.3], [s * .65, .05, -.1]], .12, .07, C.mud);
+      b.E([s * .7, .35, -.3], [.1, .09, .1], C.mudDark, null, { detail: 0 });
+      b.E([s * .65, .04, -.04], [.08, .035, .1], C.mud, null, { detail: 0 });
+      local1_webFoot(b, [s * .65, .04, -.02], s, 5, .22, 1.3, [.5, 1], C.mud, BELLY, 0x3d4226, { r: .02 });
+      // ракушки на боку
+      b.E([s * .38, .62, -.32], [.06, .03, .05], 0x8f8a78, [0, 0, s * 1.1], { detail: 0 });
+      b.E([s * .36, .66, -.25], [.045, .025, .04], 0xa69f88, [.3, 0, s * 1.1], { detail: 0 });
+    });
+    // улитка на спине
+    b.E([.15, .92, -.3], [.06, .05, .06], 0xb8ae90, null, { detail: 0 });
+    b.K([.15, .95, -.3], [.2, 1, -.1], .04, .06, 0x9a8f72, { sides: 5 });
+    b.E([.15, .89, -.22], [.025, .02, .05], 0x6c6a52, null, { detail: 0 });
+    // свисающая тина: пряди и комья
+    const r = rngC(11);
+    for (let i = 0; i < 18; i++) {
+      const u = [(r() - .5) * 1.8, .4 + r() * .6, (r() - .5) * 1.8 - .2];
+      if (u[2] > .4 && Math.abs(u[0]) < .5) continue;
+      const top = local1_onE(body, bR, u, .98), len = .2 + r() * .3;
+      b.S(top, [top[0] * 1.12, top[1] - len, top[2] * 1.1], .022, .006, [C.weed, 0x4d6630, 0x6f8a44][i % 3], { sides: 4 });
+      if (i % 3 === 0) b.E([top[0] * 1.12, top[1] - len, top[2] * 1.1], [.025, .035, .025], C.mudDark, null, { detail: 0 });
+    }
+    // плоские пятна водорослей на спине
+    for (let i = 0; i < 4; i++) b.E(local1_onE(body, bR, [(r() - .5) * 1.2, 1, -.2 - r() * .6], .99), [.1, .015, .07], 0x58703a, [0, r() * 3, 0], { detail: 0 });
+    b.eye([.2, .98, .38], .035); b.eye([-.2, .98, .38], .035);
+    b.frost([[[0, .9, -.1], [0, 1, -.2]], [[.25, .85, -.25], [.5, 1, -.3]], [[-.25, .85, -.25], [-.5, 1, -.3]]]);
+  } });
+
+// ----- Галки тумана (Мельница) -----
+def({ id: 'jackdaws', name: 'Галки тумана', group: 'Старая мельница', where: 'Старая мельница, Брод', threat: 'Стайка летунов: таскают поленья из запаса и с костров. Стены их не держат, бить трудно.', height: 2.3, frostPer: 1, frostSize: .03,
+  build(b, l) {
+    const r = rngC(21), n = [3, 4, 5][l];
+    const F1 = C.feather, F2 = 0x34373e, F3 = 0x1a1b1f, NAPE = 0x6b707a;
+    for (let i = 0; i < n; i++) {
+      const sub = new Builder(l, 80 + i);
+      sub.E([0, 0, 0], [.11, .1, .22], F1);
+      // слои перьев на груди и спине
+      for (let k = 0; k < 4; k++) sub.E([0, -.035 - k * .008, .13 - k * .08], [.1 - k * .006, .06, .065], k % 2 ? 0x2e3036 : F1, [.35, 0, 0], { detail: 0, j: .2 });
+      for (let k = 0; k < 4; k++) mir(s => sub.E([s * .045, .07 - k * .004, .1 - k * .075], [.055, .022, .065], k % 2 ? F2 : F1, [0, s * .25, 0], { detail: 0, j: .2 }));
+      sub.E([0, -.05, -.15], [.06, .04, .08], 0x3a3d44, null, { detail: 0 });                // подхвостье
+      // голова, серый воротник, шапочка
+      sub.E([0, .05, .2], .09, F1);
+      sub.E([0, .055, .135], [.098, .085, .06], NAPE, null, { detail: 0, j: .12 });
+      mir(s => sub.E([s * .06, .03, .19], [.04, .05, .06], 0x5d626b, null, { detail: 0 }));
+      sub.E([0, .115, .22], [.07, .03, .075], F3, null, { detail: 0 });
+      // клюв приоткрыт, щетинки над ноздрями
+      sub.K([0, .055, .27], [0, -.12, 1], .028, .11, 0x2a2a2a, { sides: 4 });
+      sub.K([0, .025, .265], [0, -.45, 1], .02, .08, 0x1f1f1f, { sides: 4 });
+      sub.E([0, .075, .29], [.022, .012, .03], F3, null, { detail: 0 });
+      // хвост веером
+      for (let k = 0; k < 7; k++) {
+        const a = (k / 6 - .5) * .9, d = [Math.sin(a), .1, -Math.cos(a)];
+        sub.E([d[0] * .13, -.005 + d[1] * .13 - Math.abs(k - 3) * .004, -.2 + d[2] * .13], [.03, .01, .13], k % 2 ? F2 : F1, [.1, -a, 0], { detail: 0, j: .1 });
+      }
+      // крылья: основа + кроющие + маховые «пальцы»
+      mir(s => {
+        const pv = sub.wing([s * .06, .04, .02], s, .5, .26, F1, { color2: F2, amp: .8, feathers: 5 });
+        sub.S([0, .005, .07], [s * .3, .005, .08], .016, .01, F1, { parent: pv });
+        sub.E([s * .15, .012, .03], [.14, .02, .09], 0x3a3e46, null, { parent: pv, detail: 0 });
+        sub.E([s * .26, .01, .0], [.1, .018, .08], F2, null, { parent: pv, detail: 0 });
+        for (let k = 0; k < 4; k++) sub.E([s * (.44 + k * .03), 0, .0 - k * .06], [.15, .01, .025], k % 2 ? F3 : 0x232428, [0, s * (.15 + k * .2), 0], { parent: pv, detail: 0 });
+        // лапки с пальцами и когтями
+        const foot = [s * .045, -.15, -.02];
+        sub.S([s * .04, -.07, 0], foot, .012, .009, 0x1e1e1e, { sides: 4 });
+        for (let k = -1; k <= 1; k++) sub.K(foot, [s * k * .3, -.3, 1], .006, .04, 0x1e1e1e, { sides: 3 });
+        sub.K(foot, [0, -.3, -1], .006, .03, 0x1e1e1e, { sides: 3 });
+      });
+      // светлые бледные глаза
+      mir(s => sub.E([s * .059, .083, .257], [.012, .024, .024], 0xc5ccd2, [0, s * .7, 0], { detail: 0 }));
+      sub.eye([.064, .086, .262], .015); sub.eye([-.064, .086, .262], .015);
+      // холодная трещина на груди
+      local1_crack(sub, [[-.03, -.02, .2], [.0, -.06, .16], [.02, -.07, .1], [-.01, -.09, .03]], l, .006);
+      // иней на спине по уровню
+      for (let k = 0; k < l * 2; k++) sub.K([(k % 2 ? 1 : -1) * .03, .085, .02 - k * .04], [(k % 2 ? 1 : -1) * .3, 1, -.4], .012, .045 + l * .015, C.frost, { emissive: 0x3d6488, ei: .35 + l * .3, sides: 4 });
+      if (i === 0) {
+        // несёт полено: кора, срезы с кольцами, сучок, тлеющий уголёк
+        sub.S([-.14, -.16, .05], [.14, -.16, .05], .05, .05, C.bark, { sides: 6 });
+        mir(s => { sub.E([s * .142, -.16, .05], [.008, .045, .045], 0xb08a5a, null, { detail: 0 }); sub.E([s * .145, -.16, .05], [.006, .02, .02], 0x8a6a40, null, { detail: 0 }); });
+        for (let k = 0; k < 4; k++) sub.B([-.09 + k * .06, -.16 + (k % 2 ? .045 : -.045), .05 + (k % 2 ? 0 : .02)], [.05, .012, .03], C.barkDark, [k * .7, 0, 0]);
+        sub.S([.03, -.13, .08], [.06, -.08, .14], .012, .006, C.bark, { sides: 4 });
+        sub.E([-.142, -.15, .07], [.012, .02, .02], 0xff7a2a, null, { detail: 0, emissive: 0xff5a10, ei: 1.2 });
+      }
+      const g = sub.g; g.position.set((r() - .5) * 1.6, .9 + r() * 1.2, (r() - .5) * 1.2); g.rotation.y = r() * 6; g.userData.bob = { ph: r() * 6 }; b.g.add(g);
+    }
+  } });
+
+// ----- Корневик (Холмы) -----
+def({ id: 'rootling', name: 'Корневик', group: 'Сосновые холмы', where: 'Сосновые холмы', threat: 'Роет ход под землёй и вылезает внутри стен. Подрывает блоки снизу, и постройка может рухнуть.', height: 1.3, frostPer: 3, frostSize: .07,
+  build(b, l) {
+    const core = [0, .7, 0], cR = [.42, .4, .42];
+    const BARKS = [C.bark, C.barkDark, C.root, 0x4a3324, 0x7a5638];
+    b.E(core, cR, C.root, null, { j: .3 });
+    // кора: вертикальные пластины
+    const r = rngC(31);
+    for (let i = 0, t = 0; i < 46 && t < 400; t++) {
+      const u = local1_n([r() * 2 - 1, r() * 1.6 - .6, r() * 2 - 1]);
+      if (u[2] > .55 && Math.abs(u[0]) < .55 && u[1] < .45) continue;   // не закрывать лицо
+      if (u[1] > .8) continue;
+      const p = local1_onE(core, cR, u, .98);
+      b.B(p, [.07 + r() * .04, .14 + r() * .08, .04], BARKS[i % 5], [-u[1] * .6, Math.atan2(u[0], u[2]), (r() - .5) * .4], { j: .3 }); i++;
+    }
+    // узлы-наросты
+    local1_bumps(b, core, cR, 9, .08, [0x4f3726, C.barkDark, 0x6a4a30], 33, u => u[1] < .6 && !(u[2] > .5 && Math.abs(u[0]) < .5), { k: 1, flat: .9, mat: { j: .35 } });
+    // мох на макушке и пятнами
+    b.E([0, 1.0, -.05], [.36, .14, .36], C.moss, null, { detail: 0, j: .3 });
+    b.E([.12, 1.06, .05], [.2, .08, .18], 0x6d8240, null, { detail: 0, j: .3 });
+    local1_bumps(b, core, cR, 8, .06, [C.moss, 0x4c5e2a, 0x7a8f48], 35, u => u[1] > .2 && u[1] < .7, { k: 1, flat: .5 });
+    // сосновые побеги с хвоей
+    for (let i = 0; i < 5; i++) {
+      const bx = (i - 2) * .11, bz = ((i * 37) % 5) * .05 - .12, tip = [bx * 2.2, 1.32 + (i % 2) * .08, bz * 1.3];
+      b.S([bx, 1.04, bz], tip, .02, .012, C.barkDark, { sides: 4 });
+      b.K([bx * 1.6, 1.12, bz * 1.2], [bx * 1.5, 1, bz], .06, .14, 0x3f5f4c, { sides: 5 });
+      b.K([tip[0], tip[1] - .08, tip[2]], [bx, 1, bz], .045, .14, 0x4a6b55, { sides: 5 });
+      for (let k = 0; k < 4; k++) { const a = k * 1.57 + i; b.S([tip[0], tip[1] - .04, tip[2]], [tip[0] + Math.cos(a) * .07, tip[1] + .02, tip[2] + Math.sin(a) * .07], .006, .003, 0x35523f, { sides: 3 }); }
+    }
+    // шишка в мху
+    b.E([-.2, 1.02, .12], [.045, .065, .045], 0x7a5432, [.5, 0, .3], { detail: 0, j: .3 });
+    // древесные грибы-трутовики
+    for (let k = 0; k < 3; k++) b.E([-.38 - k * .01, .6 + k * .09, -.12 + k * .04], [.1 - k * .02, .022, .08 - k * .015], [0xc9b48a, 0xb39c70, 0xd8c8a0][k], [0, 0, .15], { detail: 0 });
+    b.E([.34, .45, -.25], [.07, .018, .06], 0xb39c70, [0, .6, -.2], { detail: 0 });
+    // лицо-дупло: обод, тёмная глубина, деревянные зубья, надбровье
+    b.E([0, .7, .32], [.22, .2, .1], C.barkDark);
+    b.E([0, .69, .37], [.15, .13, .06], 0x140d08, null, { detail: 0 });
+    b.teeth([0, .58, .41], .2, 5, .07, [0, 1, .25], 0xa08060, .02);
+    b.teeth([0, .82, .41], .18, 4, .06, [0, -1, .25], 0x8a6a48, .02);
+    b.E([0, .88, .36], [.25, .05, .08], C.barkDark, [.3, 0, 0], { detail: 0, j: .3 });
+    mir(s => b.E([s * .12, .86, .38], [.1, .035, .05], 0x4a3324, [0, 0, s * -.35], { detail: 0 }));
+    // холодные трещины в коре
+    mir(s => local1_crackE(b, core, cR, [[s * .9, .5, .2], [s * .95, .2, .1], [s * .9, 0, .3], [s * .95, -.25, .15]], l, .012, 1.04));
+    local1_crackE(b, core, cR, [[.3, .3, -.9], [.1, 0, -1], [.25, -.3, -.9]], l, .012, 1.04);
+    // восемь корней-ног: суставы-узлы, отростки, расщеплённые кончики в земле
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * 6.28 + .2, ca = Math.cos(a), sa = Math.sin(a), h = .45 + r() * .15;
+      const col = i % 2 ? C.root : C.bark;
+      const p0 = [ca * .3, .5, sa * .3], p1 = [ca * .6, h, sa * .6], p2 = [ca * .85, .1, sa * .85], p3 = [ca * 1.0, -.05, sa * 1.0];
+      b.chain([p0, p1, p2, p3], .07, .02, col);
+      b.E(p1, [.075, .07, .075], 0x4f3726, null, { detail: 0, j: .35 });
+      b.E([(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2 + .03, (p0[2] + p1[2]) / 2], [.05, .03, .05], BARKS[(i + 1) % 5], null, { detail: 0, j: .3 });
+      const m = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2, (p1[2] + p2[2]) / 2];
+      b.S(m, [ca * 1.0 - sa * .15, .0, sa * 1.0 + ca * .15], .022, .008, C.barkDark, { sides: 4 });
+      b.S(m, [m[0] - sa * .08, m[1] + .1, m[2] + ca * .08], .012, .004, col, { sides: 3 });
+      for (let k = -1; k <= 1; k += 2) b.K([ca * .95, .03, sa * .95], [ca + k * sa * .6, -.6, sa - k * ca * .6], .015, .1, C.barkDark, { sides: 4 });
+      b.E([ca * .96, .02, sa * .96], [.08, .03, .08], 0x3e2e20, null, { detail: 0, j: .3 });
+    }
+    // хватающие корни с когтями-отростками и шипами
+    mir(s => {
+      b.chain([[s * .35, .8, .1], [s * .65, .9, .35], [s * .75, .55, .6], [s * .7, .3, .75]], .06, .02, C.root);
+      b.E([s * .65, .9, .35], [.06, .055, .06], 0x4f3726, null, { detail: 0, j: .3 });
+      for (let k = -1; k <= 1; k++) b.chain([[s * .7, .3, .75], [s * (.72 + k * .06), .2, .84], [s * (.7 + k * .1), .14, .88]], .016, .006, C.barkDark, { noJoints: true });
+      for (let k = 0; k < 3; k++) b.K([s * (.45 + k * .1), .86 + k * .02 - (k === 2 ? .2 : 0), .2 + k * .15], [s * .2, 1, .2], .015, .06, C.barkDark, { sides: 3 });
+      b.S([s * .75, .55, .6], [s * .9, .62, .72], .012, .004, C.root, { sides: 3 });
+    });
+    // разрытая земля, комья, камешки, червяк
+    for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28; b.E([Math.cos(a) * .75, .04, Math.sin(a) * .75], [.28, .1, .22], [0x4a3a2a, 0x3e3022, 0x56442f][i % 3], [0, a, 0], { detail: 0, j: .3 }); }
+    for (let i = 0; i < 12; i++) { const a = r() * 6.28, d = .5 + r() * .6; b.E([Math.cos(a) * d, .03, Math.sin(a) * d], .03 + r() * .03, i % 3 ? 0x56442f : C.stoneDark, null, { detail: 0, j: .4 }); }
+    for (let i = 0; i < 5; i++) { const a = r() * 6.28, d = .6 + r() * .4; b.E([Math.cos(a) * d, .05, Math.sin(a) * d], [.05, .04, .045], [C.stone, C.stoneWarm, C.stoneDark][i % 3], [r(), r(), 0], { detail: 0, j: .3 }); }
+    b.chain([[.85, .11, .25], [.95, .14, .3], [1.02, .1, .38], [1.06, .06, .33]], .012, .01, 0xb07a6a, { noJoints: true });
+    const eyeO = { color: 0xffc070, mat: new THREE.MeshBasicMaterial({ color: 0xffd9a0 }) };
+    b.eye([.07, .74, .38], .03, eyeO); b.eye([-.07, .74, .38], .03, eyeO);
+    b.frost([[[.2, 1.05, .1], [.3, 1, .2]], [[-.2, 1.05, -.1], [-.3, 1, -.2]], [[0, 1.08, .2], [0, 1, .4]]]);
+  } });
+
+// ----- Смоляк (Холмы) -----
+def({ id: 'tarblob', name: 'Смоляк', group: 'Сосновые холмы', where: 'Сосновые холмы', threat: 'Сгусток смолы: липнет к рабочим и стенам и склеивает проход. Боится огня: если поджечь, горит и лопается.', height: .8, frostPer: 2, frostSize: .05,
+  build(b, l) {
+    const RES = { opacity: .82, emissive: 0x6a3a08, ei: .4, rough: .3 };
+    const body = [0, .38, 0], bR = [.5, .38, .45];
+    b.E(body, bR, C.amber, null, { ...RES, detail: 2, j: .1 });
+    // дополнительные доли-наплывы разных оттенков
+    b.E([.32, .2, .14], [.22, .19, .2], 0xb87824, null, { ...RES, detail: 1, j: .12 });
+    b.E([-.3, .2, -.08], [.26, .18, .22], 0xd99a3a, null, { ...RES, detail: 1, j: .12 });
+    b.E([-.08, .66, -.05], [.2, .12, .17], 0xa8681c, null, { ...RES, detail: 1, j: .15 });
+    b.E([.1, .15, -.3], [.24, .14, .18], C.amber, null, { ...RES, detail: 1, j: .12 });
+    // затвердевшая корка сверху
+    b.E([.05, .7, -.08], [.16, .05, .13], 0x7a4a18, null, { rough: .6, detail: 0, j: .3 });
+    b.E([-.18, .62, .1], [.1, .04, .08], 0x8a5420, [.3, 0, .4], { rough: .6, detail: 0, j: .3 });
+    local1_crack(b, [[-.05, .74, -.1], [.04, .755, -.06], [.1, .745, -.12], [.17, .73, -.08]], l, .008);
+    local1_crack(b, [[.04, .755, -.06], [.06, .75, .0]], l, .007);
+    // тёмное ядро и прожилки
+    b.E([0, .4, 0], [.22, .2, .2], 0x2a1608, null, { detail: 1 });
+    for (let k = 0; k < 4; k++) b.E([(k - 1.5) * .15, .35 + (k % 2) * .1, -.05], [.03, .14, .03], 0x5a3010, [.4 * k, 0, (k - 1.5) * .4], { opacity: .9, detail: 0 });
+    // пузыри на поверхности
+    const r = rngC(41);
+    local1_bumps(b, body, bR, 7, .03, [0xe8b058, 0xdca44a], 43, u => u[1] > -.2, { k: .99, flat: 1, mat: { opacity: .6, rough: .1, emissive: 0x6a3a08, ei: .3 } });
+    // хвоинки парами внутри и торчащие наружу
+    for (let i = 0; i < 16; i++) {
+      const u = local1_n([r() - .5, r() * .8 - .1, r() - .5]), p = local1_onE(body, bR, u, i < 8 ? .7 : .95);
+      const d = local1_n([r() - .5, r() - .3, r() - .5]), L = .14 + r() * .08;
+      b.S(p, [p[0] + d[0] * L, p[1] + d[1] * L, p[2] + d[2] * L], .007, .004, i % 3 ? 0x3f5f4c : 0x6a6a3a, { sides: 3 });
+      b.S(p, [p[0] + d[0] * L + .03, p[1] + d[1] * L, p[2] + d[2] * L - .02], .007, .004, 0x3f5f4c, { sides: 3 });
+    }
+    // веточка, торчащая из бока, с хвоей
+    b.S([.2, .45, .2], [.62, .62, .32], .018, .01, C.bark, { sides: 5 });
+    for (let k = 0; k < 6; k++) { const t = .4 + k * .1, p = [.2 + .42 * t, .45 + .17 * t, .2 + .12 * t]; b.S(p, [p[0] + .02, p[1] + (k % 2 ? .08 : -.05), p[2] + (k % 2 ? -.06 : .07)], .005, .003, 0x3f5f4c, { sides: 3 }); }
+    // жуки, увязшие в смоле
+    const beetle = (p, ry, col) => {
+      b.E(p, [.035, .02, .05], col, [0, ry, 0], { metal: .5, rough: .3, detail: 0 });
+      b.E([p[0] + Math.sin(ry) * .055, p[1], p[2] + Math.cos(ry) * .055], .018, 0x111511, null, { detail: 0 });
+      for (let k = -1; k <= 1; k++) mir(s => b.S([p[0] + Math.sin(ry) * k * .02, p[1], p[2] + Math.cos(ry) * k * .02], [p[0] + Math.cos(ry) * s * .06 + Math.sin(ry) * k * .035, p[1] - .02, p[2] - Math.sin(ry) * s * .06 + Math.cos(ry) * k * .035], .004, .003, 0x111511, { sides: 3 }));
+    };
+    beetle([.18, .5, .3], .6, 0x23402e); beetle([-.25, .3, .28], -1.1, 0x2e2418); beetle([.05, .62, .22], 2.2, 0x1d3a3a);
+    // камешки и шишка
+    b.E([-.15, .18, .36], [.05, .04, .045], C.stoneDark, [.3, .5, 0], { detail: 0, j: .3 });
+    b.E([.35, .3, -.1], [.045, .035, .04], C.stoneWarm, null, { detail: 0, j: .3 });
+    b.E([-.42, .32, .05], [.06, .085, .06], 0x6a4428, [0, 0, .7], { detail: 0, j: .3 });
+    for (let k = 0; k < 6; k++) b.K([-.42 + Math.cos(k) * .04, .32 + (k - 2.5) * .022, .05 + Math.sin(k) * .04], [-.6 + Math.cos(k), .4, Math.sin(k)], .02, .04, 0x7a5432, { sides: 3 });
+    // липкая пасть с нитями смолы
+    b.E([0, .4, .4], [.13, .045, .05], 0x2a1608, null, { detail: 0 });
+    for (let k = 0; k < 4; k++) b.S([(k - 1.5) * .06, .44, .42], [(k - 1.5) * .055, .36, .42], .006, .006, 0xe0a040, { opacity: .8 });
+    // потёки с каплями и нити к земле
+    for (let i = 0; i < 6; i++) { const a = -.6 + i * .45, p = local1_onE(body, bR, [Math.sin(a), .55, Math.cos(a)], .97); local1_drip(b, p, .22 + (i % 3) * .08, .025, i % 2 ? C.amber : 0xd99a3a, { ...RES, dz: .04 }); }
+    for (let i = 0; i < 4; i++) b.S([(i - 1.5) * .15, .7, .1], [(i - 1.5) * .2, .2, .35], .02, .01, C.amber, { opacity: .8 });
+    for (let i = 0; i < 3; i++) { const a = 2.6 + i * .7; b.S(local1_onE(body, bR, [Math.sin(a), -.2, Math.cos(a)], .95), [Math.sin(a) * .62, .02, Math.cos(a) * .58], .008, .015, 0xe0a040, { opacity: .7 }); }
+    // лужица в два слоя, с прилипшей хвоей
+    for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28; b.E([Math.cos(a) * .55, .03, Math.sin(a) * .5], [.15, .03, .12], C.amber, null, { opacity: .8, rough: .3, detail: 0 }); }
+    for (let i = 0; i < 5; i++) { const a = i / 5 * 6.28 + .5; b.E([Math.cos(a) * .72, .015, Math.sin(a) * .66], [.1, .015, .08], 0xb87824, null, { opacity: .75, rough: .2, detail: 0 }); }
+    b.S([.6, .035, .3], [.72, .035, .38], .006, .004, 0x3f5f4c, { sides: 3 }); b.S([-.65, .035, -.2], [-.6, .035, -.34], .006, .004, 0x6a6a3a, { sides: 3 });
+    const eyes = [[.1, .55, .38], [-.1, .55, .38], [.0, .63, .35], [.24, .48, .35]];
+    eyes.slice(0, [2, 3, 4][l]).forEach(e => b.eye(e, .03));
+    b.frost([[[0, .75, 0], [0, 1, 0]], [[.2, .7, -.1], [.4, 1, -.2]]]);
+  } });
+
+// ----- Утопец (Брод) -----
+def({ id: 'drowned', name: 'Утопец', group: 'Брод у заставы', where: 'Брод у заставы, Пойма', threat: 'Сидит в реке. Ночью хватает рабочих в воде и у берега и утаскивает в туман.', height: 1.9, frostPer: 2, frostSize: .07,
+  build(b, l) {
+    const SK2 = 0x6b847b, SK3 = 0x93a89c, SHIRT = 0x9a9886, SHIRT2 = 0x7f7d6c, PANTS = 0x3b4744, BONEP = 0xa8b0a0;
+    // торс: тело, вздутое брюхо, разорванная рубаха (две половины), рёбра
+    b.E([0, 1.15, -.05], [.32, .4, .22], C.drown, [.35, 0, 0]);
+    b.E([0, .96, .05], [.24, .17, .16], 0x86a096, null, { detail: 1 });
+    mir(s => {
+      b.E([s * .14, 1.18, -.08], [.24, .38, .22], s > 0 ? SHIRT : SHIRT2, [.35, 0, s * .05], { j: .2 });
+      // рваный подол лоскутами
+      for (let k = 0; k < 4; k++) {
+        const a = s * (.35 + k * .35), x = Math.sin(a) * .3, z = Math.cos(a) * .2 - .06, L = .12 + ((k * 7) % 3) * .06;
+        b.B([x, .92 - L / 2, z], [.08, L, .02], k % 2 ? SHIRT : SHIRT2, [0, a, s * (k % 2 ? .15 : -.1)], { j: .25 });
+      }
+      for (let k = 0; k < 4; k++) b.S([s * .03, 1.32 - k * .07, .2 - k * .015], [s * .13, 1.29 - k * .07, .17 - k * .015], .012, .008, BONEP, { sides: 4 });  // рёбра
+      // воротник рубахи
+      b.B([s * .1, 1.42, .05], [.12, .04, .14], SHIRT, [.3, s * .4, s * .3], { j: .2 });
+      // ракушки-балянусы на плечах
+      for (let k = 0; k < 5; k++) { const p = [s * (.24 + (k % 3) * .04), 1.42 - (k > 2 ? .06 : 0), -.1 + k * .03]; b.K(p, [s * .4, 1, 0], .025, .035, 0xc8c2b0, { sides: 5 }); b.E([p[0] + s * .006, p[1] + .033, p[2]], .008, 0x2a2e2c, null, { detail: 0 }); }
+    });
+    // шея, голова
+    b.S([0, 1.35, 0], [0, 1.5, .1], .085, .075, C.drown);
+    b.E([0, 1.55, .15], [.17, .2, .18], C.drown);                         // голова вперёд
+    b.E([0, 1.66, .26], [.15, .04, .07], SK2, [.3, 0, 0], { detail: 0 });   // надбровная дуга
+    mir(s => {
+      b.E([s * .065, 1.6, .29], [.04, .032, .02], 0x1b2420, null, { detail: 0 });  // впалые глазницы
+      b.E([s * .1, 1.53, .27], [.04, .03, .04], SK3, null, { detail: 0 });         // скулы
+      b.E([s * .17, 1.56, .12], [.025, .05, .035], SK2, null, { detail: 0 });      // уши
+      b.E([s * .12, 1.47, .22], [.05, .04, .05], SK2, null, { detail: 0 });        // щёки обвисшие
+    });
+    b.E([0, 1.55, .33], [.025, .045, .03], SK2, null, { detail: 0 });      // нос
+    b.E([0, 1.52, .345], [.018, .01, .01], 0x1b2420, null, { detail: 0 });
+    // отвисшая челюсть, два ряда зубов, язык
+    b.E([0, 1.4, .22], [.12, .045, .1], C.drown, [.25, 0, 0], { detail: 0 });
+    b.B([0, 1.445, .3], [.16, .05, .04], 0x1b2420);                         // рот
+    b.teeth([0, 1.47, .32], .12, 5, .04, [0, -1, 0], 0x9a9a88, .012);
+    b.teeth([0, 1.42, .3], .1, 4, .03, [0, 1, 0], 0x8a8a78, .011);
+    b.E([.02, 1.43, .31], [.035, .012, .03], 0x5a3f48, null, { detail: 0 });
+    // волосы-водоросли: пряди, ленты, комья
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 13) * Math.PI - Math.PI / 2;
+      b.S([Math.sin(a) * .15, 1.72, Math.cos(a) * .05], [Math.sin(a) * .3, 1.05 - (i % 3) * .12, -.1 + Math.cos(a) * .05], .02, .008, [C.weed, 0x4d6630, 0x6f8a44][i % 3], { sides: 4 });
+      if (i % 3 === 1) b.E([Math.sin(a) * .28, 1.2, -.1 + Math.cos(a) * .05], [.03, .05, .03], 0x3f5a2c, null, { detail: 0, j: .3 });
+    }
+    b.E([0, 1.64, .08], [.18, .11, .17], 0x3f5a2c, [-.3, 0, 0], { detail: 1, j: .2 });
+    b.E([.18, 1.3, -.12], [.05, .06, .05], 0x3f5a2c, null, { detail: 0, j: .3 });
+    // пятна кожи
+    local1_bumps(b, [0, 1.55, .15], [.17, .2, .18], 5, .04, [SK2, SK3], 61, u => u[2] < .6 && u[1] > -.3, { k: .98, flat: .4 });
+    // холодные светящиеся вены: грудь, шея, руки
+    local1_crack(b, [[0, 1.38, .17], [.02, 1.28, .2], [-.01, 1.18, .19], [.03, 1.06, .2]], l, .01);
+    local1_crack(b, [[.02, 1.28, .2], [.07, 1.22, .18]], l, .008);
+    local1_crack(b, [[-.08, 1.45, .06], [-.05, 1.38, .1], [-.07, 1.33, .12]], l, .008);
+    // пояс с пряжкой, верёвка
+    b.E([0, .82, -.06], [.27, .045, .21], 0x3a2a1c, null, { detail: 1, j: .08 });
+    b.B([0, .82, .15], [.07, .06, .02], C.rust, null, { metal: .4 });
+    b.B([0, .82, .162], [.04, .035, .01], 0x2a2018);
+    b.E([.22, .82, -.14], [.05, .04, .04], 0x8a7a55, null, { detail: 0, j: .3 });   // узел
+    b.chain([[.22, .8, -.16], [.3, .55, -.3], [.33, .28, -.4], [.28, .03, -.48], [.1, .025, -.55]], .018, .016, 0x8a7a55, { noJoints: true });
+    for (let k = -1; k <= 1; k++) b.S([.1, .025, -.55], [.02 + k * .03, .02, -.5 - Math.abs(k) * .03], .008, .003, 0x9a8a65, { sides: 3 });   // растрёпанный конец
+    // таз в штанах
+    b.E([0, .75, -.1], [.25, .2, .18], PANTS);
+    mir(s => {
+      // руки: рукав до локтя с лохмотьями, предплечье, кисть с когтями и перепонками
+      b.chain([[s * .3, 1.35, 0], [s * .5, .9, .25], [s * .45, .35, .45]], .055, .04, C.drown);
+      b.S([s * .3, 1.36, 0], [s * .45, 1.04, .15], .085, .07, s > 0 ? SHIRT : SHIRT2, { sides: 6 });
+      for (let k = 0; k < 3; k++) b.B([s * (.44 + k * .02), .99, .14 + k * .04], [.04, .1 + k * .03, .015], SHIRT2, [0, s * .5, s * (.2 - k * .2)], { j: .25 });
+      b.E([s * .5, .9, .25], [.06, .06, .06], SK2, null, { detail: 0 });
+      b.E([s * .48, .62, .35], [.04, .1, .04], SK3, [.3, 0, 0], { detail: 0 });
+      local1_crack(b, [[s * .52, .8, .32], [s * .5, .7, .36], [s * .5, .58, .39], [s * .48, .48, .43]], l, .007);
+      b.E([s * .45, .35, .45], [.06, .05, .06], C.drown, null, { detail: 0 });
+      for (let f = -1.5; f <= 1.5; f++) {
+        const tip = [s * (.46 + f * .07), .05, .62 + (1.5 - Math.abs(f)) * .02];
+        b.chain([[s * .45, .35, .45], [s * (.47 + f * .05), .18, .55], tip], .018, .008, C.drown, { noJoints: true });
+        b.E([s * (.47 + f * .05), .18, .55], .016, SK2, null, { detail: 0 });
+        b.K(tip, [0, -.6, .7], .008, .04, C.claw, { sides: 4 });
+      }
+      b.E([s * .46, .22, .53], [.09, .07, .012], 0x4e6a60, [-.6, 0, 0], { opacity: .8, detail: 0 });   // перепонка
+      // ноги: штанины, рваные у колена, голени, ступни с пальцами
+      b.chain([[s * .15, .65, -.1], [s * .28, .35, .15], [s * .25, .03, -.05]], .08, .05, C.drown);
+      b.S([s * .15, .66, -.1], [s * .28, .36, .15], .1, .085, PANTS, { sides: 6 });
+      for (let k = 0; k < 3; k++) b.B([s * (.24 + k * .03), .3, .1 + k * .05], [.045, .1 + (k % 2) * .05, .015], PANTS, [0, s * .3, s * (k - 1) * .25], { j: .3 });
+      b.E([s * .27, .2, .07], [.05, .04, .05], SK3, null, { detail: 0 });
+      b.E([s * .25, .04, .03], [.07, .04, .13], C.drown, null, { detail: 0 });
+      for (let k = -1; k <= 1; k++) { b.S([s * (.25 + k * .035), .04, .12], [s * (.25 + k * .045), .025, .2], .015, .01, C.drown, { sides: 4 }); b.K([s * (.25 + k * .045), .025, .2], [0, -.2, 1], .008, .03, C.claw, { sides: 4 }); }
+      b.S([s * .2, 1.0, .1], [s * .35, .6, .25], .015, .01, C.weed);         // водоросли на теле
+      // мидии на бедре
+      b.E([s * .26, .62, -.02], [.035, .018, .05], 0x252a35, [0, s * .4, s * .6], { detail: 0 });
+      b.E([s * .22, .7, .04], [.03, .015, .04], 0x2d3440, [0, s * -.3, s * .6], { detail: 0 });
+    });
+    // улитка на спине
+    b.E([-.1, 1.25, -.3], [.05, .05, .04], 0xb8ae90, null, { detail: 0 });
+    b.K([-.1, 1.25, -.33], [0, .2, -1], .035, .05, 0x9a8f72, { sides: 5 });
+    // глаза по уровню
+    const eyes = [[.065, 1.6, .3], [-.065, 1.6, .3]];
+    eyes.forEach(e => b.eye(e, .025));
+    // вода у ног: гладь, круги ряби, плавающая тина
+    b.B([0, .015, 0], [1.4, .03, 1.2], 0x3d5a66, null, { opacity: .6, rough: .1 });
+    for (const [x, z, rr] of [[.25, .05, .2], [-.25, .0, .2], [.45, .5, .14], [-.45, .55, .14]]) for (let k = 0; k < 6; k++) { const a = k / 6 * 6.28; b.E([x + Math.cos(a) * rr, .032, z + Math.sin(a) * rr], [.06, .004, .02], 0x8fb0bc, [0, -a, 0], { opacity: .5, rough: .1, detail: 0 }); }
+    for (let k = 0; k < 5; k++) b.E([-.55 + k * .25, .035, .45 - (k % 2) * .8], [.07, .008, .03], 0x4d6630, [0, k * 1.3, 0], { detail: 0 });
+    b.frost([[[0, 1.5, -.25], [0, 1, -.5]], [[.2, 1.45, -.2], [.5, 1, -.4]], [[-.2, 1.45, -.2], [-.5, 1, -.4]]]);
+  } });
+
+// ===== local2: Каменоломня, Горы, Мёртвый город =====
+// --- вспомогательные функции (локальные) ---
+const local2_C = {
+  rune: 0x9fd8ff, runeE: 0x7fc3ff, lichen: 0xb3ad72, lichen2: 0x9cae6a, mossD: 0x4a5b2b, ore: 0xc9963a, ore2: 0x4f8f7a,
+  stoneL: 0xa3a6a8, stoneB: 0x777b80, snowB: 0xd4e0e8, ice: 0xcfe6f5, iron2: 0x484c51, ironL: 0x737a80, brass: 0x8f7240,
+  leather: 0x4a3324, cloth: 0x5a2f2a, chain: 0x63686d,
+};
+// временно строить внутрь группы (локальные координаты)
+function local2_in(b, grp, fn) { const g0 = b.g; b.g = grp; try { fn(); } finally { b.g = g0; } }
+function local2_grp(b, pos, rot) { const g = new THREE.Group(); g.position.set(...pos); if (rot) g.rotation.set(...rot); b.g.add(g); return g; }
+// зигзаг-трещина в плоскости XY (лицевая грань +z), в локальной группе
+function local2_crack(b, c, rot, len, w, col, o = {}, segs = 3, seed = 1) {
+  const g = local2_grp(b, c, rot), r = rngC(seed);
+  local2_in(b, g, () => {
+    let x = 0, y = 0;
+    for (let i = 0; i < segs; i++) {
+      const nx = x + (r() - .5) * len * .5, ny = y - len / segs;
+      b.S([x, y, 0], [nx, ny, 0], w, w * .8, col, { ...o, sides: 4 });
+      if (o.branch && i === 1) b.S([nx, ny, 0], [nx + (r() < .5 ? -1 : 1) * len * .3, ny - len * .15, 0], w * .7, w * .4, col, { ...o, sides: 4 });
+      x = nx; y = ny;
+    }
+  });
+  return g;
+}
+// каменная плита со сколами и трещиной на лицевой грани
+function local2_slab(b, c, s, col, rot, o = {}) {
+  const g = local2_grp(b, c, rot), r = rngC(o.seed ?? (b.n * 31 + 7));
+  local2_in(b, g, () => {
+    b.B([0, 0, 0], s, col, null, { j: o.j ?? .12 });
+    for (let i = 0; i < (o.chips ?? 2); i++) {
+      const cx = (r() - .5) * s[0] * .8, cz = (r() < .5 ? -1 : 1) * s[2] * .42, k = Math.min(s[0], s[1], s[2]);
+      b.B([cx, s[1] * .48, cz], [k * .32, k * .22, k * .3], o.chipCol ?? col, [r() * .6, r() * 2, r() * .6], { j: .25 });
+    }
+    if (o.crack !== false) local2_crack(b, [(r() - .5) * s[0] * .4, s[1] * .4, s[2] * .5], null, s[1] * .75, Math.max(.012, s[1] * .025), o.crackCol ?? 0x3d4044, o.crackO || {}, 3, r() * 999);
+    if (o.top) local2_moss(b, [(r() - .5) * s[0] * .3, s[1] * .5, (r() - .5) * s[2] * .3], [s[0] * .38, s[2] * .35], o.top);
+  });
+  return g;
+}
+// приплюснутое пятно (мох, лишайник, снег) поверх горизонтальной грани
+function local2_moss(b, c, rr, col, h = .05, rot) {
+  return b.E(c, [rr[0], h, rr[1]], col, rot, { detail: 0, j: .35 });
+}
+// сосульки вдоль отрезка
+function local2_icicles(b, a, z, n, len, seed, col = local2_C.ice) {
+  const r = rngC(seed);
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? .5 : i / (n - 1), p = [a[0] + (a[2] - a[0]) * t, a[1] + (a[3] - a[1]) * t, z];
+    b.K(p, [(r() - .5) * .15, -1, (r() - .5) * .15], len * .14, len * (.6 + r() * .6), col, { emissive: 0x2d4c66, ei: .25, sides: 4 });
+  }
+}
+
+// ----- Камнеед (Каменоломня) -----
+def({ id: 'stoneeater', name: 'Камнеед', group: 'Каменоломня', where: 'Каменоломня, Горы', threat: 'Грызёт камень: стены, туннели, опоры. Медленный, но каменная стена для него не преграда.', height: 1.2, frostPer: 3, frostSize: .1,
+  build(b, l) {
+    const r = rngC(7);
+    // туловище: брюхо и бока
+    b.E([0, .45, 0], [.48, .3, .8], C.stoneWarm);
+    b.E([0, .32, .05], [.4, .18, .66], 0x7d776c);                              // брюхо
+    // спинные пластины с трещинами, сколами, лишайником и рудными жилами
+    for (let i = 0; i < 6; i++) {
+      const t = i / 5, z = -.66 + i * .25, y = .66 + Math.sin(t * Math.PI) * .2;
+      const col = [C.stone, C.stoneDark, local2_C.stoneB, C.stone, C.stoneDark, C.stoneWarm][i];
+      local2_slab(b, [0, y, z], [.98 - Math.abs(t - .5) * .4, .26, .3], col, [-.25 + t * .45, 0, (r() - .5) * .1], { seed: 11 + i, chips: 2, top: i % 3 === 1 ? local2_C.lichen : (i === 4 ? C.moss : null) });
+      if (i === 1 || i === 3) local2_crack(b, [.28 - i * .1, y + .02, z + .155], [0, 0, .5], .2, .016, local2_C.ore, { emissive: 0x6a4410, ei: .4, metal: .4, rough: .5 }, 3, 40 + i); // жила
+    }
+    // боковые щитки по бокам
+    mir(s => {
+      for (let i = 0; i < 4; i++) local2_slab(b, [s * .43, .52 + (i % 2) * .04, -.5 + i * .3], [.12, .24, .26], i % 2 ? C.stoneDark : local2_C.stoneB, [0, 0, s * .3], { seed: 60 + i + s * 9, chips: 1, crack: false });
+    });
+    local2_moss(b, [.2, .9, -.2], [.12, .09], local2_C.lichen2, .04); local2_moss(b, [-.25, .82, .25], [.1, .08], local2_C.lichen, .04);
+    b.B([.47, .5, -.15], [.03, .04, .3], local2_C.ore2, [.3, 0, 0], { emissive: 0x1f4a3e, ei: .5, metal: .3 }); // медная прожилка на боку
+    // хвост-булава
+    b.chain([[0, .5, -.75], [0, .45, -1.0], [0, .32, -1.2]], .16, .1, C.stoneDark);
+    local2_slab(b, [0, .3, -1.28], [.26, .2, .22], local2_C.stoneB, [.3, .4, 0], { seed: 77, chips: 2, crack: false });
+    // голова
+    const hd = local2_grp(b, [0, .54, .86], [.1, 0, 0]);
+    b.B([0, .36, 1.0], [.46, .1, .16], 0x1c1d20);                                 // тёмная пасть
+    local2_in(b, hd, () => {
+      b.B([0, .02, 0], [.62, .42, .38], C.stoneDark, null, { j: .14 });                  // череп
+      b.B([0, .22, .12], [.66, .1, .2], local2_C.stoneB, [-.2, 0, 0], { j: .2 });           // надбровная плита
+      b.B([0, -.06, .18], [.56, .2, .2], C.stone, null, { j: .1 });                   // верхняя челюсть
+      local2_moss(b, [-.12, .26, -.05], [.12, .1], local2_C.lichen, .035);
+      b.K([.1, .27, .05], [.2, 1, .3], .05, .12, local2_C.stoneL, { sides: 4 }); b.K([-.08, .27, .02], [-.2, 1, .2], .04, .09, local2_C.stoneL, { sides: 4 }); // рожки-наросты
+      mir(s => {
+        for (let k = 0; k < 3; k++) b.B([s * (.3 + k * .012), -.14 + k * .07, .12], [.06, .055, .26 - k * .04], k % 2 ? C.stone : local2_C.stoneL, null, { j: .1 }); // жернова-скулы
+        for (let k = 0; k < 3; k++) b.B([s * .2, -.17, .26 - k * .08], [.07, .05, .06], C.bone, null, { j: .15 }); // коренные-тёрки
+      });
+    });
+    b.B([0, .26, 1.0], [.55, .12, .3], C.stone, [-.18, 0, 0], { j: .1 });          // нижняя челюсть
+    b.B([0, .23, .82], [.5, .1, .2], local2_C.stoneB, [-.1, 0, 0], { j: .12 });
+    // ряды зубов
+    b.teeth([0, .39, 1.13], .46, 7, .1, [0, -1, .25], C.bone, .03);
+    b.teeth([0, .4, 1.05], .36, 5, .08, [0, -1, .1], 0xb8af98, .025);
+    b.teeth([0, .3, 1.12], .42, 6, .09, [0, 1, .25], C.bone, .028);
+    b.teeth([0, .3, 1.04], .32, 4, .07, [0, 1, .1], 0xb8af98, .024);
+    b.B([.08, .35, 1.12], [.12, .09, .09], local2_C.stoneL, [.3, .5, .2], { j: .25 });      // недогрызенный камень в пасти
+    mir(s => {
+      b.K([s * .24, .66, 1.0], [s * .3, .3, 1], .07, .2, C.bone);                    // бивни
+      b.S([s * .262, .675, 1.06], [s * .275, .682, 1.08], .062, .062, 0x9b927e, { sides: 6 }); // кольцо на бивне
+      b.E([s * .17, .66, 1.05], .045, 0x2a2d31, null, { detail: 0 });                    // глазницы
+      // лапы: плечевая плита, сустав, когти
+      for (let i = 0; i < 3; i++) {
+        const z = .4 - i * .4;
+        b.chain([[s * .4, .4, z], [s * .62, .25, z + .05], [s * .6, .04, z + .1]], .1, .08, i === 1 ? C.stoneDark : local2_C.stoneB);
+        local2_slab(b, [s * .5, .5, z], [.22, .1, .26], i % 2 ? C.stone : C.stoneDark, [0, 0, s * .5], { seed: 90 + i + s * 5, chips: 1, crack: false });
+        b.E([s * .6, .05, z + .1], [.12, .06, .13], C.stoneDark, null, { detail: 0 });
+        for (let k = -1; k <= 1; k++) b.K([s * (.6 + k * .06), .04, z + .18], [k * .3 * s, -.3, 1], .03, .12, C.claw, { sides: 4 });
+      }
+    });
+    // каменная крошка и пыль под пастью
+    for (let i = 0; i < 6; i++) b.B([(r() - .5) * .7, .03 + r() * .02, 1.2 + r() * .3], [.06 + r() * .07, .05 + r() * .04, .06 + r() * .06], [C.stone, local2_C.stoneL, C.stoneDark][i % 3], [r(), r(), r()], { j: .2 });
+    b.eye([.16, .66, 1.08], .032); b.eye([-.16, .66, 1.08], .032);
+    if (l >= 1) mir(s => b.eye([s * .08, .72, 1.08], .018));
+    b.frost([[[0, .95, -.2], [0, 1, 0]], [[.3, .9, .1], [.5, 1, 0]], [[-.3, .9, -.4], [-.5, 1, 0]], [[0, .9, .4], [0, 1, .3]]]);
+  } });
+
+// ----- Голем (Горы) -----
+def({ id: 'golem', name: 'Голем', group: 'Горы', where: 'Горы', threat: 'Каменный великан, один за ночь. Ломает всё на пути, бить его очень долго. Ведёт за собой громил.', height: 4.2, frostPer: 4, frostSize: .18,
+  build(b, l) {
+    const runeO = { emissive: local2_C.runeE, ei: .7 + l * .4 }, r = rngC(5);
+    // торс
+    b.B([0, 2.6, 0], [1.9, 1.3, 1.1], C.stone, [.1, 0, 0], { j: .12 });
+    mir(s => {
+      local2_slab(b, [s * .48, 2.85, .56], [.82, .6, .2], s > 0 ? C.stoneWarm : local2_C.stoneB, [.1, s * .08, s * .04], { seed: 3 + s, chips: 3 }); // грудные плиты
+      local2_slab(b, [s * .3, 2.2, .54], [.55, .38, .18], s > 0 ? C.stoneDark : C.stone, [.1, 0, 0], { seed: 8 + s, chips: 2 });            // пресс
+      local2_slab(b, [s * .9, 2.55, -.1], [.2, .8, .9], local2_C.stoneB, [0, 0, s * .06], { seed: 12 + s, chips: 2, crack: false });           // бока
+    });
+    // светящиеся руны-трещины: сердце и ветви
+    b.B([0, 2.6, .63], [.22, .34, .04], local2_C.rune, [0, 0, .25], runeO);
+    local2_crack(b, [0, 2.78, .64], [0, 0, 0], .55, .025, local2_C.rune, { ...runeO, branch: true }, 4, 21);
+    local2_crack(b, [.15, 2.55, .63], [0, 0, 1.6], .45, .02, local2_C.rune, runeO, 3, 22);
+    local2_crack(b, [-.15, 2.6, .63], [0, 0, -1.4], .4, .02, local2_C.rune, runeO, 3, 23);
+    { const gs = glowSprite(local2_C.rune, 1.1, .5); gs.position.set(0, 2.6, .7); b.g.add(gs); }
+    // рудные жилы на боку
+    local2_crack(b, [.97, 2.9, .2], [0, 1.57, 0], .7, .03, local2_C.ore, { emissive: 0x6a4410, ei: .3, metal: .4, rough: .5 }, 4, 31);
+    local2_crack(b, [-.97, 2.4, -.1], [0, -1.57, 0], .5, .03, local2_C.ore2, { emissive: 0x1f4a3e, ei: .4 }, 3, 32);
+    // таз с поясом валунов
+    b.B([0, 1.75, 0], [1.3, .7, .9], C.stoneDark, null, { j: .12 });
+    for (let i = 0; i < 5; i++) b.B([(i - 2) * .27, 1.95, .47], [.24, .2, .14], i % 2 ? local2_C.stoneB : C.stoneWarm, [r() * .3, 0, r() * .3], { j: .2 });
+    // спина: мох, лишайник, каменные гребни
+    b.B([0, 3.05, -.3], [1.7, .5, .65], C.moss, [.2, 0, 0], { j: .25 });
+    b.B([.3, 2.5, -.55], [.9, .6, .1], local2_C.mossD, [.1, 0, 0], { j: .3 });
+    for (let i = 0; i < 4; i++) b.K([(i - 1.5) * .4, 2.9 - (i % 2) * .3, -.58], [(i - 1.5) * .2, .5, -1], .14, .35, i % 2 ? C.stoneDark : local2_C.stoneB, { sides: 4 });
+    local2_moss(b, [-.42, 2.4, .62], [.16, .06], local2_C.lichen2, .025, [1.5, 0, 0]);
+    local2_moss(b, [.62, 3.16, .62], [.22, .1], local2_C.lichen, .04);
+    // голова
+    const hd = local2_grp(b, [0, 3.45, .2], [.15, 0, 0]);
+    local2_in(b, hd, () => {
+      b.B([0, 0, 0], [.7, .55, .6], C.stoneWarm, null, { j: .15 });
+      b.B([0, .14, .3], [.78, .14, .16], local2_C.stoneB, [-.15, 0, 0], { j: .2 });       // надбровье
+      b.B([0, -.24, .2], [.56, .16, .3], C.stoneDark, null, { j: .15 });            // челюсть
+      b.B([0, -.07, .31], [.5, .08, .04], local2_C.rune, null, { emissive: local2_C.runeE, ei: .8 + l * .4 }); // светящаяся щель-глаза
+      local2_crack(b, [0, .29, .27], [0, 0, 0], .14, .018, local2_C.rune, runeO, 2, 41);   // руна во лбу
+      mir(s => b.B([s * .37, -.04, .05], [.12, .3, .4], C.stone, null, { j: .2 }));  // скулы
+      b.B([0, .32, -.05], [.66, .14, .55], C.snow, null, { j: .25 });                // снежная шапка
+      local2_icicles(b, [-.25, .23, .25, .23], .3, 4, .12, 44);
+    });
+    { const gs = glowSprite(local2_C.rune, 1.4, .7); gs.position.set(0, 3.38, .6); b.g.add(gs); }
+    b.B([0, 3.3, -.25], [1.6, .25, .7], C.snow, null, { j: .2 });                    // снег на плечах
+    mir(s => {
+      // плечо со снежной шапкой и сосульками
+      local2_slab(b, [s * 1.25, 2.9, 0], [.78, .72, .78], C.stoneDark, [0, 0, s * .05], { seed: 50 + s, chips: 3 });
+      b.B([s * 1.25, 3.3, -.05], [.66, .2, .66], C.snow, null, { j: .2 });
+      b.B([s * 1.3, 3.36, .05], [.36, .12, .36], local2_C.snowB, [0, .5, 0], { j: .25 });
+      local2_icicles(b, [s * 1.0, 3.2, s * 1.5, 3.2], .38, 4, .16, 60 + s);
+      local2_moss(b, [s * 1.62, 2.95, -.1], [.08, .2], C.moss, .06, [0, 0, s * 1.4]);
+      // рука: плечевой сегмент, локоть, предплечье
+      b.B([s * 1.35, 2.1, .2], [.55, .9, .55], C.stone, [.25, 0, s * .1], { j: .15 });
+      b.B([s * 1.38, 1.64, .33], [.5, .32, .5], local2_C.stoneB, [.2, .4, 0], { j: .25 });
+      local2_slab(b, [s * 1.4, 1.2, .45], [.6, .85, .6], C.stoneWarm, [.1, 0, 0], { seed: 70 + s, chips: 2 });
+      local2_crack(b, [s * 1.4, 1.42, .76], [.1, 0, 0], .4, .02, local2_C.rune, runeO, 3, 80 + s);
+      // кисть: ладонь, четыре пальца, большой палец, костяшки
+      b.B([s * 1.4, .75, .48], [.5, .3, .5], C.stoneDark, null, { j: .14 });               // запястье
+      b.B([s * 1.42, .5, .58], [.82, .36, .7], C.stone, [.15, 0, 0], { j: .12 });          // ладонь
+      for (let k = 0; k < 4; k++) {
+        const fx = s * (1.1 + k * .2), sp = (k - 1.5) * .12 * s, col = k % 2 ? C.stoneWarm : local2_C.stoneB;
+        b.B([fx, .62, .86], [.16, .12, .14], local2_C.stoneL, [.3, 0, 0], { j: .2 });          // костяшка
+        b.B([fx + sp * .3, .38, .96], [.15, .26, .16], col, [.55, 0, sp], { j: .15 });
+        b.B([fx + sp * .6, .12, 1.06], [.14, .2, .15], C.stoneDark, [.25, 0, sp], { j: .15 });
+      }
+      b.B([s * .98, .42, .74], [.16, .24, .16], C.stone, [.3, 0, s * -.6], { j: .15 });   // большой палец
+      b.B([s * .88, .2, .82], [.14, .2, .14], C.stoneDark, [.2, 0, s * -.3], { j: .15 });
+      // нога: бедро, колено, голень, стопа с пальцами
+      b.B([s * .45, 1.08, -.05], [.6, .7, .62], C.stone, null, { j: .15 });
+      b.E([s * .47, .74, .16], [.24, .2, .14], local2_C.stoneB, null, { detail: 0, j: .2 });
+      local2_slab(b, [s * .45, .43, 0], [.55, .55, .55], C.stoneWarm, null, { seed: 90 + s, chips: 1 });
+      b.B([s * .45, .12, .1], [.72, .24, .86], C.stoneDark, null, { j: .15 });
+      for (let k = -1; k <= 1; k++) b.B([s * .45 + k * .22, .09, .6], [.18, .16, .18], k ? local2_C.stoneB : C.stone, [0, k * .2, 0], { j: .2 });
+      local2_crack(b, [s * .45, 1.25, .26], null, .35, .02, local2_C.rune, runeO, 2, 95 + s);
+    });
+    b.frost([[[0, 3.75, .1], [0, 1, 0]], [[.6, 3.4, -.3], [.4, 1, -.3]], [[-.6, 3.4, -.3], [-.4, 1, -.3]], [[1.3, 3.3, 0], [.5, 1, 0]], [[-1.3, 3.3, 0], [-.5, 1, 0]]]);
+  } });
+
+// ----- Лавинник (Горы) -----
+def({ id: 'avalanche', name: 'Лавинник', group: 'Горы', where: 'Горы, Карниз', threat: 'Снежный зверь на склонах. Бьёт по уступам и опорам, и блоки без опоры сыплются вниз вместе с постройками.', height: 1.5, frostPer: 4, frostSize: .1,
+  build(b, l) {
+    const furA = 0xe9f0f4, furB = 0xcfd9df, furC = 0xb9c6ce, r = rngC(51);
+    b.E([0, .8, 0], [.45, .45, .7], C.snow, [.1, 0, 0]);
+    b.E([0, .7, .05], [.4, .35, .6], furB);
+    b.E([0, .95, .38], [.4, .32, .3], furA);                                      // загривок-горб
+    b.E([0, 1.12, -.05], [.3, .08, .5], 0xf4f8fa, null, { detail: 0, j: .3 });    // снежная корка на спине
+    // шерсть: клочья на боках, гриве и брюхе
+    for (let i = 0; i < 16; i++) {
+      const a = (i % 8) / 8 * Math.PI - Math.PI / 2, s = i < 8 ? 1 : -1, z = -.45 + (i % 8) * .13;
+      b.K([s * (.38 + Math.cos(a) * .02), .78 - r() * .2, z], [s * .5, -1, -.3], .07, .15 + r() * .08, i % 3 ? furB : furA, { sides: 3 });
+    }
+    for (let i = 0; i < 7; i++) b.K([(i - 3) * .07, .62 + r() * .06, .62 - Math.abs(i - 3) * .03], [(i - 3) * .1, -1, .2], .06, .22 + r() * .12, i % 2 ? furA : furB, { sides: 3 }); // грудная грива
+    for (let i = 0; i < 6; i++) b.K([(r() - .5) * .5, .4, -.4 + i * .16], [0, -1, 0], .05, .12 + r() * .08, furC, { sides: 3 });     // брюхо
+    // голова
+    b.E([0, 1.0, .7], [.25, .22, .28], C.snow);
+    b.E([0, .9, .9], [.14, .1, .13], 0x7d8a92);                                    // морда
+    b.E([0, .82, .86], [.11, .05, .1], 0x6b767d, null, { detail: 0 });             // нижняя челюсть
+    mir(s => b.E([s * .045, .92, 1.02], .02, 0x2a2f33, null, { detail: 0 }));    // ноздри
+    b.B([0, 1.12, .84], [.26, .08, .14], local2_C.snowB, [-.4, 0, 0], { j: .15 });       // надбровье
+    b.B([0, 1.16, .74], [.22, .1, .18], 0x9aa3a8, [-.5, 0, 0], { j: .2 });         // лобная таранная плита
+    for (let i = 0; i < 4; i++) b.K([(i - 1.5) * .05, .8, .9], [(i - 1.5) * .2, -1, .2], .025, .12 + (i % 2) * .05, furA, { sides: 3 }); // бородка
+    mir(s => {
+      // рога с кольцами, закрученные назад
+      const hp = [[s * .12, 1.12, .7], [s * .24, 1.27, .64], [s * .38, 1.32, .52], [s * .47, 1.22, .4], [s * .47, 1.07, .44]];
+      b.chain(hp, .075, .035, C.bone);
+      for (let k = 1; k < 3; k++) b.S(hp[k], [hp[k][0] + (hp[k + 1][0] - hp[k][0]) * .12, hp[k][1] + (hp[k + 1][1] - hp[k][1]) * .12, hp[k][2] + (hp[k + 1][2] - hp[k][2]) * .12], .075 - k * .01, .075 - k * .01, 0xa89f88, { sides: 6 });
+      b.K(hp[4], [s * .1, -.4, 1], .032, .1, C.bone, { sides: 4 });
+      b.K([s * .2, 1.06, .62], [s * 1, .3, -.4], .05, .14, furB, { sides: 3 });     // ухо
+      // ноги: шерстяные манжеты, раздвоенные копыта, шпоры
+      for (const [z0, z1, z2] of [[.45, .55, .6], [-.45, -.55, -.5]]) {
+        b.chain([[s * .35, .7, z0], [s * .4, .35, z1], [s * .38, .06, z2]], .12, .09, furB);
+        for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; b.K([s * .38 + Math.cos(a) * .08, .24, z2 + Math.sin(a) * .08], [Math.cos(a) * .4, -1, Math.sin(a) * .4], .045, .14, k % 2 ? furA : furC, { sides: 3 }); }
+        mir(t => b.B([s * .38 + t * .055, .04, z2 + .05], [.09, .08, .18], 0x4f5459, [0, t * .1, 0], { j: .15 }));
+        b.K([s * .38, .12, z2 - .09], [0, -.5, -1], .025, .07, 0x4f5459, { sides: 3 });
+      }
+      // ледяные наросты на плечах
+      b.B([s * .34, 1.05, .35], [.12, .12, .12], local2_C.ice, [.5, .3, .2], { emissive: 0x2d4c66, ei: .3, j: .2 });
+    });
+    // хвост-клок
+    for (let i = 0; i < 3; i++) b.K([(i - 1) * .05, .85, -.66], [(i - 1) * .3, .2, -1], .06, .22, i % 2 ? furB : furA, { sides: 3 });
+    // сосульки-шерсть по хребту
+    for (let i = 0; i < 10; i++) b.K([(r() - .5) * .5, 1.12 + r() * .08, -.5 + r() * .9], [(r() - .5), 1, -.3], .06, .2 + r() * .15, i % 3 ? 0xe9f2f7 : local2_C.ice, { sides: 3 });
+    // сосульки под брюхом и подбородком
+    local2_icicles(b, [-.2, .38, .2, .38], -.2, 4, .14, 57);
+    local2_icicles(b, [-.06, .78, .06, .78], .88, 2, .08, 58);
+    b.eye([.08, 1.05, .93], .025); b.eye([-.08, 1.05, .93], .025);
+    b.frost([[[0, 1.2, 0], [0, 1, 0]], [[0, 1.15, -.4], [0, 1, -.4]], [[.25, 1.1, .2], [.5, 1, 0]], [[-.25, 1.1, .2], [-.5, 1, 0]]]);
+  } });
+
+// ----- Фонарщик (Мёртвый город) -----
+def({ id: 'lamplighter', name: 'Фонарщик', group: 'Мёртвый город', where: 'Мёртвый город', threat: 'Призрак жителя с ложным огоньком. Сманивает рабочих в туман: они идут на его свет, как на костёр.', height: 2.2, frostPer: 2, frostSize: .06, float: .08,
+  build(b, l) {
+    const ghost = { opacity: .6, emissive: 0x5f8f86, ei: .35 + l * .15 };
+    const ghostD = { opacity: .7, emissive: 0x3f6a66, ei: .3 + l * .1 };
+    const coatD = 0x8fa6a8, dark = 0x3a3630, r = rngC(33);
+    const cr = (y) => .38 * (1 - (y - .1) / 1.55);                                   // радиус плаща на высоте y
+    b.K([0, .1, 0], [0, 1, 0], .38, 1.55, C.pale, { ...ghost, sides: 7 });        // плащ
+    // рваный подол
+    for (let i = 0; i < 11; i++) { const a = i / 11 * Math.PI * 2 + .2; b.K([Math.sin(a) * .34, .2, Math.cos(a) * .34], [Math.sin(a) * .25, -1, Math.cos(a) * .25], .07, .16 + r() * .14, i % 2 ? C.pale : coatD, { ...ghost, sides: 3 }); }
+    // фалды сюртука сзади
+    mir(s => {
+      b.B([s * .1, .55, -.25], [.17, .7, .04], coatD, [-.22, s * .2, 0], ghostD);
+      b.K([s * .1, .22, -.18], [0, -1, -.1], .06, .14, coatD, { ...ghostD, sides: 3 });
+    });
+    // пояс, лацканы, пуговицы
+    b.S([0, .98, 0], [0, 1.05, 0], cr(1.0) + .015, cr(1.05) + .015, 0x6f8584, { ...ghostD, sides: 7 });
+    b.B([0, 1.015, cr(1.02) + .01], [.06, .05, .02], C.gold, null, { metal: .5, rough: .5 });
+    mir(s => b.B([s * .06, 1.22, cr(1.22) + .005], [.05, .24, .02], coatD, [.2, 0, s * -.35], ghostD));
+    for (let i = 0; i < 4; i++) { const y = .85 - i * .14; b.E([.03, y, cr(y) + .005], .017, i === 2 ? 0x6f6450 : C.gold, null, { detail: 0, metal: .4, rough: .5 }); }
+    // голова, лицо
+    b.E([0, 1.62, 0], [.17, .2, .17], C.pale, null, ghost);
+    mir(s => {
+      b.E([s * .06, 1.64, .12], .04, 0x1a2228, null, { detail: 0 });                // впалые глазницы
+      b.K([s * .015, 1.56, .155], [s * 1, -.4, .2], .015, .08, coatD, { ...ghostD, sides: 3 }); // усы-дымка
+      b.K([s * .15, 1.6, .02], [s * .2, -1, 0], .03, .12, coatD, { ...ghostD, sides: 3 });   // бакенбарды
+    });
+    // шарф с концами
+    b.S([0, 1.42, 0], [0, 1.5, 0], .15, .13, 0x7a4a46, { sides: 7, opacity: .85 });
+    b.B([.08, 1.25, .14], [.07, .3, .025], 0x7a4a46, [.15, 0, .25], { opacity: .85 });
+    b.B([.13, 1.3, .1], [.06, .24, .025], 0x6a3c38, [.3, 0, .55], { opacity: .85 });
+    for (let k = 0; k < 3; k++) b.K([.04 + k * .03, 1.1 - k * .015, .17], [k * .2, -1, 0], .012, .05, 0x7a4a46, { sides: 3, opacity: .85 }); // бахрома
+    // шляпа: поля, тулья, лента, пряжка
+    const hat = local2_grp(b, [0, 1.8, 0], [.06, 0, -.07]);
+    local2_in(b, hat, () => {
+      b.S([0, 0, 0], [0, .03, 0], .32, .32, dark, { sides: 8 });
+      b.S([0, .03, 0], [0, .25, 0], .16, .14, dark, { sides: 7 });
+      b.S([0, .03, 0], [0, .08, 0], .165, .162, 0x5a4a3a, { sides: 7 });
+      b.B([.02, .055, .16], [.05, .04, .02], C.gold, null, { metal: .5 });
+      b.S([0, .25, 0], [0, .26, 0], .135, .12, 0x2a2622, { sides: 7 });            // вмятина
+    });
+    // руки: рукава с манжетами, ладони
+    b.E([0, 1.3, .05], [.26, .12, .2], C.pale, null, ghost);
+    mir(s => {
+      b.chain([[s * .2, 1.35, .05], [s * .32, 1.05, .2], [s * .28, .87, .33]], .055, .04, C.pale, ghost);
+      b.S([s * .29, .92, .3], [s * .28, .87, .33], .055, .06, coatD, { ...ghostD, sides: 6 });
+      b.E([s * .27, .83, .36], [.045, .055, .04], 0xd6e2e0, null, ghost);
+    });
+    // лестница за спиной
+    { const lg = local2_grp(b, [-.02, .9, -.3], [-.15, 0, .3]);
+      local2_in(b, lg, () => {
+        mir(s => b.S([s * .11, -.45, 0], [s * .11, .95, 0], .018, .018, 0x4a4036, { sides: 4 }));
+        for (let i = 0; i < 6; i++) b.S([-.11, -.35 + i * .24, 0], [.11, -.35 + i * .24, 0], .012, .012, 0x5a4e40, { sides: 4 });
+      });
+      b.S([-.2, 1.38, -.05], [-.05, .75, -.32], .01, .01, 0x4a3324, { sides: 3 });  // ремень
+    }
+    // шест с крюком
+    b.S([.28, .85, .35], [.35, 2.2, .45], .022, .02, dark);
+    b.S([.29, 1.0, .36], [.3, 1.05, .37], .03, .03, C.gold, { sides: 6, metal: .5 });
+    b.chain([[.35, 2.2, .45], [.45, 2.28, .47], [.57, 2.27, .5], [.62, 2.2, .5]], .016, .014, dark, { noJoints: true });
+    for (let i = 0; i < 2; i++) b.S([.62, 2.2 - i * .035, .5], [.62, 2.17 - i * .035, .5], .012, .012, 0x2a2620, { sides: 4 }); // цепочка
+    // фонарь-клетка
+    const lan = local2_grp(b, [.62, 1.98, .5], [0, .3, 0]);
+    local2_in(b, lan, () => {
+      b.B([0, 0, 0], [.12, .17, .12], 0x9fe0c0, null, { emissive: 0x7fffc0, ei: 1.2 + l * .3, opacity: .85 }); // ложный огонёк
+      b.B([0, -.11, 0], [.17, .04, .17], 0x2a2620, null, { metal: .4 });
+      b.K([0, .1, 0], [0, 1, 0], .13, .08, 0x2a2620, { sides: 4, metal: .4 });
+      b.S([0, .14, 0], [0, .155, 0], .03, .03, 0x2a2620, { sides: 6 });
+      for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + Math.PI / 4; b.S([Math.cos(a) * .085, -.09, Math.sin(a) * .085], [Math.cos(a) * .085, .1, Math.sin(a) * .085], .01, .01, 0x2a2620, { sides: 3 }); }
+      b.S([-.087, .03, 0], [.087, .03, 0], .006, .006, 0x2a2620, { sides: 3 }); b.S([0, .03, -.087], [0, .03, .087], .006, .006, 0x2a2620, { sides: 3 });
+      b.K([0, -.13, 0], [0, -1, 0], .03, .05, 0x2a2620, { sides: 4 });
+    });
+    const lamp = new THREE.PointLight(0x9fffd0, 1.2, 4, 2); lamp.position.set(.62, 2.0, .5); b.g.add(lamp);
+    { const gs = glowSprite(0x9fffd0, .9, .9); gs.position.set(.62, 2.0, .5); b.g.add(gs); }
+    b.eye([.06, 1.64, .15], .02); b.eye([-.06, 1.64, .15], .02);
+    b.frost([[[0, 2.05, 0], [0, 1, 0]], [[.2, 1.82, 0], [.6, 1, 0]]]);
+  } });
+
+// ----- Пустые латы (Мёртвый город) -----
+def({ id: 'armor', name: 'Пустые латы', group: 'Мёртвый город', where: 'Мёртвый город, плато', threat: 'Ржавые доспехи стражи, внутри туман. Охраняют руины, бьют рабочих. Пока туман внутри, латы встают снова.', height: 2.1, frostPer: 3, frostSize: .07,
+  build(b, l) {
+    const fogIn = { opacity: .45, emissive: 0x4a6a8a, ei: .5 + l * .2 };
+    const met = { metal: .5, rough: .5 }, r = rngC(77);
+    const rivet = (c) => b.E(c, .014, local2_C.brass, null, { detail: 0, j: 0, metal: .5, rough: .4 });
+    b.E([0, 1.3, 0], [.2, .4, .15], 0x8fa6bd, null, fogIn);                        // туман внутри
+    // кираса: две половины, рёбро, заклёпки, ржавые пятна
+    b.B([0, 1.45, 0], [.55, .5, .32], C.iron, null, { ...met, j: .06 });
+    b.B([0, 1.48, .14], [.07, .44, .08], local2_C.ironL, [.05, .785, 0], met);           // рёбро
+    mir(s => {
+      b.B([s * .15, 1.5, .15], [.2, .36, .05], s > 0 ? local2_C.iron2 : C.iron, [.05, s * .25, 0], met);
+      for (let i = 0; i < 4; i++) rivet([s * .26, 1.29 + i * .11, .165]);
+      b.B([s * .2, 1.3, .171], [.07, .05, .01], C.rust, [0, 0, r()]);
+    });
+    b.B([.1, 1.62, .17], [.1, .08, .01], C.rust, [0, 0, .5]);
+    // ремни крест-накрест сзади и на боках
+    mir(s => b.B([s * .12, 1.45, -.165], [.05, .55, .02], local2_C.leather, [0, 0, s * .5]));
+    b.B([0, 1.45, -.17], [.06, .06, .02], local2_C.brass, null, met);
+    // пояс с пряжкой, юбка из пластин
+    b.B([0, 1.12, 0], [.48, .18, .3], C.rust, null, { j: .06 });
+    b.B([0, 1.21, 0], [.52, .06, .33], local2_C.leather);
+    b.B([0, 1.21, .17], [.08, .07, .02], local2_C.brass, null, met);
+    for (let i = 0; i < 3; i++) b.B([0, 1.08 - i * .07, .01 * i], [.5 + i * .02, .07, .33 + i * .02], i % 2 ? local2_C.iron2 : C.iron, [.08, 0, 0], met); // набедренные лямы
+    // кольчужная юбка (ряды колец)
+    b.S([0, .95, 0], [0, .72, 0], .26, .29, local2_C.chain, { sides: 8, ...met });
+    for (let row = 0; row < 3; row++) for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + row * .26, y = .92 - row * .08, rr = .27 + row * .01; b.B([Math.sin(a) * rr, y, Math.cos(a) * rr], [.05, .025, .02], row % 2 ? 0x777c80 : 0x52575b, [0, a, 0], met); }
+    // рваный табард с эмблемой
+    b.B([0, 1.2, .2], [.3, .45, .02], 0x5a2f2a, [-.05, 0, 0]);
+    b.B([0, .85, .3], [.28, .3, .02], 0x5a2f2a, [-.25, 0, 0]);
+    for (let i = 0; i < 5; i++) b.K([(i - 2) * .06, .72, .33], [(r() - .5) * .3, -1, .3], .035, .07 + r() * .1, i % 2 ? 0x5a2f2a : 0x4a2622, { sides: 3 }); // рваный край
+    b.B([0, 1.05, .225], [.13, .16, .01], C.gold, [-.05, 0, .785], { metal: .3 });   // эмблема-ромб
+    b.K([0, 1.0, .232], [0, 1, 0], .035, .12, 0x7a5a30, { sides: 3 });               // факел на эмблеме
+    b.B([.09, 1.3, .21], [.05, .14, .015], 0x2a1a18, [0, 0, .3]);                   // прореха
+    // шлем: колпак, забрало с прутьями, гребень, заклёпки
+    b.B([0, 1.9, 0], [.28, .32, .3], C.iron, null, { ...met, j: .06 });
+    b.B([0, 2.05, 0], [.3, .06, .32], local2_C.iron2, null, met);
+    b.B([0, 1.86, .15], [.27, .16, .03], local2_C.ironL, [.05, 0, 0], met);               // забрало
+    b.B([0, 1.9, .165], [.2, .04, .01], 0x05070a);                                  // смотровая щель
+    for (let i = 0; i < 5; i++) b.B([(i - 2) * .045, 1.86, .172], [.012, .15, .012], local2_C.iron2, null, met); // прутья
+    b.B([0, 2.11, 0], [.03, .07, .3], C.rust);                                      // гребень
+    b.K([0, 2.06, 0], [0, 1, 0], .06, .22, C.rust);
+    mir(s => { rivet([s * .145, 1.9, .1]); rivet([s * .145, 1.9, -.08]); });
+    b.S([0, 1.68, 0], [0, 1.75, 0], .11, .12, local2_C.chain, { sides: 7, ...met });       // бармица
+    b.E([0, 1.76, 0], .08, 0x8fa6bd, null, fogIn);                                     // туман из ворота
+    mir(s => {
+      // наплечники из трёх лам
+      b.E([s * .36, 1.65, 0], [.17, .11, .17], C.iron, null, { ...met, detail: 0 });
+      for (let i = 0; i < 2; i++) b.B([s * (.43 + i * .02), 1.57 - i * .06, 0], [.14, .04, .26 - i * .04], i ? local2_C.iron2 : local2_C.ironL, [0, 0, s * -.7], met);
+      rivet([s * .38, 1.74, .13]);
+      // рука: плечо, налокотник, наруч
+      b.B([s * .4, 1.3, .05], [.14, .32, .14], C.rust, [0, 0, s * .1]);
+      b.E([s * .42, 1.12, .07], [.09, .08, .09], local2_C.ironL, null, { ...met, detail: 0 });
+      b.K([s * .42, 1.12, .0], [0, 0, -1], .04, .08, local2_C.iron2, { sides: 4, ...met });
+      b.B([s * .44, .95, .15], [.13, .3, .13], C.iron, [.4, 0, 0], met);
+      b.S([s * .44, .9, .2], [s * .44, .87, .23], .085, .085, local2_C.leather, { sides: 4 });
+      b.E([s * .3, .85, 0], .08, 0x8fa6bd, null, fogIn);                            // туман из сочленений
+      // ноги: набедренник, наколенник, поножи, сапог-сабатон
+      b.B([s * .16, .62, 0], [.16, .45, .17], C.iron, null, met);
+      b.E([s * .16, .45, .09], [.1, .08, .06], local2_C.ironL, null, { ...met, detail: 0 });
+      b.K([s * .16, .45, .12], [0, -.3, 1], .035, .06, local2_C.iron2, { sides: 4, ...met });
+      b.B([s * .16, .2, .02], [.17, .4, .18], C.rust);
+      b.B([s * .16, .27, .1], [.12, .1, .03], C.iron, null, met);
+      b.B([s * .16, .1, .02], [.18, .04, .19], local2_C.leather);
+      for (let i = 0; i < 3; i++) b.B([s * .16, .035, .0 + i * .07], [.18 - i * .01, .06, .1], i % 2 ? local2_C.iron2 : C.iron, [.1 * i, 0, 0], met);
+    });
+    // правая латная рукавица на рукояти обломанного меча
+    b.B([.44, .82, .3], [.12, .1, .11], local2_C.iron2, null, met);
+    for (let k = 0; k < 4; k++) b.B([.39 + k * .033, .8, .37], [.028, .07, .035], k % 2 ? C.iron : local2_C.ironL, [.6, 0, 0], met);
+    b.B([.385, .84, .32], [.04, .04, .07], C.iron, [0, 0, .5], met);                 // большой палец
+    b.S([.44, .7, .33], [.44, .95, .38], .022, .022, local2_C.leather, { sides: 5 });     // рукоять
+    b.E([.44, .68, .33], .035, local2_C.brass, null, { detail: 0, metal: .5 });           // навершие
+    b.B([.44, .95, .38], [.3, .04, .06], C.rust);                                   // гарда
+    b.S([.44, .97, .38], [.44, 1.5, .48], .04, .032, local2_C.ironL, { metal: .6, sides: 4 }); // клинок
+    b.K([.44, 1.5, .48], [.3, 1, .2], .03, .1, local2_C.ironL, { metal: .6, sides: 3 });  // зубчатый слом
+    b.K([.45, 1.47, .47], [-.4, 1, 0], .02, .07, local2_C.ironL, { metal: .6, sides: 3 });
+    // левая рука: щит с эмблемой и вмятинами
+    const sh = local2_grp(b, [-.58, 1.0, .16], [0, .55, -.08]);
+    local2_in(b, sh, () => {
+      b.B([0, .06, 0], [.06, .44, .42], 0x4a3a2c, null, { j: .05 });                 // деревянная основа
+      b.B([0, -.16, 0], [.06, .3, .3], 0x4a3a2c, [.785, 0, 0]);                       // нижний клин
+      b.B([-.035, .07, 0], [.02, .38, .36], 0x5a2f2a);
+      b.B([-.035, -.12, 0], [.02, .22, .22], 0x5a2f2a, [.785, 0, 0]);
+      b.B([-.048, .02, 0], [.01, .14, .14], C.gold, [.785, 0, 0], { metal: .3 });   // эмблема
+      b.B([-.035, .29, 0], [.03, .05, .44], C.iron, null, met);                      // окантовка
+      b.E([-.05, .02, 0], .045, local2_C.brass, null, { detail: 0, metal: .5 });     // умбон
+      for (let i = 0; i < 4; i++) b.E([-.045, .2, -.15 + i * .1], .013, local2_C.brass, null, { detail: 0, j: 0, metal: .5 });
+      b.B([-.045, -.02, .14], [.012, .14, .05], 0x2a1a18, [.5, 0, 0]);              // скол
+    });
+    b.B([-.5, .93, .1], [.11, .1, .1], local2_C.iron2, null, met);                         // левая рукавица
+    b.eye([.06, 1.9, .17], .02); b.eye([-.06, 1.9, .17], .02);
+    b.frost([[[0, 2.06, -.1], [0, 1, -.3]], [[.36, 1.75, 0], [.6, 1, 0]], [[-.36, 1.75, 0], [-.6, 1, 0]]]);
+  } });
+
+// ===== local3: детализированные модели (Топи, Кедровое плато, финал) =====
+const L3_CRACK = 0x7fc3ff;
+const local3_lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+// цепь из звеньев-торов вдоль ломаной
+function local3_links(b, pts, step, r, color, o = {}) {
+  let idx = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const A = V3(pts[i]), Bv = V3(pts[i + 1]), len = A.distanceTo(Bv), d = Bv.clone().sub(A).normalize(), n = Math.max(1, Math.round(len / step));
+    for (let k = 0; k < n; k++) {
+      const m = new THREE.Mesh(new THREE.TorusGeometry(r, r * .32, 4, 6), M(color, o));
+      m.scale.set(1.45, 1, 1); m.position.copy(A).addScaledVector(d, len * (k + .5) / n);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), d);
+      if (idx++ % 2) m.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(d, Math.PI / 2));
+      b.add(m, o.parent);
+    }
+  }
+}
+// строит детали в локальных координатах и переносит их в группу grp (без parent в опциях материала)
+function local3_into(b, grp, fn) { const n0 = b.g.children.length; fn(); const moved = b.g.children.slice(n0).filter(c => c !== grp); moved.forEach(c => grp.add(c)); return grp; }
+// плоское кольцо (рябь, ободки)
+function local3_ring(b, c, r, tube, color, rot, o = {}) {
+  const m = new THREE.Mesh(new THREE.TorusGeometry(r, tube, 3, o.seg ?? 10), M(color, o)); m.position.set(...c); if (rot) m.rotation.set(...rot); return b.add(m, o.parent);
+}
+// светящаяся трещина-ломаная
+function local3_crack(b, pts, r, l, o = {}) { for (let i = 0; i < pts.length - 1; i++) b.S(pts[i], pts[i + 1], r, r * .8, 0x9fd8ff, { emissive: L3_CRACK, ei: .6 + l * .4, sides: 4, ...o }); }
+
+// ----- Слизни (Топи) -----
+def({ id: 'slimes', name: 'Слизни', group: 'Топи', where: 'Топи', threat: 'Ползут медленно и оставляют слизь: она гасит огонь и замедляет рабочих. Большой слизень, умирая, делится на мелких.', height: 1.3, frostPer: 2, frostSize: .06,
+  build(b, l) {
+    const sl = { opacity: .72, rough: .25, emissive: 0x2a3a1a, ei: .3 };
+    const sl2 = { opacity: .78, rough: .25, emissive: 0x2a3a1a, ei: .25 };
+    // лужа-подошва и тело
+    b.E([0, .03, 0], [.82, .035, .92], 0x6f8a4a, null, { opacity: .6, rough: .1, detail: 1, j: .2 });
+    b.E([0, .55, 0], [.65, .55, .75], C.slime, null, { ...sl, detail: 2, j: .08 });
+    b.E([.22, .98, -.12], [.22, .16, .24], 0x8aa866, null, { ...sl2, detail: 1, j: .1 });   // наплывы сверху
+    b.E([-.24, .9, .12], [.18, .14, .2], 0x76925a, null, { ...sl2, detail: 1, j: .1 });
+    // --- что внутри ---
+    b.E([.1, .4, .1], [.18, .06, .3], C.bone, [0, .5, .3]);                                   // кость
+    b.E([.1, .4, .4], [.05, .05, .05], C.bone, null, { detail: 0 }); b.E([.1, .4, -.2], [.05, .05, .05], C.bone, null, { detail: 0 });
+    b.S([-.25, .45, -.2], [.15, .6, -.35], .05, .05, C.barkDark);                            // ветка
+    b.S([-.05, .52, -.27], [-.12, .66, -.2], .02, .01, C.barkDark);
+    { // череп
+      const s0 = [.22, .5, .16];
+      b.E(s0, [.13, .12, .14], 0xd8cfb8, [0, -.4, 0]);
+      mir(s => b.E([s0[0] + s * .05, s0[1] + .02, s0[2] + .11], .035, 0x2a2418, null, { detail: 0 }));
+      b.E([s0[0], s0[1] - .04, s0[2] + .13], .02, 0x2a2418, null, { detail: 0 });
+      b.B([s0[0], s0[1] - .1, s0[2] + .06], [.14, .04, .1], C.bone, [0, -.4, 0]);
+      b.teeth([s0[0], s0[1] - .075, s0[2] + .12], .08, 4, .03, [0, -1, 0], 0xe8e0c8, .012);
+    }
+    { // ржавый шлем
+      const h = [-.3, .6, -.08];
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(.19, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), M(C.rust, { metal: .4, rough: .7 }));
+      dome.position.set(...h); dome.rotation.set(-.3, .5, .5); b.add(dome);
+      local3_ring(b, h, .2, .025, 0x5e3a24, [Math.PI / 2 - .3, .5, .5], { metal: .4, seg: 9 });
+      b.B([h[0] - .05, h[1] - .03, h[2] + .14], [.03, .14, .02], 0x6a3f26, [-.3, .5, .5], { metal: .4 });
+      b.E([h[0] - .08, h[1] + .12, h[2] - .05], .04, 0x9a5a30, null, { detail: 0 }); b.E([h[0] + .07, h[1] + .1, h[2] + .02], .03, 0xa4693a, null, { detail: 0 });
+    }
+    // монеты
+    b.S([.35, .74, -.3], [.36, .76, -.29], .07, .07, 0xc9a24a, { metal: .7, rough: .4, sides: 8, emissive: 0x3a2a08, ei: .3 });
+    b.S([.25, .62, -.42], [.24, .64, -.415], .055, .055, 0xb08d4a, { metal: .7, rough: .4, sides: 8 });
+    { // рыбий скелет
+      const f0 = [-.38, .8, .26], f1 = [.0, .86, .34];
+      b.S(f0, f1, .012, .012, C.bone, { sides: 4 });
+      b.K(f1, [1, .15, .2], .045, .1, C.bone, { sides: 4 });
+      for (let i = 1; i < 6; i++) { const p = local3_lerp(f0, f1, i / 6); b.S(p, [p[0] + .02, p[1] + .06, p[2] + .01], .006, .004, C.bone, { sides: 3 }); b.S(p, [p[0] + .02, p[1] - .06, p[2] + .01], .006, .004, C.bone, { sides: 3 }); }
+      b.K(f0, [-1, .5, -.2], .035, .08, C.bone, { sides: 3 }); b.K(f0, [-1, -.5, -.2], .035, .08, C.bone, { sides: 3 });
+    }
+    const r = rngC(61);
+    for (let i = 0; i < 12; i++) b.E([(r() - .5) * .8, .3 + r() * .55, (r() - .5) * .9], .03 + r() * .05, 0xb8d08a, null, { opacity: .6, detail: 0 }); // пузыри
+    if (l >= 1) { b.K([-.05, .35, -.05], [.3, 1, .2], .06, .25, C.frost, { emissive: L3_CRACK, ei: .5 + l * .3, sides: 4 }); } // ледяное ядро
+    // водоросли на макушке
+    b.chain([[-.3, 1.0, -.25], [-.05, 1.1, -.05], [.2, 1.08, .15], [.38, .96, .35]], .018, .01, C.weed, { noJoints: true });
+    b.chain([[.0, 1.09, -.3], [.15, 1.12, -.1], [.32, 1.04, -.02]], .015, .008, 0x6f8a42, { noJoints: true });
+    b.E([-.12, 1.1, -.08], [.07, .015, .04], 0x5d7a36, [0, .6, 0], { detail: 0 });
+    // рот
+    b.E([0, .4, .7], [.27, .075, .06], 0x1c2810, null, { detail: 1 });
+    b.E([0, .33, .71], [.29, .045, .065], 0x6a8448, null, { ...sl2, detail: 0 });
+    b.teeth([0, .465, .73], .38, 6, .055, [0, -1, .1], C.bone, .016);
+    // потёки
+    for (let i = 0; i < 6; i++) {           // потёки-наплывы по поверхности тела
+      const a = i / 6 * 6.28 + .9, c = Math.cos(a), sn = Math.sin(a), y0 = .45 + (i % 2) * .12, y1 = .16 + (i % 3) * .06;
+      const on = (y, d) => { const f = Math.sqrt(Math.max(0, 1 - ((y - .55) / .55) ** 2)); return [(.65 * f + d) * c, y, (.75 * f + d) * sn]; };
+      b.E(on(y0, .0), [.09, .16, .09], C.slime, null, { ...sl, detail: 1, j: .12 });
+      b.E(on(y1, .02), [.07, .08, .07], 0x86a462, null, { ...sl2, detail: 0 });
+    }
+    mir(s => b.E([s * .1, .3, .73], [.035, .06, .035], 0x86a462, null, { ...sl2, detail: 0 }));   // слюна на губе
+    b.E([0, .04, -1.0], [.5, .03, .7], 0x6f8a4a, null, { opacity: .55, rough: .1, detail: 0 });            // след слизи
+    b.E([.2, .04, -1.55], [.18, .025, .2], 0x6f8a4a, null, { opacity: .5, rough: .1, detail: 0 });
+    b.E([-.25, .04, -1.45], [.12, .02, .14], 0x6f8a4a, null, { opacity: .5, rough: .1, detail: 0 });
+    // мелкие слизни
+    const subs = [[1.02, .2, .62], [-1.05, .2, .48], [.72, .2, -.95]];
+    subs.forEach((sub, i) => {
+      b.E([sub[0], .025, sub[2]], [.3, .025, .32], 0x6f8a4a, null, { opacity: .55, rough: .1, detail: 0 });
+      b.E(sub, [.22, .2, .25], [C.slime, 0x8aa866, 0x76925a][i], null, { ...sl, detail: 1 });
+      b.E([sub[0] + .05, .38, sub[2] - .03], .07, 0x8aa866, null, { ...sl2, detail: 0 });
+      b.E([sub[0] - .03, .15, sub[2] - .05], [.05, .04, .05], [C.stoneDark, C.bone, C.rust][i], null, { detail: 0 }); // проглоченное
+      b.E([sub[0], .14, sub[2] + .22], [.07, .025, .025], 0x1c2810, null, { detail: 0 });
+      mir(s => { b.E([sub[0] + s * .05, .3, sub[2] + .19], .03, 0xe8f0c8, null, { detail: 0 }); b.eye([sub[0] + s * .05, .3, sub[2] + .21], .02); });
+      b.S([sub[0] + .2, .2, sub[2] + .05], [sub[0] + .21, .07, sub[2] + .06], .03, .015, 0x86a462, sl2);
+    });
+    // глаза
+    mir(s => b.E([s * .15, .84, .57], [.075, .075, .05], 0xe8f0c8, null, { detail: 0 }));
+    b.eye([.15, .85, .62], .04); b.eye([-.15, .85, .62], .04);
+    if (l >= 1) { b.E([0, .97, .45], [.06, .06, .04], 0xe8f0c8, null, { detail: 0 }); b.eye([0, .98, .49], .035); }
+    if (l >= 2) { b.eye([.32, .72, .55], .025); b.eye([-.34, .7, .54], .025); }
+    b.frost([[[0, 1.08, 0], [0, 1, 0]], [[.3, .95, -.2], [.5, 1, -.2]], [[-.3, .9, .1], [-.5, 1, .1]]]);
+  } });
+
+// ----- Болотный огонёк (Топи) -----
+def({ id: 'willo', name: 'Болотный огонёк', group: 'Топи', where: 'Топи', threat: 'Блуждающий огонёк над трясиной. Притворяется светом: на нём нельзя строить, а рабочие идут к нему и вязнут.', height: 1.8, frostPer: 1, frostSize: .04, float: .15,
+  build(b, l) {
+    const Y = 1.4, fl = (ei, op) => ({ emissive: 0x9fffb0, ei, opacity: op });
+    // слои пламени
+    b.E([0, Y, 0], .26, C.wisp, null, { ...fl(1.1, .45), detail: 1 });
+    b.E([0, Y + .02, 0], .19, 0xd9ffe0, null, { ...fl(1.5, .75), detail: 1 });
+    b.E([0, Y, 0], .11, 0xffffff, null, { emissive: 0xffffff, ei: 2, detail: 0 });
+    b.K([0, Y + .05, 0], [0, 1, 0], .13, .5, 0xd9ffe0, { ...fl(1.4, .6), sides: 5 });
+    for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28 + .3; b.K([Math.cos(a) * .1, Y + .02, Math.sin(a) * .1], [Math.cos(a) * .35, 1, Math.sin(a) * .35], .065, .26 + (i % 3) * .08, C.wisp, { ...fl(1.2, .5), sides: 4 }); }
+    // хвосты-щупальца
+    const r = rngC(71);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28; b.chain([[Math.cos(a) * .12, Y - .1, Math.sin(a) * .12], [Math.cos(a) * .3, 1.0, Math.sin(a) * .3], [Math.cos(a + .5) * .25, .65 + r() * .1, Math.sin(a + .5) * .25]], .03, .005, C.wisp, { emissive: 0x7fdf90, ei: .7, opacity: .6, noJoints: true }); }
+    for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28 + .52; b.chain([[Math.cos(a) * .08, Y - .15, Math.sin(a) * .08], [Math.cos(a) * .18, 1.05, Math.sin(a) * .18], [Math.cos(a - .4) * .12, .78, Math.sin(a - .4) * .12], [Math.cos(a - .8) * .16, .55 + r() * .1, Math.sin(a - .8) * .16]], .018, .004, 0xd9ffe0, { emissive: 0x9fffb0, ei: .9, opacity: .5, noJoints: true }); }
+    // орбиты и искры
+    local3_ring(b, [0, Y, 0], .42, .006, 0xd9ffe0, [1.2, .3, 0], { emissive: 0x9fffb0, ei: 1, opacity: .35, seg: 16 });
+    local3_ring(b, [0, Y, 0], .52, .005, 0xd9ffe0, [1.9, -.4, .3], { emissive: 0x9fffb0, ei: 1, opacity: .3, seg: 16 });
+    const nS = [6, 9, 12][l];
+    for (let i = 0; i < nS; i++) {
+      const a = i / nS * 6.28, rad = .42 + (i % 3) * .06, yy = Y + Math.sin(a * 2 + i) * .22;
+      const m = b.E([Math.cos(a) * rad, yy, Math.sin(a) * rad], .028, 0xeaffef, null, { emissive: 0xbfffd0, ei: 2, detail: 0 });
+      m.userData.bob = { ph: i * 1.3 };
+      const gs = glowSprite(0xa0ffb8, .22 / .028, .7); m.add(gs);
+    }
+    const light = new THREE.PointLight(0xa0ffb8, 1.5, 4.5, 2); light.position.set(0, Y, 0); b.g.add(light);
+    { const gs = glowSprite(0xa0ffb8, 1.6, .9); gs.position.set(0, Y, 0); b.g.add(gs); }
+    // --- трясина ---
+    b.E([0, .015, 0], [1.12, .03, .95], C.mudDark, null, { detail: 1, j: .25 });
+    b.E([0, .03, 0], [.92, .02, .78], 0x24342b, null, { opacity: .85, rough: .05, detail: 1, j: .22 });
+    local3_ring(b, [0, .05, 0], .3, .012, 0x8fdca0, [Math.PI / 2, 0, 0], { emissive: 0x7fdf90, ei: .8, opacity: .35, seg: 12 });  // отражение света
+    local3_ring(b, [0, .05, 0], .55, .01, 0x8fdca0, [Math.PI / 2, 0, 0], { emissive: 0x7fdf90, ei: .6, opacity: .2, seg: 14 });
+    // кочки с травой
+    for (let i = 0; i < 4; i++) {
+      const a = i * 1.7, x = Math.cos(a) * .72, z = Math.sin(a) * .6;
+      b.E([x, .08, z], [.2, .1, .2], i % 2 ? C.moss : 0x6a7d3c, null, { detail: 0 });
+      for (let k = 0; k < 4; k++) { const da = k * 1.6 + i; b.K([x + Math.cos(da) * .06, .12, z + Math.sin(da) * .06], [Math.cos(da) * .35, 1, Math.sin(da) * .35], .025, .3 + (k % 2) * .18, k % 2 ? C.weed : 0x7a8f45, { sides: 3 }); }
+    }
+    // рогоз
+    [[-.55, -.35], [.5, .45], [.85, -.1], [-.2, .62]].forEach(([x, z], i) => {
+      for (let k = 0; k < 2; k++) {
+        const top = [x + (k - .5) * .1 + .04, 1.05 - k * .2 - i * .05, z + (k - .5) * .05];
+        b.S([x + (k - .5) * .04, .03, z], top, .016, .01, 0x6d8a3a, { sides: 4 });
+        b.E([top[0], top[1] - .14, top[2]], [.035, .11, .035], 0x5a3a22, null, { detail: 0 });
+        b.S(top, [top[0], top[1] + .1, top[2]], .006, .003, 0x6d8a3a, { sides: 3 });
+      }
+      b.K([x, .03, z], [.3, 1, -.2], .025, .6, 0x7a8f45, { sides: 3 }); b.K([x, .03, z], [-.35, 1, .15], .022, .5, C.weed, { sides: 3 });
+    });
+    // кувшинки
+    [[.25, .45, .14], [-.45, .2, .12], [.4, -.4, .1], [-.15, -.5, .08]].forEach(([x, z, rr], i) => {
+      b.S([x, .04, z], [x, .055, z], rr, rr, i % 2 ? 0x5d8a44 : 0x4f7a3a, { sides: 8 });
+      if (i === 0) { for (let k = 0; k < 5; k++) { const a = k / 5 * 6.28; b.K([x + Math.cos(a) * .02, .06, z + Math.sin(a) * .02], [Math.cos(a), 1.2, Math.sin(a)], .03, .08, 0xeadfe6, { sides: 3 }); } b.E([x, .08, z], .02, 0xe8c547, null, { detail: 0 }); }
+    });
+    // сухая коряга и пузыри
+    b.chain([[.65, .02, -.45], [.7, .35, -.5], [.88, .55, -.42]], .05, .025, 0x6b6258);
+    b.S([.7, .35, -.5], [.6, .52, -.55], .02, .01, 0x6b6258);
+    b.E([-.6, .04, .1], [.14, .05, .06], C.bone, [0, .5, 0], { detail: 0 });
+    for (let i = 0; i < 6; i++) b.E([(r() - .5) * 1.1, .055, (r() - .5) * .9], .018 + r() * .02, 0x9fb89a, null, { opacity: .6, detail: 0 });
+    b.frost([[[0, Y + .3, 0], [0, 1, 0]], [[.15, Y + .15, .1], [.5, 1, .2]]]);
+  } });
+
+// ----- Кедровый страж (плато) -----
+def({ id: 'cedarguard', name: 'Кедровый страж', group: 'Кедровое плато', where: 'Кедровое плато', threat: 'Днём стоит как старый кедр. Ночью оживает прямо внутри поселения и топчет постройки. Рубить его опасно.', height: 5, frostPer: 4, frostSize: .14,
+  build(b, l) {
+    const barkCols = [C.bark, 0x664633, 0x4c3424, C.barkDark];
+    const rad = (y) => y < 2 ? .5 - .09 * (y - .8) / 1.2 : .41 - .09 * (y - 2) / 1.2;
+    const onT = (a, y, d = 0) => { const R = rad(y) * .93 + d; return [Math.sin(a) * R, y, Math.cos(a) * R]; }; // a=0 — лицевая сторона
+    b.chain([[0, .8, 0], [0, 2.0, .05], [0, 3.2, -.05]], .5, .32, C.bark, { sides: 7 });
+    b.E([0, .9, 0], [.48, .3, .42], C.barkDark, null, { detail: 1 });
+    // пластины коры
+    const r = rngC(81);
+    for (let row = 0; row < 7; row++) {
+      const y = 1.05 + row * .33;
+      for (let k = 0; k < 7; k++) {
+        const a = k / 7 * 6.28 + row * .45 + (r() - .5) * .3;
+        const an = Math.atan2(Math.sin(a), Math.cos(a));
+        if (Math.abs(an) < .75 && y > 1.4 && y < 2.4) continue;   // лицо
+        const p = onT(a, y, .03);
+        b.B(p, [.2 + r() * .08, .26 + r() * .12, .07], barkCols[(row + k) % 4], [0, a, (r() - .5) * .25], { j: .15 });
+      }
+    }
+    // сучки
+    [[1.6, 1.3], [-2.2, 2.6], [2.6, 2.2], [-1.0, 2.9]].forEach(([a, y]) => {
+      const p = onT(a, y, .08); b.E(p, [.12, .1, .12], C.barkDark, [0, a, 0], { detail: 0 });
+      b.E(onT(a, y, .14), [.05, .04, .05], 0x24180f, null, { detail: 0 });
+    });
+    // хвоя: ярусы
+    for (let i = 0; i < 4; i++) {
+      const t = i / 3, y0 = 2.8 + t * 1.3;
+      b.K([0, y0 - .15, -.05], [0, 1, 0], (1.25 - t * .75) * 1.08, .55, 0x2c4a3f, { sides: 7 }).rotateY(.45);
+      b.K([0, y0, -.05], [0, 1, 0], 1.25 - t * .75, 1.0, [C.cedar, 0x3f6355, C.cedar, 0x426a5a][i], { sides: 7 });
+      if (i < 3) for (let k = 0; k < 5; k++) { const a = k / 5 * 6.28 + i; b.E([Math.cos(a) * (1.1 - t * .7), y0 - .08, Math.sin(a) * (1.1 - t * .7) - .05], [.22, .07, .16], 0x3f6355, [0, -a, 0], { detail: 0 }); }
+    }
+    b.K([0, 4.75, -.05], [0, 1, .05], .12, .35, 0x426a5a, { sides: 5 });
+    // ветви с шишками
+    [[-.7, 3.15], [-1.7, 3.45], [-2.6, 3.05], [.4, 3.55], [2.5, 3.7]].forEach(([a, y], i) => {
+      const end = [Math.cos(a) * 1.35, y - .12, Math.sin(a) * 1.35];
+      b.S([Math.cos(a) * .25, y, Math.sin(a) * .25], end, .07, .03, C.bark);
+      b.K([end[0] * .85, end[1] + .05, end[2] * .85], [Math.cos(a), -.35, Math.sin(a)], .24, .5, i % 2 ? C.cedar : 0x426a5a, { sides: 5 });
+      b.K([end[0] * .9, end[1] + .1, end[2] * .9], [Math.cos(a + .5), .1, Math.sin(a + .5)], .16, .35, 0x3f6355, { sides: 5 });
+      for (let k = 0; k < 2; k++) b.E([end[0] + (k - .5) * .14, end[1] - .1, end[2] + (k - .5) * .08], [.045, .08, .045], k ? 0x6e4a2a : 0x7d5632, null, { detail: 0 });
+    });
+    // лицо: брови, глазницы, нос, рот
+    b.E([0, 1.9, .38], [.3, .42, .1], C.barkDark);
+    mir(s => {
+      b.B([s * .13, 2.1, .47], [.2, .065, .09], 0x664633, [0, 0, s * -.3], { j: .2 });
+      b.E([s * .12, 2.0, .44], [.075, .05, .03], 0x120c08, null, { detail: 0 });
+      b.E([s * .2, 1.78, .43], [.07, .06, .04], C.bark, null, { detail: 0 });   // скулы
+    });
+    b.E([0, 1.87, .48], [.045, .1, .05], C.bark, [-.2, 0, 0], { detail: 0 });
+    b.E([0, 1.66, .45], [.15, .065, .05], 0x120c08, null, { detail: 0 });
+    b.teeth([0, 1.71, .48], .2, 5, .05, [0, -1, .1], 0x8a6a4a, .02);
+    b.teeth([0, 1.61, .48], .16, 4, .04, [0, 1, .1], 0x8a6a4a, .018);
+    b.E([0, 1.57, .44], [.17, .04, .06], C.bark, null, { detail: 0 });
+    // моховая борода
+    b.E([0, 1.5, .42], [.16, .07, .06], C.moss, null, { detail: 0 });
+    for (let k = -2; k <= 2; k++) b.S([k * .06, 1.5, .45], [k * .07, 1.2 - Math.abs(k) * .05, .47], .025, .008, k % 2 ? C.moss : 0x6f7f45, { sides: 4 });
+    // руки-ветви
+    mir(s => {
+      const arm = [[s * .35, 2.5, 0], [s * 1.0, 2.6, .3], [s * 1.4, 1.9, .6], [s * 1.45, 1.3, .7]];
+      b.E([s * .38, 2.5, 0], [.22, .2, .22], C.barkDark, null, { detail: 0 });
+      b.chain(arm, .17, .06, C.bark);
+      b.B([s * .7, 2.6, .17], [.22, .08, .14], 0x664633, [0, 0, s * .15], { j: .2 });
+      b.B([s * 1.22, 2.25, .46], [.08, .25, .12], 0x4c3424, [0, 0, s * -.6], { j: .2 });
+      b.K([s * 1.1, 2.55, .3], [s * .5, 1, .2], .35, .6, C.cedar, { sides: 6 });
+      b.K([s * .8, 2.65, .2], [s * .2, 1, -.4], .25, .45, 0x426a5a, { sides: 6 });
+      b.S([s * 1.2, 2.4, .42], [s * 1.6, 2.7, .3], .04, .015, C.bark);                  // сучок-отросток
+      b.K([s * 1.5, 2.66, .33], [s, .2, -.2], .15, .35, 0x3f6355, { sides: 5 });
+      b.E([s * 1.62, 2.6, .32], [.04, .07, .04], 0x6e4a2a, null, { detail: 0 });
+      for (let f = -2; f <= 2; f++) b.chain([[s * 1.45, 1.3, .7], [s * (1.5 + f * .06), 1.12, .78 + f * .04], [s * (1.52 + f * .09), .95, .9 + f * .03]], .035, .012, f % 2 ? C.barkDark : C.root, { noJoints: true });
+      // висячий мох
+      [[s * .95, 2.58, .28, .55], [s * 1.28, 2.2, .5, .45], [s * 1.4, 1.75, .62, .35]].forEach(([x, y, z, len], k) => {
+        b.E([x, y - .05, z], [.1, .06, .1], C.moss, null, { detail: 0 });
+        for (let q = -1; q <= 1; q++) b.S([x + q * .04, y - .06, z + q * .02], [x + q * .06, y - len + Math.abs(q) * .12, z + q * .03], .022, .006, (k + q) % 2 ? 0x6f7f45 : C.moss, { sides: 4 });
+      });
+      // ноги-корни
+      b.chain([[s * .25, .9, 0], [s * .5, .5, .25], [s * .55, .12, .35]], .25, .2, C.bark);
+      b.E([s * .5, .5, .25], [.24, .2, .24], C.barkDark, null, { detail: 0 });
+      b.B([s * .42, .72, .25], [.16, .2, .07], 0x664633, [-.4, s * .4, 0], { j: .2 });
+      b.E([s * .55, .12, .35], [.26, .13, .28], C.root, null, { detail: 0 });
+      for (let k = -2; k <= 2; k++) {
+        const ang = k * .38 + s * .15, dx = Math.sin(ang) * .55, dz = Math.cos(ang) * .55;
+        const x0 = s * .55, z0 = .35;
+        b.chain([[x0 + dx * .3, .12, z0 + dz * .3], [x0 + dx * .65, .14, z0 + dz * .65], [x0 + dx, .02, z0 + dz]], .065, .02, k % 2 ? C.root : 0x7a5638);
+      }
+      b.chain([[s * .55, .1, .3], [s * .62, .1, .05], [s * .7, .02, -.15]], .06, .02, C.root);   // пятка
+      b.E([s * .4, .18, .58], [.08, .05, .08], C.moss, null, { detail: 0 });
+    });
+    b.E([.4, 1.2, .3], [.2, .15, .1], C.moss, null, { detail: 0 }); b.E([-.3, 2.3, .35], [.15, .2, .08], C.moss, null, { detail: 0 });
+    b.E([-.38, 1.0, -.2], [.12, .2, .15], 0x6f7f45, null, { detail: 0 });
+    // холодные трещины
+    local3_crack(b, [onT(-.95, 2.5, .06), onT(-1.05, 2.2, .06), onT(-.9, 1.95, .06), onT(-1.0, 1.6, .06), onT(-.85, 1.3, .06)], .022, l);
+    local3_crack(b, [onT(1.0, 1.35, .06), onT(.92, 1.15, .06), onT(1.05, .95, .06)], .02, l);
+    b.eye([.12, 2.0, .46], .045, { color: 0xffc070, mat: new THREE.MeshBasicMaterial({ color: 0xffd9a0 }) }); b.eye([-.12, 2.0, .46], .045, { color: 0xffc070, mat: new THREE.MeshBasicMaterial({ color: 0xffd9a0 }) });
+    if (l >= 1) b.eye([.25, 2.35, .37], .03, { color: 0xffc070, mat: new THREE.MeshBasicMaterial({ color: 0xffd9a0 }) });
+    if (l >= 2) b.eye([-.27, 1.35, .42], .03, { color: 0xffc070, mat: new THREE.MeshBasicMaterial({ color: 0xffd9a0 }) });
+    b.frost([[[0, 4.4, 0], [0, 1, 0]], [[.6, 3.2, .2], [.6, 1, .2]], [[-.6, 3.2, .2], [-.6, 1, .2]], [[1.3, 2.3, .5], [.5, 1, .3]], [[-1.3, 2.3, .5], [-.5, 1, .3]]]);
+  } });
+
+// ----- Туманная сова (плато) -----
+def({ id: 'owl', name: 'Туманная сова', group: 'Кедровое плато', where: 'Кедровое плато, Горы', threat: 'Кружит над поселением и высматривает слабое место: туда, где она кричит, идут остальные существа.', height: 2.6, frostPer: 2, frostSize: .05,
+  build(b, l) {
+    const y = 1.9, dark = 0x5d6362, light = 0xd7dbd6, mid = 0xb3b9b5;
+    b.E([0, y, 0], [.3, .38, .28], C.owl, [.3, 0, 0]);
+    b.E([0, y - .05, .15], [.22, .28, .12], 0xc9cdc8);
+    // перья груди рядами (шевроны)
+    for (let row = 0; row < 5; row++) {
+      const yy = y + .12 - row * .1, n = row % 2 ? 4 : 5;
+      for (let k = 0; k < n; k++) {
+        const x = (k - (n - 1) / 2) * .085, q = 1 - (x / .22) ** 2 - ((yy - (y - .05)) / .28) ** 2;
+        const z = .15 + .12 * Math.sqrt(Math.max(q, 0)) - .005;
+        b.K([x, yy, z], [0, -1, .35], .04, .085, (row + k) % 2 ? light : mid, { sides: 3 });
+        if (row > 0) b.B([x, yy - .045, z + .02], [.03, .008, .008], dark);
+      }
+    }
+    // спина и бока
+    for (let row = 0; row < 4; row++) for (let k = -2; k <= 2; k++) b.K([k * .1, y + .2 - row * .14, -.2 - row * .03], [k * .1, -1, -.6], .06, .14, (row + k) % 2 ? C.owl : 0x868d8c, { sides: 3 });
+    mir(s => { for (let k = 0; k < 3; k++) b.K([s * .26, y + .1 - k * .14, .05 - k * .03], [s * .4, -1, -.1], .06, .14, k % 2 ? C.owl : mid, { sides: 3 }); });
+    // голова
+    b.E([0, y + .38, .08], [.26, .22, .24], C.owl);
+    b.E([0, y + .52, .02], [.2, .08, .18], 0x868d8c, null, { detail: 0 });
+    // лицевой диск: кольца
+    b.E([0, y + .36, .24], [.24, .19, .04], dark, null, { detail: 1 });
+    b.E([0, y + .36, .26], [.2, .16, .05], light);
+    mir(s => {
+      b.E([s * .085, y + .39, .285], [.075, .075, .025], 0xeef0ea, null, { detail: 1 });
+      local3_ring(b, [s * .085, y + .39, .3], .06, .008, 0x9aa09d, null, { seg: 8 });
+      b.S([s * .02, y + .44, .31], [s * .15, y + .48, .28], .015, .008, dark, { sides: 4 });   // бровь
+      // ушные пучки
+      for (let k = 0; k < 3; k++) b.K([s * (.12 + k * .03), y + .52 - k * .02, .06 - k * .04], [s * (.3 + k * .15), 1, -.1 * k], .045 - k * .008, .18 - k * .03, [C.owl, dark, mid][k], { sides: 3 });
+    });
+    b.K([0, y + .36, .29], [0, -.4, 1], .035, .1, 0x3a3a34, { sides: 4 });
+    b.K([0, y + .32, .3], [0, -1, .3], .022, .06, 0x2a2a26, { sides: 3 });
+    // крылья с рядами перьев
+    mir(s => {
+      const p = b.wing([s * .22, y + .15, 0], s, 1.0, .5, C.owl, { color2: 0x7f8686, amp: .45, feathers: 5 });
+      local3_into(b, p, () => {
+      for (let k = 0; k < 4; k++) b.E([s * (.15 + k * .13), .03, .1 - (k % 2) * .04], [.12, .02, .09], k % 2 ? mid : 0xa6acaa, [0, s * .2, 0], { detail: 0});   // кроющие
+      for (let k = 0; k < 5; k++) b.E([s * (.95 + k * .04), -.005, -.02 - k * .07], [.2, .015, .04], k % 2 ? dark : 0x737a79, [0, s * (-.15 + k * .12), 0], { detail: 0}); // маховые
+      for (let k = 0; k < 3; k++) b.B([s * (.4 + k * .17), .03, -.05], [.035, .008, .32], dark, [0, s * .15, 0]); // полосы
+      b.E([s * .55, .02, .02], [.4, .03, .12], 0xc0c5c1, null, { detail: 0, opacity: .9 });
+      });
+      // лапы с когтями
+      b.E([s * .1, y - .38, .06], [.075, .1, .075], mid, null, { detail: 0 });
+      b.chain([[s * .1, y - .35, .05], [s * .12, y - .55, .15]], .03, .02, 0x8a8a7a);
+      const f = [s * .12, y - .55, .15];
+      for (let k = -1; k <= 1; k++) { const tip = [f[0] + k * .05, f[1] - .04, f[2] + .1]; b.S(f, tip, .015, .012, 0x8a8a7a, { sides: 4 }); b.K(tip, [0, -1, .4], .012, .06, 0x2a2a26, { sides: 3 }); }
+      b.S(f, [f[0], f[1] - .02, f[2] - .07], .014, .01, 0x8a8a7a, { sides: 4 }); b.K([f[0], f[1] - .02, f[2] - .07], [0, -1, -.3], .011, .05, 0x2a2a26, { sides: 3 });
+    });
+    // хвост веером
+    for (let k = -2; k <= 2; k++) {
+      const a = k * .22;
+      b.E([Math.sin(a) * .2, y - .38, -.38 - Math.cos(a) * .05], [.06, .02, .2], k % 2 ? C.owl : 0x868d8c, [-.6, a, 0], { detail: 0 });
+      b.B([Math.sin(a) * .23, y - .42, -.45], [.07, .008, .02], dark, [-.6, a, 0]);
+    }
+    const eyes = [[.085, y + .39, .3], [-.085, y + .39, .3], [0, y + .49, .28], [.17, y + .48, .24], [-.17, y + .48, .24]];
+    eyes.slice(0, [2, 3, 5][l]).forEach(e => b.eye(e, .035));
+    if (l >= 1) local3_crack(b, [[-.1, y + .02, .27], [-.04, y - .08, .27], [-.08, y - .18, .25]], .01, l);
+    b.g.userData.bobAll = true;
+    b.frost([[[0, y + .6, 0], [0, 1, 0]], [[.15, y + .55, -.1], [.4, 1, -.2]], [[-.15, y + .55, -.1], [-.4, 1, -.2]]]);
+  } });
+
+// ----- Хранитель маяка (финал) -----
+def({ id: 'keeper', name: 'Хранитель маяка', group: 'Скала маяка', where: 'Скала маяка, финальная ночь', threat: 'Огромный, сотканный из тумана страж погасшего маяка. В финальную ночь ведёт древних из всех логов. Гасит огни взмахом цепи.', height: 6, frostPer: 5, frostSize: .2, float: .1,
+  build(b, l) {
+    const robe = [0x151a22, C.fogDark, 0x252d39, 0x10141a];
+    const R = (y) => 1.3 * (1 - (y - .2) / 4.4);
+    const iron = { metal: .6, rough: .6 };
+    for (let i = 0; i < 4; i++) b.K([0, .2 + i * .1, 0], [0, 1, 0], 1.3 - i * .2, 4.4 - i * .2, i % 2 ? C.fogDark : 0x151a22, { sides: 8 });
+    // рваные слои плаща
+    const tiers = [[.95, 16, .75], [1.7, 12, .7], [2.4, 10, .6]];
+    tiers.forEach(([yy, n, h], ti) => { for (let i = 0; i < n; i++) { const a = i / n * 6.28 + ti * .3, rr = R(yy) * .97; b.K([Math.cos(a) * rr, yy, Math.sin(a) * rr], [Math.cos(a) * .25, -1, Math.sin(a) * .25], .17, h + (i % 3) * .15, robe[(i + ti) % 4], { sides: 3 }); } });
+    // плащ с плеч
+    for (let i = 0; i < 9; i++) { const a = Math.PI + (i / 8 - .5) * 2.6; b.K([Math.sin(a) * .75, 3.5, Math.cos(a) * .5], [Math.sin(a) * .2, -1, Math.cos(a) * .25], .22, 1.6 + (i % 3) * .4, robe[i % 4], { sides: 3 }); }
+    b.K([0, 3.05, 0], [0, 1, 0], .95, .8, 0x1d232c, { sides: 9 });
+    b.E([0, 3.6, .1], [.9, .35, .55], C.fogDark, null, { detail: 0 });
+    // грудь: провал, рёбра, холодное сердце
+    b.E([0, 2.8, .38], [.28, .45, .14], 0x05070a, null, { detail: 1 });
+    { const c = b.E([0, 2.78, .45], .09, 0xbfe6ff, null, { emissive: L3_CRACK, ei: 1 + l * .5, detail: 0 }); const gs = glowSprite(0x7fc3ff, .9 / .09, .6); c.add(gs); }
+    b.S([0, 3.28, R(3.28) + .03], [0, 2.4, R(2.4) + .02], .045, .035, 0x8d99a8, { sides: 4 });
+    [3.15, 2.95, 2.75, 2.55].forEach(y0 => mir(s => {
+      const pts = []; for (let k = 0; k <= 4; k++) { const th = .1 + k * .3, y = y0 - k * .07, rr = R(y) + .035; pts.push([s * Math.sin(th) * rr, y, Math.cos(th) * rr]); }
+      b.chain(pts, .035, .018, 0x8d99a8, { noJoints: true, emissive: 0x2a3a4a, ei: .4 });
+    }));
+    // цепи, обвивающие тело
+    { const pts = []; for (let i = 0; i <= 24; i++) { const a = i / 24 * 6.28, y = 1.95 + Math.sin(a + 1) * .35, rr = R(y) + .06; pts.push([Math.cos(a) * rr, y, Math.sin(a) * rr]); } local3_links(b, pts, .13, .055, C.iron, iron); }
+    { const pts = []; for (let i = 0; i <= 18; i++) { const a = i / 18 * 6.28, y = 1.25 - Math.sin(a) * .2, rr = R(y) + .06; pts.push([Math.cos(a) * rr, y, Math.sin(a) * rr]); } local3_links(b, pts, .13, .05, 0x4a4e52, iron); }
+    // холодные трещины в тумане
+    mir(s => local3_crack(b, [[s * .3, 2.2, R(2.2) - .05], [s * .38, 1.85, R(1.85) - .08], [s * .3, 1.5, R(1.5) - .12], [s * .42, 1.15, R(1.15) - .15]], .025, l));
+    // голова-капюшон
+    b.E([0, 4.5, 0], [.55, .6, .55], 0x151a22); b.E([0, 4.45, .28], [.36, .4, .2], 0x05070a);
+    local3_ring(b, [0, 4.42, .42], .38, .09, 0x1d232c, null, { seg: 9 }).scale.set(1, 1.15, 1);
+    b.K([0, 4.0, -.2], [0, -1, -.5], .3, .8, 0x10141a, { sides: 4 });
+    // корона из разбитого фонаря маяка
+    for (let i = 0; i < 8; i++) {
+      const a0 = i / 8 * 6.28, a1 = (i + 1) / 8 * 6.28;
+      b.S([Math.sin(a0) * .48, 4.85, Math.cos(a0) * .48], [Math.sin(a1) * .48, 4.85, Math.cos(a1) * .48], .03, .03, C.iron, { ...iron, sides: 4 });
+      const ph = [.55, .3, .6, .2, .5, .35, .6, .25][i];
+      b.S([Math.sin(a0) * .48, 4.85, Math.cos(a0) * .48], [Math.sin(a0) * .5, 4.85 + ph, Math.cos(a0) * .5], .022, .018, i % 3 ? C.iron : C.rust, { ...iron, sides: 4 });
+      if (i % 4 !== 3) {
+        const am = (a0 + a1) / 2, hh = [.4, .2, .5, 0, .3, .25, .45, 0][i];
+        b.B([Math.sin(am) * .47, 4.9 + hh / 2, Math.cos(am) * .47], [.32, hh, .025], 0xd8f0ff, [0, am, (i % 2 - .5) * .15], { emissive: 0x6fb0e0, ei: .5 + l * .2, opacity: .55 });
+      }
+    }
+    for (let i = 0; i < 7; i++) { const a = (i / 6 - .5) * 2.2; b.K([Math.sin(a) * .45, 4.95, Math.cos(a) * .1 - .1], [Math.sin(a) * .6, 1, -.1], .08, .7 + (i % 2) * .3, 0xd8f0ff, { emissive: 0x6fb0e0, ei: .6, opacity: .85, sides: 4 }); }
+    for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28 + .3; b.K([Math.sin(a) * .5, 4.88, Math.cos(a) * .5], [Math.sin(a) * .7, 1, Math.cos(a) * .7], .04, .25 + (i % 2) * .15, 0xbfe6ff, { emissive: 0x6fb0e0, ei: .8, opacity: .8, sides: 3 }); }
+    { const lens = b.E([0, 5.15, .42], [.13, .16, .05], 0xd8f0ff, null, { emissive: L3_CRACK, ei: .8 + l * .3, opacity: .8, detail: 0 }); lens.add(glowSprite(0x9fd8ff, 6, .5)); }
+    // плечи и руки
+    mir(s => {
+      b.E([s * .78, 3.55, .1], [.3, .25, .3], 0x1d232c, null, { detail: 0 });
+      b.chain([[s * .8, 3.6, .1], [s * 1.5, 2.8, .5], [s * 1.7, 1.8, .8]], .18, .12, 0x151a22);
+      for (let k = 0; k < 3; k++) b.K([s * (1.15 + k * .15), 3.15 - k * .25, .3 + k * .1], [s * .15, -1, .05], .14, .7 + k * .15, robe[k + 1], { sides: 3 });
+      b.K([s * 1.55, 2.6, .55], [s * .1, -1, .2], .12, .6, robe[1], { sides: 3 });
+      b.E([s * 1.72, 1.72, .82], [.15, .13, .14], 0x10141a, null, { detail: 0 });
+      for (let k = -1; k <= 2; k++) b.K([s * (1.72 + k * .05), 1.65, .85 + k * .03], [s * .2, -1, .4], .035, .35, 0x3a4048, { sides: 4 });
+      local3_links(b, [[s * 1.45, 2.95, .45], [s * 1.62, 2.6, .66], [s * 1.6, 2.3, .62], [s * 1.75, 2.1, .76]], .12, .045, 0x4a4e52, iron);
+    });
+    // цепь к фонарю (правая рука) и волочащаяся цепь (левая)
+    local3_links(b, [[1.75, 1.6, .88], [1.95, 1.25, 1.02], [2.12, 1.1, 1.12], [2.24, 1.13, 1.16]], .11, .05, C.iron, iron);
+    local3_links(b, [[-1.75, 1.6, .88], [-1.82, .9, .8], [-1.85, .07, .65], [-1.6, .07, .1], [-1.75, .07, -.5]], .12, .05, C.iron, iron);
+    // фонарь: клетка, стёкла, трещины
+    {
+      const lg = new THREE.Group(); lg.position.set(2.45, .05, 1.15); lg.rotation.set(0, .4, .18); b.g.add(lg);
+      local3_into(b, lg, () => {
+      const ir = { ...iron };
+      b.B([0, .04, 0], [.5, .08, .5], C.iron, null, ir);
+      b.B([0, .72, 0], [.5, .06, .5], C.iron, null, ir);
+      mir(sx => mir(sz => b.S([sx * .22, .06, sz * .22], [sx * .22, .74, sz * .22], .025, .025, sx === sz ? C.rust : C.iron, { ...ir, sides: 4 })));
+      for (let k = 0; k < 3; k++) b.B([0, .2 + k * .2, .235], [.46, .02, .02], C.iron, null, ir); // прутья клетки
+      const glass = { emissive: 0x2a4a6a, ei: .5, opacity: .45, rough: .1 };
+      b.B([0, .39, .21], [.4, .6, .02], 0x9ec4d8, null, glass);
+      b.B([0, .39, -.21], [.4, .6, .02], 0x9ec4d8, null, glass);
+      b.B([.21, .39, 0], [.02, .6, .4], 0x9ec4d8, null, glass);
+      b.B([-.21, .22, 0], [.02, .26, .4], 0x9ec4d8, null, glass);                       // разбитое стекло
+      for (let k = 0; k < 3; k++) b.K([-.21, .35, -.12 + k * .12], [0, 1, 0], .05, .12 + k * .06, 0xbfe0f0, { emissive: 0x2a4a6a, ei: .5, opacity: .6, sides: 3 });
+      [[[-.15, .6], [-.02, .42], [.08, .5]], [[-.02, .42], [.05, .2], [.16, .14]], [[-.02, .42], [-.14, .28]]].forEach(seg => { for (let k = 0; k < seg.length - 1; k++) b.S([seg[k][0], seg[k][1], .225], [seg[k + 1][0], seg[k + 1][1], .225], .007, .007, 0x0e161e, { sides: 3 }); });
+      b.B([0, .14, 0], [.12, .12, .12], 0x8c8a80);                               // огарок
+      b.S([0, .2, 0], [.02, .27, 0], .008, .006, 0x111111, { sides: 3 });
+      { const e = b.E([0, .32, 0], .04, 0xbfe6ff, null, { emissive: L3_CRACK, ei: .6 + l * .4, detail: 0 }); e.add(glowSprite(0x7fc3ff, 14, .35)); }
+      const cap = b.K([0, .75, 0], [0, 1, 0], .36, .32, C.iron, { ...ir, sides: 4 }); cap.rotateY(Math.PI / 4);
+      b.E([0, 1.08, 0], .04, C.iron, null, { ...ir, detail: 0 });
+      local3_ring(b, [0, 1.13, 0], .07, .015, C.rust, null, { ...ir, seg: 6 });
+      });
+    }
+    const eyes = [[.13, 4.5, .45], [-.13, 4.5, .45], [0, 4.62, .44], [.25, 4.38, .4], [-.25, 4.38, .4]];
+    eyes.slice(0, [3, 4, 5][l]).forEach(e => b.eye(e, .06));
+    b.frost([[[0, 3.9, -.3], [0, 1, -.5]], [[.7, 3.8, -.1], [.6, 1, -.3]], [[-.7, 3.8, -.1], [-.6, 1, -.3]]]);
+  } });
+
+// ----- Белый олень (Скрытая долина) -----
+def({ id: 'stag', name: 'Белый олень', group: 'Скрытая долина', where: 'Скрытая долина, только в кровавую луну', threat: 'Редкое существо. Не нападает: проходит сквозь поселение, и туман за ним густеет. Кто его выследит, найдёт редкий чертёж.', height: 2.6, frostPer: 3, frostSize: .07,
+  build(b, l) {
+    const w = { emissive: 0x6f8fa8, ei: .25 + l * .15 };
+    const ice = { emissive: 0x6fb0e0, ei: .7, opacity: .9 }, iceC = 0xd8f0ff;
+    const fur2 = 0xc9d0d2, belly = 0xf1f4f3, hoof = 0x3a3c44;
+    b.E([0, 1.25, 0], [.32, .32, .7], C.deer, null, w);
+    b.E([0, 1.12, .05], [.27, .2, .55], belly, null, w);                       // светлое брюхо
+    b.E([0, 1.33, .38], [.3, .3, .32], C.deer, null, w);                        // грудь
+    b.E([0, 1.3, -.45], [.3, .3, .3], C.deer, null, w);                         // круп
+    b.E([0, 1.28, -.66], [.18, .2, .08], belly, null, w);                       // белое зеркальце
+    b.E([0, 1.4, .55], [.17, .3, .17], C.deer, [.6, 0, 0], w);
+    b.E([0, 1.68, .82], [.13, .13, .25], C.deer, [.2, 0, 0], w);
+    b.E([0, 1.63, .97], [.075, .07, .11], fur2, null, w);                         // морда
+    b.E([0, 1.635, 1.05], [.05, .035, .035], 0x4a525c, null, { detail: 0 });
+    b.B([0, 1.565, 1.0], [.1, .01, .06], 0x5a6470);
+    // пятна шерсти
+    mir(s => { b.E([s * .27, 1.35, -.1], [.08, .16, .3], fur2, null, { ...w, detail: 0 }); b.E([s * .25, 1.42, .3], [.08, .12, .16], fur2, null, { ...w, detail: 0 }); });
+    // хребет: шерстинки
+    for (let i = 0; i < 7; i++) b.K([0, 1.56 - Math.abs(i - 3) * .01, .3 - i * .13], [0, .4, -1], .035, .1, i % 2 ? C.deer : fur2, { ...w, sides: 3 });
+    // ледяная грива по шее и груди
+    for (let i = 0; i < 6; i++) {
+      const t = i / 5, p = local3_lerp([0, 1.58, .4], [0, 1.82, .72], t);
+      b.K(p, [0, 1, -.6], .045, .22 - t * .08, iceC, { ...ice, sides: 4 });
+      mir(s => b.K([s * .07, p[1] - .05, p[2] + .02], [s * .6, .7, -.5], .035, .16 - t * .05, iceC, { ...ice, sides: 3 }));
+    }
+    for (let i = 0; i < 5; i++) { const p = local3_lerp([0, 1.15, .62], [0, 1.45, .72], i / 4); b.K(p, [(i - 2) * .15, -1, .45], .045, .18, i % 2 ? iceC : 0xeaf6ff, { ...ice, sides: 3 }); }
+    // уши
+    mir(s => {
+      b.E([s * .15, 1.84, .74], [.04, .11, .025], C.deer, [0, 0, s * -.9], w);
+      b.E([s * .155, 1.84, .755], [.022, .075, .01], 0xb8a8a8, [0, 0, s * -.9], { detail: 0 });
+    });
+    // ноги: суставы, щётки, копыта
+    mir(s => {
+      b.E([s * .19, 1.12, .42], [.11, .22, .15], C.deer, null, { ...w, detail: 0 });
+      b.chain([[s * .19, 1.0, .42], [s * .2, .55, .48], [s * .19, .12, .46]], .065, .035, C.deer, w);
+      b.E([s * .21, 1.1, -.45], [.13, .26, .2], C.deer, null, { ...w, detail: 0 });
+      b.chain([[s * .2, 1.0, -.45], [s * .22, .6, -.66], [s * .2, .12, -.55]], .075, .035, C.deer, w);
+      [[s * .19, .46], [s * .2, -.55]].forEach(([x, z]) => {
+        b.K([x, .2, z], [0, -1, 0], .055, .1, fur2, { ...w, sides: 5 });                  // щётка
+        b.S([x, 0, z], [x, .11, z], .05, .035, hoof, { sides: 6 });
+        b.B([x, .05, z + .045], [.008, .1, .02], 0x1e2026);
+        b.K([x, .14, z - .05], [0, -.6, -1], .012, .04, hoof, { sides: 3 });             // прибылые пальцы
+        b.E([x, .006, z], [.16, .006, .14], 0xdcecf6, null, { emissive: 0x3d6488, ei: .3, opacity: .7, detail: 0 }); // иней под копытом
+      });
+    });
+    // хвост
+    b.E([0, 1.38, -.72], [.06, .1, .06], belly, [.5, 0, 0], w);
+    b.K([0, 1.35, -.74], [0, -.6, -1], .05, .14, C.deer, { ...w, sides: 4 });
+    // ветвистые рога
+    mir(s => {
+      b.S([s * .06, 1.78, .76], [s * .08, 1.84, .76], .035, .03, 0x9aa8b2, { sides: 5 });
+      const beam = [[s * .08, 1.82, .76], [s * .22, 2.0, .72], [s * .38, 2.25, .6], [s * .48, 2.5, .45], [s * .52, 2.75, .32], [s * .5, 2.95, .2]];
+      b.chain(beam, .032, .014, iceC, ice);
+      b.chain([[s * .16, 1.93, .74], [s * .17, 2.0, .9], [s * .14, 2.1, 1.0]], .018, .008, iceC, { ...ice, noJoints: true });          // надглазничный
+      b.chain([[s * .38, 2.25, .6], [s * .42, 2.45, .75], [s * .4, 2.62, .82]], .02, .008, iceC, { ...ice, noJoints: true });
+      b.chain([[s * .48, 2.5, .45], [s * .55, 2.72, .55], [s * .56, 2.88, .6]], .018, .007, iceC, { ...ice, noJoints: true });
+      b.K([s * .55, 2.72, .55], [s * .5, 1, -.1], .01, .12, iceC, { ...ice, sides: 3 });
+      b.K([s * .3, 2.12, .66], [s * .6, 1, -.6], .014, .22, iceC, { ...ice, sides: 3 });
+      b.K([s * .52, 2.75, .32], [s * .6, 1, 0], .014, .22, iceC, { ...ice, sides: 3 });
+      b.K([s * .5, 2.95, .2], [s * .3, 1, -.3], .012, .16, iceC, { ...ice, sides: 3 });
+      b.K([s * .5, 2.95, .2], [-s * .2, 1, .3], .012, .14, iceC, { ...ice, sides: 3 });
+      b.K([s * .4, 2.62, .82], [0, 1, .3], .008, .08, 0xeffaff, { emissive: L3_CRACK, ei: 1, sides: 3 });
+      // холодные трещины на боках
+      local3_crack(b, [[s * .3, 1.42, .05], [s * .32, 1.3, -.08], [s * .31, 1.2, .02], [s * .3, 1.08, -.1]], .012, l);
+      local3_crack(b, [[s * .3, 1.4, -.35], [s * .3, 1.28, -.45]], .01, l);
+    });
+    b.eye([.09, 1.73, .95], .025, { color: 0xff6b5a, mat: new THREE.MeshBasicMaterial({ color: 0xffb0a0 }) }); b.eye([-.09, 1.73, .95], .025, { color: 0xff6b5a, mat: new THREE.MeshBasicMaterial({ color: 0xffb0a0 }) });
+    b.frost([[[0, 1.6, 0], [0, 1, 0]], [[0, 1.55, -.4], [0, 1, -.3]], [[0, 1.6, .3], [0, 1, .2]]]);
+  } });
+
+
+const GROUPS = [
+  ['base', 'Базовые'], ['Речная пойма', 'Пойма'], ['Старая мельница', 'Мельница'], ['Сосновые холмы', 'Холмы'], ['Брод у заставы', 'Брод'],
+  ['Каменоломня', 'Каменоломня'], ['Горы', 'Горы'], ['Мёртвый город', 'Мёртвый город'], ['Топи', 'Топи'], ['Кедровое плато', 'Плато'], ['final', 'Маяк и секрет'],
+];
+const groupOf = d => (d.group === 'Скала маяка' || d.group === 'Скрытая долина') ? 'final' : d.group;
+const q = new URLSearchParams(location.search);
+const state = { group: q.get('group') || 'base', creature: q.get('creature') || 'all', level: +(q.get('level') || 0), time: q.get('time') || 'night' };
+if (q.get('ui') === '0') document.body.classList.add('noui');
+if (q.get('info') === '0') document.body.classList.add('noinfo');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 400);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * .49; controls.minDistance = 2; controls.maxDistance = 70;
+
+const hemi = new THREE.HemisphereLight(0xc4d0dc, 0x4c5232, 1.1); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff0dc, 2.3); sun.position.set(12, 22, 14); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 20, bottom: -20, far: 80 }); sun.shadow.bias = -.0005; sun.shadow.normalBias = .03; scene.add(sun);
+const fireLight = new THREE.PointLight(0xff9a3c, 0, 14, 1.6); fireLight.castShadow = true; fireLight.shadow.mapSize.set(1024, 1024); scene.add(fireLight);
+
+const gg = new THREE.PlaneGeometry(120, 120, 120, 120); gg.rotateX(-Math.PI / 2);
+const gp = gg.attributes.position, gc = new Float32Array(gp.count * 3);
+const gB = new THREE.Color(0x6f7a3c), gD = new THREE.Color(0x56602f);
+for (let i = 0; i < gp.count; i++) { const x = gp.getX(i), z = gp.getZ(i); const n = Math.sin(x * .7) * Math.cos(z * .6) * .5 + Math.sin(x * .23 + z * .31) * .5; const c = gB.clone().lerp(gD, THREE.MathUtils.clamp(n * .6 + .3, 0, 1)); gc.set([c.r, c.g, c.b], i * 3); }
+gg.setAttribute('color', new THREE.BufferAttribute(gc, 3));
+const ground = new THREE.Mesh(gg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })); ground.receiveShadow = true; scene.add(ground);
+
+const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8d9298, roughness: 1, flatShading: true });
+// Рабочий ростом 1.9 блока — для масштаба
+const refBlock = new THREE.Group(); scene.add(refBlock);
+{
+  const fm = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: .9, flatShading: true });
+  const part = (geo, c, x, y, z, rx = 0, rz = 0) => { const m = new THREE.Mesh(geo, fm(c)); m.position.set(x, y, z); m.rotation.set(rx, 0, rz); m.castShadow = m.receiveShadow = true; refBlock.add(m); return m; };
+  for (const s of [-1, 1]) {
+    part(new THREE.CylinderGeometry(.09, .08, .82, 6), 0x4a3b2c, s * .11, .45, 0);           // ноги
+    part(new THREE.BoxGeometry(.15, .1, .26), 0x2e241b, s * .11, .05, .04);                  // сапоги
+    part(new THREE.CylinderGeometry(.065, .055, .62, 6), 0x8a5a36, s * .29, 1.25, .02, 0, s * .12); // руки
+    part(new THREE.IcosahedronGeometry(.06, 0), 0xd9a882, s * .33, .92, .03);                // кисти
+  }
+  part(new THREE.CylinderGeometry(.2, .25, .7, 7), 0x8a5a36, 0, 1.2, 0);                     // рубаха
+  part(new THREE.CylinderGeometry(.26, .27, .08, 7), 0x3a2a1e, 0, .9, 0);                    // пояс
+  part(new THREE.CylinderGeometry(.08, .09, .1, 6), 0xd9a882, 0, 1.6, 0);                    // шея
+  part(new THREE.IcosahedronGeometry(.15, 1), 0xd9a882, 0, 1.73, .01);                       // голова
+  part(new THREE.CylinderGeometry(.1, .17, .14, 7), 0x6b4a2e, 0, 1.88, 0);                   // шапка
+  part(new THREE.CylinderGeometry(.03, .025, .3, 5), 0x5a3b28, .33, 1.0, .12, .3);           // факел
+  const fl = new THREE.Mesh(new THREE.ConeGeometry(.05, .14, 5), new THREE.MeshBasicMaterial({ color: 0xffb347 })); fl.position.set(.33, 1.2, .17); refBlock.add(fl);
+}
+const fire = new THREE.Group(); scene.add(fire);
+const logMat = new THREE.MeshStandardMaterial({ color: 0x5a3b28, roughness: 1, flatShading: true });
+for (let i = 0; i < 4; i++) { const l = new THREE.Mesh(new THREE.CylinderGeometry(.09, .11, .9, 6), logMat); l.rotation.z = Math.PI / 2 - .35; l.rotation.y = i * Math.PI / 2; l.position.y = .18; l.castShadow = true; fire.add(l); }
+for (let i = 0; i < 8; i++) { const s = new THREE.Mesh(new THREE.DodecahedronGeometry(.14, 0), stoneMat); const a = i / 8 * Math.PI * 2; s.position.set(Math.cos(a) * .55, .08, Math.sin(a) * .55); fire.add(s); }
+const flameMat = new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: .9 }); const flames = [];
+for (let i = 0; i < 3; i++) { const f = new THREE.Mesh(new THREE.ConeGeometry(.22 - i * .05, .7 - i * .12, 5), flameMat); f.position.set((i - 1) * .1, .5, (i % 2) * .08); fire.add(f); flames.push(f); }
+
+const shown = new THREE.Group(); scene.add(shown);
+const labels = document.getElementById('labels'); let labelItems = [];
+let userMoved = false; controls.addEventListener('start', () => { userMoved = true; });
+
+function el(tag, attrs, text) { const e = document.createElement(tag); Object.assign(e, attrs); if (text) e.textContent = text; return e; }
+function buildMenus() {
+  const gEl = document.getElementById('groups'); [...gEl.querySelectorAll('button')].forEach(b => b.remove());
+  GROUPS.forEach(([id, name]) => { const b = el('button', {}, name); b.dataset.v = id; b.classList.toggle('on', state.group === id); b.onclick = () => { state.group = id; state.creature = 'all'; userMoved = false; rebuild(); }; gEl.appendChild(b); });
+  const cEl = document.getElementById('creatures'); [...cEl.querySelectorAll('button')].forEach(b => b.remove());
+  const all = el('button', {}, 'Все'); all.classList.toggle('on', state.creature === 'all'); all.onclick = () => { state.creature = 'all'; userMoved = false; rebuild(); }; cEl.appendChild(all);
+  CREATURES.filter(d => groupOf(d) === state.group).forEach(d => { const b = el('button', {}, d.name); b.classList.toggle('on', state.creature === d.id); b.onclick = () => { state.creature = d.id; userMoved = false; rebuild(); }; cEl.appendChild(b); });
+  document.querySelectorAll('#levels button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.level));
+  document.getElementById('levels').style.opacity = state.creature === 'all' ? 1 : .45;
+  document.querySelectorAll('#times button').forEach(b => b.classList.toggle('on', b.dataset.v === state.time));
+}
+document.querySelectorAll('#levels button').forEach(b => b.onclick = () => { state.level = +b.dataset.v; rebuild(); });
+document.querySelectorAll('#times button').forEach(b => b.onclick = () => { state.time = b.dataset.v; rebuild(); });
+
+function dispose(g) { g.traverse(o => { if (o.geometry) o.geometry.dispose(); }); g.clear(); }
+const LEVELS = ['Обычный', 'Матёрый', 'Древний'];
+
+let fireDim = 1;
+// Рамка тела без земли под существом и кружащих осколков (они не должны раздвигать ряд)
+function bodyBox(g) {
+  g.updateMatrixWorld(true); const box = new THREE.Box3(), tmp = new THREE.Box3();
+  g.traverse(o => { if (o.isMesh && !o.userData.lvlAdd) { tmp.setFromObject(o); box.union(tmp); } });
+  return box;
+}
+function rebuild() {
+  buildMenus(); dispose(shown); labels.innerHTML = ''; labelItems = [];
+  const defs = CREATURES.filter(d => groupOf(d) === state.group);
+  let items = state.creature === 'all' ? defs.map(d => ({ d, l: state.level })) : [0, 1, 2].map(l => ({ d: defs.find(x => x.id === state.creature), l }));
+  const built = items.map(it => { const g = buildCreatureV2(it.d, it.l); g.rotation.y = .4; const box = bodyBox(g); return { ...it, g, box }; });
+  const maxW = Math.max(...built.map(b => b.box.max.x - b.box.min.x)); const gap = items.some(it => it.l === 2) ? .9 + maxW * .45 : .9; let total = built.reduce((s, b) => s + (b.box.max.x - b.box.min.x), 0) + gap * (built.length - 1);
+  let x = -total / 2, maxH = 0;
+  for (const b of built) {
+    const w = b.box.max.x - b.box.min.x; b.g.position.x = x - b.box.min.x; x += w + gap;
+    b.g.position.y = b.d.float || 0; b.g.userData.baseY = b.g.position.y; shown.add(b.g);
+    const h = b.box.max.y; maxH = Math.max(maxH, h);
+    const lab = el('div', { className: 'lab' }); lab.innerHTML = state.creature === 'all' ? `${b.d.name}<i>${b.d.where}</i>` : `${LEVELS[b.l]}<i>${b.d.name}</i>`;
+    labels.appendChild(lab); labelItems.push({ el: lab, pos: new THREE.Vector3(b.g.position.x + (b.box.min.x + b.box.max.x) / 2, h + (b.d.float || 0) + .3, 0) });
+  }
+  refBlock.position.set(total / 2 + gap, 0, 0); refBlock.rotation.y = -.4; total += 2;
+  fire.position.set(-Math.min(total / 2, 3) * .4, 0, Math.max(2.2, maxH * .45) + 1); fireLight.position.set(0, 1.1, fire.position.z);
+  const ancient = items.some(it => it.l === 2);
+  fireDim = ancient ? .45 : 1;
+  flames.forEach(f => f.scale.setScalar(ancient ? .6 : 1));
+  const one = state.creature !== 'all' ? defs.find(x => x.id === state.creature) : null;
+  const info = document.getElementById('info');
+  info.innerHTML = one ? `<b>${one.name}</b> <span class="w">· ${one.where}</span><p>${one.threat}</p>` : defs.map(d => `<b>${d.name}</b> <span class="w">· ${d.threat}</span>`).join('<br>');
+  const LV = ['Обычный: тёмный, чистый силуэт.', 'Матёрый: иней и ледяная броня, светящиеся трещины, изморозь под ногами. Крепче и сильнее.', 'Древний: тело из тумана с ледяным ядром, корона кристаллов, кружащие осколки, кольцо инея. Свет вокруг слабеет: огонь рядом горит тусклее.'];
+  info.innerHTML += one ? LV.map(x => `<p class="w">${x}</p>`).join('') : `<p class="w">${LV[state.level]}</p>`;
+  if (!userMoved) {
+    const aspect = innerWidth / innerHeight, span = Math.max(total + 3, 4);
+    const dist = Math.max(span / aspect, maxH * 2.0, 3.5) / (2 * Math.tan(THREE.MathUtils.degToRad(18))) * 1.15;
+    camera.position.set(dist * .22, maxH * .5 + dist * .32, dist); controls.target.set(0, maxH * .48, 0);
+  }
+  applyTime();
+}
+function applyTime() {
+  const night = state.time === 'night', bg = night ? 0x141c28 : 0xaab8c4;
+  scene.background = new THREE.Color(bg); scene.fog = night ? new THREE.FogExp2(0x1c2635, .02) : new THREE.Fog(bg, 50, 120);
+  hemi.intensity = night ? 1.0 : 1.1; hemi.color.set(night ? 0x6f88a8 : 0xc4d0dc); hemi.groundColor.set(night ? 0x1b2026 : 0x4c5232);
+  sun.intensity = night ? .9 : 2.3; sun.color.set(night ? 0x8fa8d8 : 0xfff0dc);
+  fireLight.intensity = (night ? 7 : 1.5) * fireDim; renderer.toneMappingExposure = night ? 1.2 : 1.05;
+  shown.traverse(o => { if (o.isSprite && o.userData.glow !== undefined) o.material.opacity = o.userData.glow * (night ? 1 : .35); });
+}
+function resize() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', () => { resize(); if (!userMoved) rebuild(); }); resize(); rebuild();
+
+const clock = new THREE.Clock(), still = q.get('still') === '1';
+function frame() {
+  const t = still ? 1.1 : clock.getElapsedTime();
+  flames.forEach((f, i) => { f.scale.y = f.scale.x * (1 + Math.sin(t * 9 + i * 2) * .15); f.rotation.y = t * (1 + i); });
+  if (state.time === 'night') fireLight.intensity = fireDim * 7 + Math.sin(t * 13) * .5 + Math.sin(t * 7.1) * .4;
+  shown.children.forEach((c, i) => {
+    if (c.userData.def.float) c.position.y = c.userData.baseY + Math.sin(t * 1.5 + i) * .07;
+    c.traverse(o => {
+      if (o.userData.orbit) { const ob = o.userData.orbit, a = t * ob.sp + ob.ph; o.position.set(ob.cx + Math.cos(a) * ob.r, ob.y + Math.sin(t * 2 + ob.ph) * ob.r * .05, ob.cz + Math.sin(a) * ob.r); o.rotation.y = a * 2; }
+      if (o.userData.flap) o.rotation.z = o.userData.flap * Math.sin(t * 9 + i) * o.userData.flapAmp * .5;
+      if (o.userData.bob) { if (o.userData.y0 === undefined) o.userData.y0 = o.position.y; o.position.y = o.userData.y0 + Math.sin(t * 2 + o.userData.bob.ph) * .08; }
+    });
+  });
+  controls.update(); renderer.render(scene, camera);
+  labelItems.forEach(l => { const p = l.pos.clone().project(camera); l.el.style.left = (p.x * .5 + .5) * innerWidth + 'px'; l.el.style.top = (-p.y * .5 + .5) * innerHeight + 'px'; l.el.style.display = p.z < 1 ? '' : 'none'; });
+  window.done = true;
+  if (!still) requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>
+
+</body></html>

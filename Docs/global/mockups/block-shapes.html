@@ -1,0 +1,382 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Формы блоков Emberhold</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;700&family=PT+Sans:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: header → three storage options → 3D catalog (list + viewport + info) → decisions. Stone-grey neutrals, ember accent. */
+:root {
+  --bg: #f3f4f6;
+  --panel: #ffffff;
+  --fg: #1d232b;
+  --muted: #5d6673;
+  --line: #d6dae0;
+  --ember: #c4561c;
+  --ember-soft: #fbe7da;
+  --fog: #4f6b86;
+  --fog-soft: #e3ebf3;
+  --view: #dfe4ea;
+  --ok: #2f7a45;
+  --f-display: "Bitter", Georgia, serif;
+  --f-body: "PT Sans", "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15191f; --panel: #1d232b; --fg: #e7eaee; --muted: #9aa4b1; --line: #313a45;
+  --ember: #f08a4b; --ember-soft: #3a2519; --fog: #8fb0cf; --fog-soft: #1f2c3a; --view: #232b35; --ok: #6cc187;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15191f; --panel: #1d232b; --fg: #e7eaee; --muted: #9aa4b1; --line: #313a45;
+  --ember: #f08a4b; --ember-soft: #3a2519; --fog: #8fb0cf; --fog-soft: #1f2c3a; --view: #232b35; --ok: #6cc187;
+  color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.5 var(--f-body); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; display: grid; gap: 40px; }
+h1, h2 { font-family: var(--f-display); text-wrap: balance; margin: 0; line-height: 1.2; }
+h1 { font-size: 2rem; }
+h2 { font-size: 1.35rem; }
+p { margin: 0; max-width: 68ch; }
+.lead { color: var(--muted); }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 600 0.75rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ember); }
+section { display: grid; gap: 16px; }
+
+.options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.opt { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.opt.rec { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember); }
+.opt h3 { margin: 0; font: 700 1.05rem var(--f-display); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.tag { font: 600 0.7rem var(--f-mono); letter-spacing: .05em; padding: 2px 7px; border-radius: 99px; text-transform: uppercase; }
+.tag.rec { background: var(--ember-soft); color: var(--ember); }
+.tag.a { background: var(--fog-soft); color: var(--fog); }
+.opt ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: .95rem; }
+.plus::marker { content: "+  "; color: var(--ok); font-weight: 700; }
+.minus::marker { content: "−  "; color: var(--ember); font-weight: 700; }
+
+.cat { display: grid; grid-template-columns: 230px minmax(0, 1fr) 260px; gap: 14px; align-items: stretch; }
+.list { display: grid; gap: 4px; align-content: start; }
+.grp { font: 600 0.72rem var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 10px; }
+.grp:first-child { margin-top: 0; }
+.list button { all: unset; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: 6px; font-size: .95rem; }
+.list button:hover { background: var(--panel); }
+.list button[aria-pressed="true"] { background: var(--panel); box-shadow: inset 3px 0 0 var(--ember); font-weight: 700; }
+.list button:focus-visible, .ctrl button:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.dot { font: 0.7rem var(--f-mono); color: var(--muted); align-self: center; }
+.dot.p { color: var(--ember); }
+.viewport { position: relative; background: var(--view); border-radius: 8px; min-height: 420px; overflow: hidden; }
+.viewport canvas { display: block; width: 100%; height: 100%; position: absolute; inset: 0; }
+.ctrl { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+.ctrl button { font: 600 .85rem var(--f-body); padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+.ctrl button[aria-pressed="true"] { border-color: var(--ember); color: var(--ember); }
+.hint { position: absolute; top: 10px; right: 12px; font: .72rem var(--f-mono); color: var(--muted); }
+.info { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.info h3 { margin: 0; font: 700 1.15rem var(--f-display); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: .9rem; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: .85rem; }
+.note { font-size: .93rem; }
+
+.decide { display: grid; gap: 12px; counter-reset: q; }
+.q { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 6px; }
+.q b { font-family: var(--f-display); }
+.q ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.q .r { color: var(--ember); font-weight: 700; }
+code { font-family: var(--f-mono); font-size: .88em; }
+
+@media (max-width: 900px) {
+  .options { grid-template-columns: 1fr; }
+  .cat { grid-template-columns: 1fr; }
+  .list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .grp { grid-column: 1 / -1; }
+  .viewport { min-height: 340px; }
+}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Emberhold · строительство · карточка #26</div>
+  <h1>Какие блоки сможет строить игрок</h1>
+  <p class="lead">Рельеф уже умеет полные и неполные блоки и скосы: каждый блок хранит материал и высоту четырёх верхних углов. Для построек этого почти хватает, но лестницу, столб, арку или окно углами не описать. Ниже три способа это решить, каталог форм для проверки и три вопроса, на которые нужен ваш ответ.</p>
+</header>
+
+<section>
+  <h2>Как хранить фигурные блоки</h2>
+  <div class="options">
+    <div class="opt">
+      <h3>А. Только высоты углов <span class="tag a">уже есть</span></h3>
+      <p>Постройки собираются из тех же блоков, что и рельеф.</p>
+      <ul>
+        <li class="plus">Ничего нового писать не нужно.</li>
+        <li class="plus">Полублоки любой высоты, скаты для крыш и пандусов.</li>
+        <li class="minus">Нет лестниц, столбов, балок, арок и окон. Лестницу заменит скат.</li>
+      </ul>
+    </div>
+    <div class="opt rec">
+      <h3>Б. Каталог форм с поворотом <span class="tag rec">рекомендую</span></h3>
+      <p>Добавляем к углам список готовых форм. Форма лежит в той же сетке, что и рельеф, и поворачивается на 4 стороны.</p>
+      <ul>
+        <li class="plus">Блок по-прежнему 2 байта: форма берёт номер из палитры чанка, как сейчас склоны.</li>
+        <li class="plus">Каждая форма собрана из прямоугольных кусков на сетке 16×16×16, поэтому меш, клик мышью и прочность считаются одинаково.</li>
+        <li class="plus">Копание, урон и устойчивость работают как у обычного блока.</li>
+        <li class="minus">Каждую новую форму нужно описать (несколько строк данных).</li>
+      </ul>
+    </div>
+    <div class="opt">
+      <h3>В. Отдельные объекты</h3>
+      <p>Фигурная деталь — префаб поверх сетки.</p>
+      <ul>
+        <li class="plus">Любая форма, анимация и состояние (открыто, горит).</li>
+        <li class="minus">Не входит в меш чанка: тысячи таких деталей тяжелее.</li>
+        <li class="minus">Копание, урон и устойчивость пишутся отдельно.</li>
+      </ul>
+      <p class="note"><b>Подходит</b> для того, что двигается или меняет состояние: двери, ворота, ставни, фонари.</p>
+    </div>
+  </div>
+  <p><b>Итог:</b> А для рельефа и простых блоков, Б для всего неподвижного фигурного, В только для дверей, ворот и светильников.</p>
+</section>
+
+<section>
+  <h2>Каталог форм</h2>
+  <p class="lead">Выберите форму, покрутите её мышью, поверните кнопкой «Повернуть» и смените материал. «Сцена» показывает кусок стены и навес, собранные только из этих форм.</p>
+  <div class="cat">
+    <nav class="list" id="list" aria-label="Формы блоков"></nav>
+    <div class="viewport" id="vp">
+      <div class="hint">тяни — вращать · колесо — зум</div>
+      <div class="ctrl">
+        <button id="rot" type="button">Повернуть ↻</button>
+        <button id="mWood" type="button" aria-pressed="false">Дерево</button>
+        <button id="mStone" type="button" aria-pressed="true">Камень</button>
+        <button id="scene" type="button" aria-pressed="false">Сцена</button>
+      </div>
+    </div>
+    <aside class="info" id="info" aria-live="polite"></aside>
+  </div>
+</section>
+
+<section>
+  <h2>Решено 11 октября</h2>
+  <div class="decide">
+    <div class="q"><b>Хранение</b><p>Высоты углов для рельефа и простых блоков, каталог форм с поворотом в той же сетке для фигурных, двери отдельными объектами.</p></div>
+    <div class="q"><b>Прототип (#20)</b><p>Полный блок, полублок любой высоты, скат, внешний и внутренний угол ската, лестница на 4 ступени.</p></div>
+    <div class="q"><b>Следующая карточка</b><p>Столб (держит пол сверху), балка (строить на весу), полуарка с гладким изгибом, дверь-объект.</p></div>
+    <div class="q"><b>Не берём пока</b><p>Тонкую стенку (постройки в основном из полных блоков) и проём окна (решим позже).</p></div>
+    <div class="q"><b>Поворот</b><p>Клавиша R, 4 стороны вокруг вертикали. Перевёрнутые формы позже.</p></div>
+  </div>
+</section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  const STAGE = { p: "прототип (#20)", l: "следующая карточка", q: "не решено" };
+  // Corner shapes: [c00, c10, c01, c11] in 1/16. Box shapes: [x0,y0,z0,x1,y1,z1] in 1/16, default orientation.
+  const SHAPES = [
+    { id: "full", g: "А", name: "Полный блок", stage: "p", corners: [16,16,16,16], note: "Основа стен и фундамента." },
+    { id: "slab", g: "А", name: "Полублок", stage: "p", corners: [8,8,8,8], note: "Высота любая от 1 до 16. Клик по верху неполного блока того же материала досыпает его." },
+    { id: "ramp", g: "А", name: "Скат", stage: "p", corners: [0,0,16,16], note: "Пандусы и крыши. Поворот — просто другие углы, хранение то же." },
+    { id: "cout", g: "А", name: "Внешний угол ската", stage: "p", corners: [0,0,0,16], note: "Угол крыши. Уже работает в рельефе." },
+    { id: "cin", g: "А", name: "Внутренний угол ската", stage: "p", corners: [0,16,16,16], note: "Стык двух скатов." },
+    { id: "stairs", g: "Б", name: "Лестница", stage: "p", boxes: [[0,0,0,16,4,16],[0,4,4,16,8,16],[0,8,8,16,12,16],[0,12,12,16,16,16]], note: "Четыре ступени на блок. Рабочие поднимаются по ней на стены." },
+    { id: "post", g: "Б", name: "Столб", stage: "l", boxes: [[5,0,5,11,16,11]], note: "Держит пол верхнего этажа, каркас навесов и вышек." },
+    { id: "beam", g: "Б", name: "Балка", stage: "l", boxes: [[0,10,5,16,16,11]], note: "Позволяет строить на весу: держит пол между столбами и вынос за край." },
+    { id: "arch", g: "Б", name: "Полуарка", stage: "l", arch: true, fill: 1 - Math.PI * 144 / 4 / 256, note: "Половина арки с гладким изгибом (шаг 1/16). Две полуарки, повёрнутые друг к другу, дают арку шириной в 2 блока." },
+    { id: "window", g: "Б", name: "Проём окна", stage: "q", boxes: [[0,0,0,16,5,16],[0,11,0,16,16,16],[0,5,0,5,11,16],[11,5,0,16,11,16]], note: "Пока не решено, нужен ли. Стекло и ставни были бы объектом." },
+    { id: "door", g: "В", name: "Дверь", stage: "l", obj: true, boxes: [[1,0,6,15,30,10]], note: "Объект на 2 клетки в высоту: открывается, закрывается, существа ломают её отдельно." },
+  ];
+  SHAPES.forEach(s => { if (s.arch) return; s.fill = s.corners ? s.corners.reduce((a, b) => a + b, 0) / 64 : s.boxes.reduce((v, b) => v + (b[3]-b[0])*(b[4]-b[1])*(b[5]-b[2]), 0) / 4096; });
+  const GROUP = { "А": "А · высоты углов", "Б": "Б · каталог с поворотом", "В": "В · объекты" };
+
+  const list = document.getElementById("list");
+  let cur = "stairs", rot = 0, mat = "stone", sceneMode = false;
+  let lastG = "";
+  SHAPES.forEach(s => {
+    if (s.g !== lastG) { const h = document.createElement("div"); h.className = "grp"; h.textContent = GROUP[s.g]; list.appendChild(h); lastG = s.g; }
+    const b = document.createElement("button"); b.type = "button"; b.id = "shape-" + s.id; b.dataset.id = s.id;
+    b.innerHTML = `<span>${s.name}</span><span class="dot ${s.stage}">${{p: "MVP", l: "далее", q: "?"}[s.stage]}</span>`;
+    b.addEventListener("click", () => { cur = s.id; rot = 0; sceneMode = false; sync(); });
+    list.appendChild(b);
+  });
+
+  // ---- three.js
+  const vp = document.getElementById("vp");
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  vp.prepend(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(35, 1, 0.05, 200);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.enablePan = false;
+  scene.add(new THREE.HemisphereLight(0xc9d6e6, 0x4a4036, 0.75));
+  const sun = new THREE.DirectionalLight(0xffd8b0, 0.85);
+  sun.position.set(5, 10, -6); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10 });
+  scene.add(sun);
+
+  const MATS = {
+    stone: new THREE.MeshLambertMaterial({ color: 0x8e96a0 }),
+    wood: new THREE.MeshLambertMaterial({ color: 0xa8743f }),
+    door: new THREE.MeshLambertMaterial({ color: 0x6e4524 }),
+    ground: new THREE.MeshLambertMaterial({ color: 0x6f8060 }),
+  };
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x1d232b, transparent: true, opacity: 0.35 });
+  const cellMat = new THREE.LineDashedMaterial({ color: 0xc4561c, dashSize: 0.06, gapSize: 0.05 });
+
+  function cornerGeom(c) {
+    const [h00, h10, h01, h11] = c.map(v => v / 16);
+    const P = (x, y, z) => new THREE.Vector3(x, y, z);
+    const pos = [];
+    function tri(a, b, cc, out) {
+      const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(cc, a));
+      if (n.lengthSq() < 1e-10) return;
+      if (n.dot(out) < 0) [b, cc] = [cc, b];
+      pos.push(a.x, a.y, a.z, b.x, b.y, b.z, cc.x, cc.y, cc.z);
+    }
+    const quad = (a, b, cc, d, out) => { tri(a, b, cc, out); tri(a, cc, d, out); };
+    const t00 = P(0,h00,0), t10 = P(1,h10,0), t01 = P(0,h01,1), t11 = P(1,h11,1);
+    const up = P(0,1,0);
+    // split the top along the diagonal that keeps the surface convex-looking
+    if (Math.abs(h00 - h11) <= Math.abs(h10 - h01)) { tri(t00, t01, t11, up); tri(t00, t11, t10, up); }
+    else { tri(t00, t01, t10, up); tri(t10, t01, t11, up); }
+    quad(P(0,0,0), P(1,0,0), P(1,0,1), P(0,0,1), P(0,-1,0));
+    quad(P(0,0,0), P(0,0,1), t01, t00, P(-1,0,0));
+    quad(P(1,0,0), P(1,0,1), t11, t10, P(1,0,0));
+    quad(P(0,0,0), P(1,0,0), t10, t00, P(0,0,-1));
+    quad(P(0,0,1), P(1,0,1), t11, t01, P(0,0,1));
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return g;
+  }
+  // Half arch: solid cell minus a quarter circle of radius 12/16 centred on the bottom +x edge, extruded along z.
+  function archGeom(k) {
+    const r = 12 / 16, sh = new THREE.Shape();
+    sh.moveTo(0, 0); sh.lineTo(1 - r, 0);
+    sh.absarc(1, 0, r, Math.PI, Math.PI / 2, true);
+    sh.lineTo(1, 1); sh.lineTo(0, 1); sh.lineTo(0, 0);
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false, curveSegments: 24 });
+    g.translate(-0.5, 0, -0.5); g.rotateY(-k * Math.PI / 2); g.translate(0.5, 0, 0.5);
+    return g;
+  }
+  const rotCorners = (c, k) => { let [a, b, cc, d] = c; for (let i = 0; i < k; i++) [a, b, cc, d] = [cc, a, d, b]; return [a, b, cc, d]; };
+  function rotBox(b, k) {
+    let [x0, y0, z0, x1, y1, z1] = b;
+    for (let i = 0; i < k; i++) { const nx0 = 16 - z1, nx1 = 16 - z0, nz0 = x0, nz1 = x1; [x0, x1, z0, z1] = [nx0, nx1, nz0, nz1]; }
+    return [x0, y0, z0, x1, y1, z1];
+  }
+  function addMesh(group, geom, material) {
+    const m = new THREE.Mesh(geom, material); m.castShadow = m.receiveShadow = true; group.add(m);
+    group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geom, 25), edgeMat));
+  }
+  function buildShape(s, k, material) {
+    const g = new THREE.Group();
+    if (s.corners) addMesh(g, cornerGeom(rotCorners(s.corners, k)), material);
+    else if (s.arch) addMesh(g, archGeom(k), material);
+    else s.boxes.forEach(b0 => {
+      const b = rotBox(b0, k);
+      const geom = new THREE.BoxGeometry((b[3]-b[0])/16, (b[4]-b[1])/16, (b[5]-b[2])/16);
+      geom.translate((b[0]+b[3])/32, (b[1]+b[4])/32, (b[2]+b[5])/32);
+      addMesh(g, geom, s.obj ? MATS.door : material);
+    });
+    return g;
+  }
+  const byId = Object.fromEntries(SHAPES.map(s => [s.id, s]));
+
+  let root = new THREE.Group(); scene.add(root);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), MATS.ground);
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+  function cellBox(h) {
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, h, 1)), cellMat);
+    e.position.set(0.5, h / 2, 0.5); e.computeLineDistances(); return e;
+  }
+
+  function buildCatalog() {
+    const s = byId[cur];
+    const g = buildShape(s, rot, MATS[mat]);
+    const h = s.obj ? 2 : 1;
+    g.add(cellBox(h));
+    g.position.set(-0.5, 0, -0.5);
+    return { g, target: new THREE.Vector3(0, h / 2, 0), dist: h > 1 ? 5 : 3.4 };
+  }
+
+  function buildScene() {
+    const g = new THREE.Group();
+    const put = (id, x, y, z, k = 0, m = "stone") => { const o = buildShape(byId[id], k, MATS[m]); o.position.set(x, y, z); g.add(o); };
+    for (let x = 0; x <= 7; x++) for (let z = 0; z <= 2; z++) put("full", x, 0, z);
+    for (let x = 0; x <= 7; x++) for (let y = 1; y <= 3; y++) {
+      if ((x === 3 || x === 4) && y === 1) continue;
+      if (x === 3 && y === 2) { put("arch", x, y, 0, 0); continue; }
+      if (x === 4 && y === 2) { put("arch", x, y, 0, 2); continue; }
+      if (x === 6 && y <= 2) { if (y === 1) put("door", x, y, 0); continue; }
+      put("full", x, y, 0);
+    }
+    for (let x = 0; x <= 7; x++) put(x % 2 === 0 ? "full" : "slab", x, 4, 0);
+    for (let x = 0; x <= 2; x++) put("full", x, 3, 1);
+    put("stairs", 5, 1, 1, 1); put("stairs", 4, 2, 1, 1); put("stairs", 3, 3, 1, 1);
+    put("ramp", 3, 0, -1, 0); put("ramp", 4, 0, -1, 0); put("cout", 2, 0, -1, 0); put("cout", 5, 0, -1, 1);
+    // wooden platform: posts hold the floor, beams span between them and carry an overhang
+    for (const x of [9, 12]) for (const z of [0, 2]) { put("post", x, 0, z, 0, "wood"); put("post", x, 1, z, 0, "wood"); }
+    for (const z of [0, 2]) for (const x of [10, 11, 13]) put("beam", x, 1, z, 0, "wood");
+    for (let x = 9; x <= 13; x++) for (let z = 0; z <= 2; z++) put("slab", x, 2, z, 0, "wood");
+    g.position.set(-6, 0, -1);
+    return { g, target: new THREE.Vector3(0.5, 1.5, 0), dist: 21, dir: new THREE.Vector3(0.8, 1.0, -1.4) };
+  }
+
+  let lastKey = "";
+  function rebuild() {
+    const key = sceneMode ? "scene" : `${cur}|${rot}|${mat}`;
+    if (key === lastKey) return;
+    const camChange = sceneMode !== (lastKey === "scene") || !lastKey;
+    lastKey = key;
+    scene.remove(root);
+    const r = sceneMode ? buildScene() : buildCatalog();
+    root = r.g; scene.add(root);
+    if (camChange || !sceneMode) {
+      controls.target.copy(r.target);
+      if (camChange) { const dir = (r.dir || new THREE.Vector3(1.1, 0.8, -1.4)).clone().normalize(); camera.position.copy(r.target).addScaledVector(dir, r.dist); }
+    }
+  }
+
+  const info = document.getElementById("info");
+  function sync() {
+    document.querySelectorAll("#list button").forEach(b => b.setAttribute("aria-pressed", String(!sceneMode && b.dataset.id === cur)));
+    document.getElementById("mWood").setAttribute("aria-pressed", String(mat === "wood"));
+    document.getElementById("mStone").setAttribute("aria-pressed", String(mat === "stone"));
+    document.getElementById("scene").setAttribute("aria-pressed", String(sceneMode));
+    if (sceneMode) {
+      info.innerHTML = `<h3>Сцена</h3><p class="note">Каменная стена: кладка из полных блоков, ворота под аркой из двух полуарок, дверь-объект, зубцы из полных блоков и полублоков через один. За стеной лестница на настил, перед воротами скат с углами.</p><p class="note">Справа деревянный настил на столбах: балки держат пол между столбами и вынос за край.</p>`;
+    } else {
+      const s = byId[cur];
+      const hits = Math.max(1, Math.ceil(s.fill * 4 - 1e-9));
+      const store = s.g === "А" ? "материал + 4 угла, как у рельефа" : s.g === "Б" ? "материал + номер формы и поворот в палитре чанка" : "отдельный объект, в сетке занимает клетки";
+      info.innerHTML = `<h3>${s.name}</h3>
+        <dl class="kv">
+          <dt>Группа</dt><dd>${GROUP[s.g]}</dd>
+          <dt>Этап</dt><dd>${STAGE[s.stage]}</dd>
+          <dt>Хранение</dt><dd>${store}</dd>
+          <dt>Заполнение</dt><dd>${Math.round(s.fill * 100)}%</dd>
+          <dt>Ударов</dt><dd>${s.obj ? "своя прочность" : hits + " (при уроне 25%)"}</dd>
+          <dt>Поворот</dt><dd>${rot * 90}°</dd>
+        </dl>
+        <p class="note">${s.note}</p>`;
+    }
+    rebuild();
+  }
+
+  document.getElementById("rot").addEventListener("click", () => { if (sceneMode) return; rot = (rot + 1) % 4; sync(); });
+  document.getElementById("mWood").addEventListener("click", () => { mat = "wood"; sceneMode = false; sync(); });
+  document.getElementById("mStone").addEventListener("click", () => { mat = "stone"; sceneMode = false; sync(); });
+  document.getElementById("scene").addEventListener("click", () => { sceneMode = !sceneMode; sync(); });
+
+  function resize() {
+    const w = vp.clientWidth, h = vp.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(vp);
+  resize(); sync();
+  (function loop() { controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+})();
+</script>
+
+</body></html>

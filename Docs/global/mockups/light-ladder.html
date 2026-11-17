@@ -1,0 +1,181 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Лестница огней Emberhold</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans+SC:wght@500;700&family=PT+Sans:wght@400;700&family=PT+Mono&display=swap">
+<style>
+/* Layout: одна колонка-«свиток»: лестница огней, затем три кадра карты, затем правила. Тёмная ночь выбрана намеренно, одна тема. */
+:root{
+  --night:#12151c; --panel:#1a1f29; --line:#2c3442; --fog:#5d6b80;
+  --ink:#e6e1d6; --muted:#9aa3b2; --ember:#f0a04b; --hearth:#ffd36b; --eternal:#8fd3ff; --dead:#6b6f78;
+  --f-display:"Alegreya Sans SC", "PT Sans", system-ui, sans-serif;
+  --f-body:"PT Sans", system-ui, sans-serif;
+  --f-mono:"PT Mono", ui-monospace, monospace;
+  color-scheme:dark;
+}
+body{background:var(--night);color:var(--ink);font:16px/1.55 var(--f-body)}
+.wrap{max-width:1060px;margin:0 auto;padding-block:32px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:40px}
+h1,h2{font-family:var(--f-display);font-weight:700;text-wrap:balance;margin:0;letter-spacing:.02em}
+h1{font-size:2.1rem;color:var(--hearth)}
+h2{font-size:1.4rem;color:var(--ink)}
+p{margin:0;max-width:68ch}
+.lead{display:grid;gap:10px}
+.note{color:var(--muted);font-size:.9rem}
+.section{display:grid;gap:16px}
+.ladder{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:8px;align-content:start;min-width:0}
+.step h3{margin:0;font-family:var(--f-display);font-size:1.15rem;color:var(--ember)}
+.step.eternal h3{color:var(--eternal)}
+.step svg{width:100%;height:auto;display:block}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:.85rem}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.step .why{font-size:.85rem;color:var(--ink)}
+.arrow{color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.08em}
+.frames{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+figure{margin:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:8px;min-width:0}
+figure svg{width:100%;height:auto;display:block;border-radius:6px}
+figcaption{display:grid;gap:4px;font-size:.9rem}
+figcaption b{font-family:var(--f-display);font-size:1.05rem;color:var(--hearth)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:.85rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend svg{width:18px;height:18px}
+.rules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.rule{border-top:2px solid var(--line);padding-top:10px;display:grid;gap:6px;min-width:0}
+.rule h3{margin:0;font-family:var(--f-display);font-size:1.1rem}
+.rule.h h3{color:var(--hearth)} .rule.e h3{color:var(--eternal)} .rule.d h3{color:var(--dead)}
+.q{background:var(--panel);border:1px dashed var(--fog);border-radius:10px;padding:14px;display:grid;gap:6px}
+.q ul{margin:0;padding-left:20px}
+@media (max-width:900px){.ladder{grid-template-columns:repeat(2,minmax(0,1fr))}.frames,.rules{grid-template-columns:1fr}}
+@media (max-width:440px){.ladder{grid-template-columns:1fr}}
+</style>
+
+<div class="wrap">
+  <header class="lead">
+    <h1>Лестница огней</h1>
+    <p>Предложение для «Механик 2». Чем выше ступень, тем дороже огонь, тем дальше он светит и тем реже его надо кормить. Тыл держат дорогие огни с большим запасом и вечные находки, а главный огонь (очаг) переносится вслед за игроком.</p>
+    <p class="note">Числа условные, для обсуждения. Сейчас в игре: костёр, радиус 12 блоков, вмещает 10 поленьев, первая ночь съедает 8, каждая следующая на 25% больше.</p>
+  </header>
+
+  <section class="section">
+    <h2>Ступени</h2>
+    <div class="ladder" id="ladder"></div>
+    <p class="note">Круг на каждой карточке нарисован в одном масштабе: так видно, насколько дальше светит следующая ступень. Маяк держит весь район, он в круг не помещается.</p>
+  </section>
+
+  <section class="section">
+    <h2>Как это играется</h2>
+    <div class="legend" id="legend"></div>
+    <div class="frames" id="frames"></div>
+  </section>
+
+  <section class="section">
+    <h2>Три правила</h2>
+    <div class="rules">
+      <div class="rule h"><h3>Очаг</h3><p>Один на поселение. Огонь с очагом светит ярче, к нему приходят новые поселенцы, и только его угасание даёт проигрыш (отсчёт 10 с, как сейчас).</p></div>
+      <div class="rule h"><h3>Перенос очага</h3><p>Днём, в жаровню или выше. Поселенец несёт уголёк пешком и только по свету. Пока он в пути, очаг остаётся в старом огне.</p></div>
+      <div class="rule d"><h3>Брошенный огонь</h3><p>Гаснет без проигрыша. Туман возвращается, ночью существа ломают постройки и едят запасы. Вернуться можно, разжёгши огонь снова (трава = растопка).</p></div>
+    </div>
+  </section>
+
+  <section class="q">
+    <h2>Что нужно решить</h2>
+    <ul>
+      <li>Нравится ли сама идея очага, который переносится, или проигрыш лучше считать иначе.</li>
+      <li>Можно ли переносить очаг в жаровню, которую построил игрок, или только в находки (старые жаровни, маяки).</li>
+      <li>Какие ступени берём в «Механики 2»: предлагаю костёр, жаровню и очаг с переносом; фонарь и башня ждут металла и масла в «Кампании».</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+const C={ember:'#f0a04b',hearth:'#ffd36b',eternal:'#8fd3ff',dead:'#6b6f78',fog:'#5d6b80',line:'#2c3442',ink:'#e6e1d6',muted:'#9aa3b2',ground:'#2a3324',night:'#12151c'};
+const steps=[
+  {name:'Костёр',r:12,fuel:'поленья',store:'~1 ночь',cost:'6 поленьев',where:'есть в игре',why:'Дёшево и сразу. Им тянут цепочку света к лесу и к цели.'},
+  {name:'Жаровня',r:16,fuel:'уголь',store:'~2 ночи',cost:'6 камня + 2 полена',where:'верстак, ступень 1',why:'Уголь из углежогной ямы горит дольше дров. Сюда уже можно перенести очаг.'},
+  {name:'Фонарь',r:20,fuel:'масло',store:'~4 ночи',cost:'металл',where:'кузница, чертёж с мельницы',why:'Ставится на столб, светит дальше. Кормят раз в несколько ночей.'},
+  {name:'Башня',r:32,fuel:'масло',store:'~7 ночей',cost:'камень, металл, масло',where:'маяк Мёртвого города',why:'Держит большой кусок тыла почти без внимания.'},
+  {name:'Вечные',r:40,fuel:'не нужно',store:'навсегда',cost:'найти и разжечь',where:'старые жаровни, маяки районов',why:'Находки на карте. Маяк навсегда убирает туман из всего района.',eternal:true}
+];
+const ns='http://www.w3.org/2000/svg';
+function el(t,a,p){const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+function glyph(svg,kind,x,y,s,color){
+  s=s||1;
+  if(kind==='hearth'){el('circle',{cx:x,cy:y,r:7*s,fill:'none',stroke:C.hearth,'stroke-width':2},svg);el('circle',{cx:x,cy:y,r:3.5*s,fill:C.hearth},svg)}
+  else if(kind==='fire'){el('circle',{cx:x,cy:y,r:3.5*s,fill:color||C.ember},svg)}
+  else if(kind==='brazier'){el('rect',{x:x-4*s,y:y-4*s,width:8*s,height:8*s,fill:color||C.ember},svg)}
+  else if(kind==='old'){el('rect',{x:x-4*s,y:y-4*s,width:8*s,height:8*s,fill:'none',stroke:color||C.eternal,'stroke-width':1.6},svg)}
+  else if(kind==='tower'){el('path',{d:`M${x} ${y-6*s}L${x+5*s} ${y+4*s}L${x-5*s} ${y+4*s}Z`,fill:color||C.ember},svg)}
+  else if(kind==='beacon'){el('path',{d:`M${x-3*s} ${y+6*s}L${x-1.5*s} ${y-6*s}L${x+1.5*s} ${y-6*s}L${x+3*s} ${y+6*s}Z`,fill:color||C.eternal},svg)}
+}
+// ladder
+const L=document.getElementById('ladder');
+steps.forEach((s,i)=>{
+  const d=document.createElement('div');d.className='step'+(s.eternal?' eternal':'');
+  d.innerHTML=`<h3>${s.name}</h3>`;
+  const svg=el('svg',{viewBox:'0 0 100 100',role:'img','aria-label':`Радиус ${s.name}`});
+  el('rect',{x:0,y:0,width:100,height:100,fill:C.night,rx:6},svg);
+  const id='g'+i,g=el('radialGradient',{id},el('defs',{},svg));
+  const col=s.eternal?C.eternal:C.ember;
+  el('stop',{offset:'0%','stop-color':col,'stop-opacity':.55},g);el('stop',{offset:'100%','stop-color':col,'stop-opacity':0},g);
+  const R=s.r*1.15;
+  el('circle',{cx:50,cy:50,r:R,fill:`url(#${id})`},svg);
+  el('circle',{cx:50,cy:50,r:R,fill:'none',stroke:col,'stroke-opacity':.5,'stroke-dasharray':'2 3'},svg);
+  glyph(svg,['fire','brazier','tower','tower','beacon'][i],50,50,1.2,col);
+  d.appendChild(svg);
+  d.insertAdjacentHTML('beforeend',`<dl class="kv"><dt>Радиус</dt><dd>${s.eternal?'район':s.r+' бл.'}</dd><dt>Топливо</dt><dd>${s.fuel}</dd><dt>Запас</dt><dd>${s.store}</dd><dt>Цена</dt><dd>${s.cost}</dd><dt>Откуда</dt><dd>${s.where}</dd></dl><p class="why">${s.why}</p>`);
+  L.appendChild(d);
+});
+// legend
+const lg=document.getElementById('legend');
+[['hearth','очаг'],['fire','костёр'],['brazier','жаровня'],['old','старая жаровня, вечная'],['tower','башня'],['beacon','маяк района']].forEach(([k,t])=>{
+  const sp=document.createElement('span');const s=el('svg',{viewBox:'0 0 18 18'});glyph(s,k,9,9,1,k==='beacon'||k==='old'?C.eternal:null);sp.appendChild(s);sp.append(t);lg.appendChild(sp)});
+// frames
+const frames=[
+ {t:'Ночи 1–4: старт',d:'Очаг в стартовом костре. Цепочка костров тянется к роще и к старой жаровне. Все костры едят дрова, их кормят каждую ночь.',
+  lights:[[50,175,30,'hearth'],[100,148,20,'fire'],[140,118,20,'fire']],
+  marks:[[200,92,'old',C.muted],[290,40,'beacon',C.muted]]},
+ {t:'Ночь ~6: перенос',d:'Старая жаровня разожжена и горит вечно. Днём уголёк несут по свету, очаг переезжает. Стартовый костёр можно бросить: он гаснет без проигрыша.',
+  lights:[[100,148,20,'fire'],[140,118,20,'fire'],[200,92,36,'old-lit'],[240,70,18,'brazier']],
+  dead:[[50,175]],path:'M50 175 Q 80 160 100 148 T 140 118 T 200 92',hearthAt:[200,92],marks:[[290,40,'beacon',C.muted]]},
+ {t:'Ночь ~12: район свой',d:'Маяк района зажжён: туман ушёл из всего района навсегда, тыл кормить не надо. Очаг ушёл вперёд, в жаровню у границы, дальше новый район и новая цепочка.',
+  region:true,lights:[[262,150,22,'brazier'],[292,182,16,'fire']],hearthAt:[262,150],marks:[[200,92,'old',C.eternal],[150,40,'beacon',C.eternal]]}
+];
+const F=document.getElementById('frames');
+frames.forEach((f,fi)=>{
+  const fig=document.createElement('figure');
+  const svg=el('svg',{viewBox:'0 0 320 220',role:'img','aria-label':f.t});
+  const defs=el('defs',{},svg);
+  const blur=el('filter',{id:'b'+fi,x:'-50%',y:'-50%',width:'200%',height:'200%'},defs);el('feGaussianBlur',{stdDeviation:6},blur);
+  const mask=el('mask',{id:'m'+fi},defs);
+  el('rect',{x:0,y:0,width:320,height:220,fill:'white'},mask);
+  const holes=el('g',{filter:`url(#b${fi})`},mask);
+  if(f.region)el('path',{d:'M0 0H225Q215 110 235 220H0Z',fill:'black'},holes);
+  f.lights.forEach(([x,y,r])=>el('circle',{cx:x,cy:y,r,fill:'black'},holes));
+  // ground
+  el('rect',{x:0,y:0,width:320,height:220,fill:C.ground},svg);
+  // terrain hints
+  [[30,40],[70,90],[180,170],[250,120],[120,200],[300,90]].forEach(([x,y])=>el('circle',{cx:x,cy:y,r:9,fill:'#344029'},svg));
+  // fog
+  el('rect',{x:0,y:0,width:320,height:220,fill:'#1c2230','fill-opacity':.92,mask:`url(#m${fi})`},svg);
+  if(f.region){el('path',{d:'M225 0Q215 110 235 220',stroke:C.eternal,'stroke-dasharray':'4 4','stroke-width':1.2,fill:'none'},svg);
+    el('text',{x:12,y:208,fill:C.eternal,'font-size':11,'font-family':'PT Sans'},svg).textContent='район 1: тумана нет навсегда';
+    el('text',{x:244,y:20,fill:C.muted,'font-size':11,'font-family':'PT Sans'},svg).textContent='район 2';}
+  // glows
+  f.lights.forEach(([x,y,r,k])=>{const col=k==='old-lit'?C.eternal:C.ember;const g=el('circle',{cx:x,cy:y,r,fill:'none',stroke:col,'stroke-opacity':.45,'stroke-dasharray':'2 3'},svg)});
+  if(f.path){el('path',{d:f.path,fill:'none',stroke:C.hearth,'stroke-width':1.6,'stroke-dasharray':'1 4','stroke-linecap':'round'},svg);
+    el('text',{x:70,y:128,fill:C.hearth,'font-size':11,'font-family':'PT Sans'},svg).textContent='уголёк несут днём';}
+  (f.dead||[]).forEach(([x,y])=>{glyph(svg,'fire',x,y,1,C.dead);el('text',{x:x-22,y:y+20,fill:C.dead,'font-size':10.5,'font-family':'PT Sans'},svg).textContent='брошен'});
+  f.lights.forEach(([x,y,r,k])=>{
+    const isHearth=f.hearthAt?(f.hearthAt[0]===x&&f.hearthAt[1]===y):k==='hearth';
+    if(k==='old-lit')glyph(svg,'old',x,y,1.2,C.eternal);
+    else glyph(svg,k==='hearth'?'fire':k,x,y,1.1);
+    if(isHearth)glyph(svg,'hearth',x,y,1.5);
+  });
+  (f.marks||[]).forEach(([x,y,k,c])=>glyph(svg,k,x,y,1.3,c));
+  fig.appendChild(svg);
+  fig.insertAdjacentHTML('beforeend',`<figcaption><b>${f.t}</b><span>${f.d}</span></figcaption>`);
+  F.appendChild(fig);
+});
+</script>
+
+</body></html>
