@@ -213,25 +213,21 @@ namespace Emberhold.Gameplay.Workers
 
         private static void Sheaf(FacetedMesh mesh)
         {
-            // Сноп вдоль +Z, тоньше и не длиннее бревна (целиком внутри его габарита, рука держит его так же): к концам
-            // стебли расходятся, посередине перевязь; на заднем конце срезы светлее, на переднем — колоски.
+            // Сноп вдоль +Z, тоньше и не длиннее бревна (целиком внутри его габарита, рука держит его так же): к переднему
+            // концу стебли расходятся, сзади перевязь; на заднем конце срезы светлее, на переднем — колоски.
             const float r = LogRadius * 0.85f;
             var back = Vector3.back * (LogLength * 0.5f);
             var front = Vector3.forward * (LogLength * 0.5f);
-            var path = new[] { back, back * 0.55f, Vector3.zero, front * 0.55f, front };
-            var radii = new[]
-            {
-                Vector2.one * (r * 0.95f), Vector2.one * (r * 0.82f), Vector2.one * (r * 0.62f),
-                Vector2.one * (r * 0.85f), Vector2.one * r,
-            };
-            mesh.AddTube(path, radii, 8, Paint(Grass));
+            // Стебли — кольца только на концах, как у бревна: у переднего конца, где его держит рука, лишних граней нет.
+            mesh.AddTube(new[] { back, front }, new[] { Vector2.one * (r * 0.9f), Vector2.one * r }, 8, Paint(Grass));
             mesh.AddTube(new[] { back + Vector3.back * 0.002f, back + Vector3.forward * 0.004f },
                 new[] { Vector2.one * (r * 0.82f), Vector2.one * (r * 0.82f) }, 8, Paint(Straw));
             mesh.AddTube(new[] { front + Vector3.back * 0.004f, front + Vector3.forward * 0.002f },
                 new[] { Vector2.one * (r * 0.86f), Vector2.one * (r * 0.86f) }, 8, Paint(Grass * 1.15f));
-            // Перевязь — жгут из той же травы, чуть темнее.
-            mesh.AddTube(new[] { Vector3.back * 0.012f, Vector3.forward * 0.012f },
-                new[] { Vector2.one * (r * 0.7f), Vector2.one * (r * 0.7f) }, 8, Paint(Grass * 0.6f));
+            // Перевязь — жгут из той же травы, чуть темнее, на задней половине: дальше от руки.
+            var tie = Vector3.back * (LogLength * 0.22f);
+            mesh.AddTube(new[] { tie + Vector3.back * 0.012f, tie + Vector3.forward * 0.012f },
+                new[] { Vector2.one * (r * 0.98f), Vector2.one * (r * 0.98f) }, 8, Paint(Grass * 0.6f));
         }
 
         private static readonly Color Straw = new(0.76f, 0.68f, 0.42f);
