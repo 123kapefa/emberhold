@@ -1,4 +1,6 @@
 using System.Linq;
+using Emberhold.Gameplay.Items;
+using Emberhold.Gameplay.Workers;
 using Emberhold.World.Bushes;
 using Emberhold.World.Items;
 using Emberhold.World.Trees;
@@ -19,6 +21,41 @@ namespace Emberhold.Tests.EditMode.Trees
         private Forest forest;
         private BushSpecies bush;
         private TreeSpecies birch;
+
+        [Test]
+        public void GrassOnGround_ShowsSheaves_OnePerBushYield_Capped()
+        {
+            Assert.That(DroppedItemsView.SheafCount(1, 3, 5), Is.EqualTo(1));
+            Assert.That(DroppedItemsView.SheafCount(3, 3, 5), Is.EqualTo(1), "Куст даёт 3 травы — один сноп");
+            Assert.That(DroppedItemsView.SheafCount(4, 3, 5), Is.EqualTo(2));
+            Assert.That(DroppedItemsView.SheafCount(70, 3, 5), Is.EqualTo(5), "Не больше предела кучки");
+        }
+
+        [Test]
+        public void GrassOnGround_SheavesLieOnGround_WithoutOverlap()
+        {
+            var mesh = WorkerCarryBuilder.Build(WorkerCarry.Sheaf, 1.9f);
+            try
+            {
+                var radius = mesh.bounds.extents.y;
+                Assert.That(mesh.bounds.size.z, Is.LessThan(1f), "Сноп короче блока");
+                var centres = Enumerable.Range(0, 5).Select(k => DroppedItemsView.SheafOffset(k, radius)).ToList();
+                foreach (var c in centres)
+                {
+                    Assert.That(c.y - radius, Is.GreaterThanOrEqualTo(-1e-4f), "Сноп не уходит в землю");
+                    Assert.That(Mathf.Abs(c.x) + radius, Is.LessThan(0.5f), "Кучка в своей клетке");
+                }
+                Assert.That(centres.Min(c => c.y), Is.EqualTo(radius).Within(1e-4f), "Нижние лежат на земле");
+                for (var i = 0; i < centres.Count; i++)
+                for (var j = i + 1; j < centres.Count; j++)
+                    Assert.That(Vector2.Distance(centres[i], centres[j]), Is.GreaterThanOrEqualTo(radius * 2f - 1e-4f),
+                        $"Снопы {i} и {j} не проходят друг в друга");
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
+        }
 
         [SetUp]
         public void SetUp()

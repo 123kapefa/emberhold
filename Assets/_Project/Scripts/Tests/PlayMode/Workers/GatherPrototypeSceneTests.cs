@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Linq;
 using Emberhold.Gameplay.Building;
+using Emberhold.Gameplay.Items;
 using Emberhold.Gameplay.Trees;
 using Emberhold.Gameplay.Workers;
 using Emberhold.World.Bushes;
@@ -31,6 +32,9 @@ namespace Emberhold.Tests.PlayMode.Workers
             var thicket = forest.Thicket;
 
             Assert.That(thicket.Bushes, Is.Not.Empty, "На карте растут кусты");
+            var dropped = Object.FindAnyObjectByType<DroppedItemsView>();
+            Assert.That(dropped.ShapeFor("grass"), Is.EqualTo(DroppedItemsView.ItemShape.Sheaf), "Трава на земле — снопы, не кубики");
+            Assert.That(dropped.MaterialFor("grass"), Is.Not.SameAs(dropped.MaterialFor("stone")), "У травы свой материал, не камня");
             var lit = thicket.Bushes.Where(b => editor.CanEdit(b.Cell)).ToList();
             Assert.That(lit, Has.Count.GreaterThanOrEqualTo(3), "Несколько кустов у костра, в свету");
             Assert.That(lit.All(b => b.IsGrown), Is.True, "Сначала все зелёные");
@@ -85,6 +89,12 @@ namespace Emberhold.Tests.PlayMode.Workers
             }
 
             Assert.That(bush.IsGrown, Is.False, "Рабочий срезал траву");
+            yield return null;
+            if (dropped.Items.Items.Any(i => i.Drop.ItemId == "grass"))
+            {
+                var meshes = dropped.GetComponentsInChildren<MeshFilter>().Select(f => f.sharedMesh).Where(m => m != null).ToList();
+                Assert.That(meshes.Any(m => m.name == "Dropped Sheaf"), Is.True, "Трава на земле лежит снопом");
+            }
             Assert.That(bush.IsPresent, Is.True, "Куст остался голым");
             Assert.That(gatherer, Is.True, "Срезает сборщик");
             Assert.That(crew.Zones.Contains(zone), Is.True, "Зона ждёт, пока куст отрастёт");
