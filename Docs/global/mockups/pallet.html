@@ -1,0 +1,325 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Поддон Emberhold</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans+SC:wght@500;700&family=Alegreya+Sans:wght@400;500&display=swap">
+<style>
+/* Layout: full-width 3D stage on top, compact control strip under it; one column on phones. */
+:root{
+  --bg:#ece7de; --panel:#f7f3ec; --fg:#2b241d; --muted:#6d6155; --line:#d4cabb; --accent:#b8642a; --stage:#cfd6cf;
+  --display:"Alegreya Sans SC", Georgia, serif; --body:"Alegreya Sans", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#1b1916;--panel:#24211d;--fg:#ece4d6;--muted:#a5998a;--line:#3a352e;--accent:#e08a4a;--stage:#2c3230;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1b1916;--panel:#24211d;--fg:#ece4d6;--muted:#a5998a;--line:#3a352e;--accent:#e08a4a;--stage:#2c3230;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:980px;margin:0 auto;padding-block:20px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:16px}
+h1{font-family:var(--display);font-weight:700;font-size:1.6rem;letter-spacing:.02em;margin:0;text-wrap:balance}
+.lead{margin:4px 0 0;color:var(--muted);max-width:65ch}
+#stage{position:relative;width:100%;aspect-ratio:16/10;max-width:100%;border-radius:10px;overflow:hidden;background:var(--stage);border:1px solid var(--line)}
+#stage canvas{display:block;width:100%;height:100%;touch-action:none}
+.hint{position:absolute;left:12px;bottom:10px;font-size:12px;color:var(--muted);background:var(--panel);padding:3px 8px;border-radius:6px;opacity:.9}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px 20px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.group{display:grid;gap:6px;min-width:0}
+.label{font-family:var(--display);font-size:.8rem;letter-spacing:.08em;color:var(--muted)}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{font:inherit;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.seg button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;align-items:center;gap:10px}
+input[type=range]{flex:1;min-width:0;accent-color:var(--accent)}
+.count{font-variant-numeric:tabular-nums;min-width:4.5ch;text-align:right;font-weight:500}
+.notes{margin:0;padding-left:1.1em;color:var(--muted);max-width:70ch;display:grid;gap:4px}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Поддон: прототип</h1>
+    <p class="lead">Поддон занимает 2 на 2 клетки, на нём один вид ресурса: брёвна длиной 2 блока (20 крест-накрест), камень или трава. Камень и трава засыпаются в ящик 2 на 2 с бортами в 2 блока, как в Castle Story: щебень или сено поднимается с количеством, а у полного ящика горкой выходит над краем. Камень считается корзинами по 3 камня, как выпадает из блока. Рядом для масштаба поселенец ростом 1,9 блока и сетка клеток. Крути мышью или пальцем, колесо или щипок для приближения.</p>
+  </header>
+
+  <div id="stage"><span class="hint">Крутить: тянуть · Приблизить: колесо</span></div>
+
+  <section class="controls" aria-label="Настройки прототипа">
+    <div class="group">
+      <span class="label">ВИД ПОДДОНА</span>
+      <div class="seg" id="kind">
+        <button type="button" id="k-planks" data-v="planks" aria-pressed="true">Доски на брусьях</button>
+        <button type="button" id="k-poles" data-v="poles" aria-pressed="false">Настил из жердей</button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="label">РЕСУРС</span>
+      <div class="seg" id="res">
+        <button type="button" id="r-wood" data-v="wood" aria-pressed="true">Брёвна</button>
+        <button type="button" id="r-stone" data-v="stone" aria-pressed="false">Камень</button>
+        <button type="button" id="r-grass" data-v="grass" aria-pressed="false">Трава</button>
+      </div>
+    </div>
+    <div class="group wood-only">
+      <span class="label">УКЛАДКА БРЁВЕН</span>
+      <div class="seg" id="stack">
+        <button type="button" id="s-cross" data-v="cross" aria-pressed="true">20 крест-накрест</button>
+        <button type="button" id="s-big" data-v="big" aria-pressed="false">4 крупных</button>
+      </div>
+    </div>
+    <div class="group">
+      <label class="label" for="amount">СКОЛЬКО ЛЕЖИТ</label>
+      <div class="row"><input id="amount" type="range" min="0" max="20" step="1" value="14"><span class="count" id="amountOut">14 / 20</span></div>
+    </div>
+    <div class="group wood-only">
+      <label class="label" for="thick">ТОЛЩИНА БРЕВНА</label>
+      <div class="row"><input id="thick" type="range" min="0.25" max="1" step="0.05" value="0.35"><span class="count" id="thickOut">0,35 бл.</span></div>
+    </div>
+    <div class="group">
+      <span class="label">ВИД КУЧИ</span>
+      <div class="seg" id="tidy">
+        <button type="button" id="t-neat" data-v="neat" aria-pressed="true">Аккуратно</button>
+        <button type="button" id="t-loose" data-v="loose" aria-pressed="false">Навалом</button>
+      </div>
+    </div>
+  </section>
+
+  <ul class="notes">
+    <li>Пустой поддон показывает только настил. Тип ресурса задаёт первое положенное, опустевший поддон снова принимает любой.</li>
+    <li>Полный поддон получает тонкую светлую рамку по краю, чтобы было видно, что носить сюда больше нельзя.</li>
+    <li>Борта сколочены из досок по краю поддона, высота 2 блока, чуть выше поселенца.</li>
+  </ul>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+  const stage = document.getElementById('stage');
+  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  stage.prepend(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 16/10, 0.05, 100);
+  camera.position.set(3.8, 3, 4.3);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0.2, 0.55, 0.4);
+  controls.enableDamping = true;
+  controls.minDistance = 1.2; controls.maxDistance = 9;
+  controls.maxPolarAngle = Math.PI * 0.48;
+
+  scene.add(new THREE.HemisphereLight(0xfff4e0, 0x5a5048, 0.75));
+  const sun = new THREE.DirectionalLight(0xffe6c4, 0.9);
+  sun.position.set(3, 5, 2); sun.castShadow = true;
+  sun.shadow.mapSize.set(1024,1024);
+  Object.assign(sun.shadow.camera, {left:-3,right:3,top:3,bottom:-3,near:0.5,far:15});
+  scene.add(sun);
+
+  // Faceted materials like the game's trees and blocks.
+  const mat = c => new THREE.MeshLambertMaterial({color:c, flatShading:true});
+  const M = {
+    grass: mat(0x6f8a4a), grass2: mat(0x657f43), dirt: mat(0x7a5b3c),
+    plank: mat(0xb58a57), plankDark: mat(0x8c6640), runner: mat(0x7d5a37),
+    bark: mat(0x6b4a2c), wood: mat(0xd9b27a), pole: mat(0x8f6b45),
+    stoneA: mat(0x8d8a84), stoneB: mat(0x77746f), stoneC: mat(0x9d9890),
+    skin: mat(0xd9a77f), shirt: mat(0x9a7e5c), hood: mat(0xcbb48c), pants: mat(0x5b4a3a),
+    full: new THREE.LineBasicMaterial({color:0xfff3d6})
+  };
+  function shadowed(m){ m.castShadow = true; m.receiveShadow = true; return m; }
+
+  // Ground: 5x5 cells, slight checker so the 1-block cell reads.
+  const ground = new THREE.Group();
+  for (let x=-2;x<=2;x++) for (let z=-2;z<=2;z++){
+    const b = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), (x+z)&1 ? M.grass : M.grass2);
+    b.position.set(x, -0.5, z); b.receiveShadow = true; ground.add(b);
+  }
+  scene.add(ground);
+
+  // Deterministic random so the loose heap does not jump between redraws.
+  function rng(seed){ let s = seed>>>0; return () => (s = (s*1664525 + 1013904223)>>>0) / 4294967296; }
+
+  // A settler for scale: 1.9 blocks tall, simple faceted figure.
+  function settler(){
+    const g = new THREE.Group();
+    const leg = (x) => { const l = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.06,0.85,6), M.pants)); l.position.set(x,0.425,0); return l; };
+    g.add(leg(-0.09), leg(0.09));
+    const body = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.22,0.7,7), M.shirt)); body.position.y = 1.2; g.add(body);
+    const cape = shadowed(new THREE.Mesh(new THREE.ConeGeometry(0.27,0.3,7), M.hood)); cape.position.y = 1.52; g.add(cape);
+    const head = shadowed(new THREE.Mesh(new THREE.IcosahedronGeometry(0.15,0), M.skin)); head.position.y = 1.74; g.add(head);
+    const hood = shadowed(new THREE.Mesh(new THREE.ConeGeometry(0.16,0.2,7), M.hood)); hood.position.y = 1.86; g.add(hood);
+    const arm = (x) => { const a = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.045,0.62,6), M.shirt)); a.position.set(x,1.17,0); a.rotation.z = x>0?-0.12:0.12; return a; };
+    g.add(arm(-0.25), arm(0.25));
+    g.position.set(-1.3, 0, 0.3); g.rotation.y = 0.6;
+    return g;
+  }
+  scene.add(settler());
+
+  const pallet = new THREE.Group();
+  scene.add(pallet);
+
+  const state = { kind:'planks', res:'wood', amount:14, tidy:'neat', stack:'cross' };
+  const cap = () => state.res === 'wood' ? (state.stack === 'cross' ? 20 : 4) : FILL[state.res].cap;
+  pallet.position.set(0.5, 0, 0.5);
+  let deckTop = 0.16;
+
+  function box(w,h,d,m,x,y,z,ry){ const b = shadowed(new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m)); b.position.set(x,y,z); if (ry) b.rotation.y = ry; return b; }
+
+  function buildDeck(g){
+    if (state.kind === 'planks'){
+      // Three runners underneath, five boards on top with small gaps.
+      for (const z of [-0.85, -0.28, 0.28, 0.85]) g.add(box(1.9, 0.08, 0.12, M.runner, 0, 0.04, z));
+      const boards = 10, w = 0.17, gap = (1.9 - boards*w)/(boards-1);
+      for (let i=0;i<boards;i++){
+        const x = -0.95 + w/2 + i*(w+gap);
+        g.add(box(w, 0.035, 1.92, i%2 ? M.plankDark : M.plank, x, 0.0975, 0));
+      }
+      deckTop = 0.115;
+    } else {
+      // Two cross logs and a deck of round poles: rougher, older look.
+      for (const z of [-0.8, 0, 0.8]){
+        const c = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.055,1.94,7), M.bark));
+        c.rotation.z = Math.PI/2; c.position.set(0,0.055,z); g.add(c);
+      }
+      const poles = 15;
+      for (let i=0;i<poles;i++){
+        const p = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,1.94,7), i%2 ? M.pole : M.plankDark));
+        p.rotation.x = Math.PI/2; p.position.set(-0.88 + i*0.1257, 0.16, 0); g.add(p);
+      }
+      deckTop = 0.2;
+    }
+  }
+
+  // Log 1 block thick and 2 blocks long.
+  let LOG_R = 0.168; const LOG_LEN = 1.96;
+  function logMesh(){
+    const g = new THREE.Group();
+    const body = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(LOG_R, LOG_R*0.94, LOG_LEN, 9), M.bark));
+    body.rotation.x = Math.PI/2; g.add(body);
+    for (const s of [-1,1]){
+      const end = new THREE.Mesh(new THREE.CylinderGeometry(LOG_R*0.86, LOG_R*0.86, 0.01, 9), M.wood);
+      end.rotation.x = Math.PI/2; end.position.z = s*(LOG_LEN/2 + 0.004); g.add(end);
+    }
+    return g;
+  }
+
+  // "cross": 4 layers of 5 logs, each layer across the one below (20).
+  // "big": two logs along z, then two across on top (4).
+  function logSlots(n){
+    if (state.stack === 'cross'){
+      const out = [], per = 5, pitch = 1.9 / per;
+      for (let layer = 0; layer < 4; layer++)
+        for (let i = 0; i < per; i++){
+          const off = -0.95 + pitch/2 + i*pitch, y = LOG_R + layer*2*LOG_R*0.97;
+          out.push(layer % 2 ? {x:0, y, z:off, ry:Math.PI/2} : {x:off, y, z:0, ry:0});
+        }
+      return out.slice(0, n);
+    }
+    const all = [
+      {x:-0.5, y:LOG_R, z:0, ry:0}, {x:0.5, y:LOG_R, z:0, ry:0},
+      {x:0, y:3*LOG_R, z:-0.5, ry:Math.PI/2}, {x:0, y:3*LOG_R, z:0.5, ry:Math.PI/2},
+    ];
+    return all.slice(0, n);
+  }
+
+  // Stone and grass fill a 2x2 crate with 2-block sides. The fill is one bumpy
+  // surface that rises with the amount and heaps above the rim when full.
+  const STONE_CAP = 76, GRASS_CAP = 70, WALL_H = 2.0, INNER = 1.76;
+  const FILL = {
+    stone: { cap: STONE_CAP, colors: [0x55524e, 0x3f3d3a, 0x6c6863, 0x8a8680, 0x2f2d2b], bump: 0.035 },
+    grass: { cap: GRASS_CAP, colors: [0x9aa556, 0x8c9a4c, 0xa9a95e, 0x7f8f45, 0xb3ad66], bump: 0.06 },
+  };
+  function fillMesh(res, n, rand){
+    const f = FILL[res], t = n / f.cap;
+    // Up to 85% the top is nearly flat; the last 15% builds the heap over the rim.
+    const level = WALL_H * Math.min(t, 0.85) / 0.85 * 0.92;
+    const heap = Math.max(0, (t - 0.85) / 0.15) * 0.45;
+    const seg = 18, geo = new THREE.PlaneGeometry(INNER, INNER, seg, seg).toNonIndexed();
+    geo.rotateX(-Math.PI/2);
+    const pos = geo.attributes.position, cols = [], c = new THREE.Color();
+    const h = (x, z) => {
+      const d = Math.max(Math.abs(x), Math.abs(z)) / (INNER/2);
+      const rim = d > 0.96 ? 0 : 1;
+      const k = Math.sin(x*13.1 + z*7.7) * Math.cos(z*11.3 - x*5.9);
+      return level + heap * Math.max(0, 1 - Math.hypot(x, z) / (INNER*0.62)) ** 1.3 + f.bump * k * rim;
+    };
+    for (let i = 0; i < pos.count; i++) pos.setY(i, h(pos.getX(i), pos.getZ(i)));
+    for (let i = 0; i < pos.count; i += 3){
+      c.setHex(f.colors[Math.floor(rand() * f.colors.length)]);
+      for (let k = 0; k < 3; k++) cols.push(c.r, c.g, c.b);
+    }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    geo.computeVertexNormals();
+    const m = shadowed(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({vertexColors:true, flatShading:true})));
+    m.position.y = deckTop + 0.01;
+    return m;
+  }
+
+  function binWalls(g){
+    const h = WALL_H, t = 0.06, L = 1.9;
+    for (const s of [-1, 1]){
+      g.add(box(L, h, t, M.plank, 0, deckTop + h/2, s*(L/2 - t/2)));
+      g.add(box(t, h, L - 2*t, M.plankDark, s*(L/2 - t/2), deckTop + h/2, 0));
+    }
+    for (const sx of [-1,1]) for (const sz of [-1,1]) g.add(box(0.1, h + 0.08, 0.1, M.runner, sx*0.9, deckTop + (h+0.08)/2, sz*0.9));
+    // Plank seams and a top rim so the side reads as boarded, like a crate.
+    for (let k = 1; k < 4; k++){
+      const y = deckTop + h*k/4;
+      for (const s of [-1, 1]){
+        g.add(box(L + 0.01, 0.025, 0.012, M.runner, 0, y, s*(L/2 + 0.002)));
+        g.add(box(0.012, 0.025, L + 0.01, M.runner, s*(L/2 + 0.002), y, 0));
+      }
+    }
+    for (const s of [-1, 1]){
+      g.add(box(L + 0.04, 0.06, 0.1, M.runner, 0, deckTop + h + 0.03, s*(L/2 - 0.03)));
+      g.add(box(0.1, 0.06, L + 0.04, M.runner, s*(L/2 - 0.03), deckTop + h + 0.03, 0));
+    }
+  }
+
+  function rebuild(){
+    while (pallet.children.length) pallet.remove(pallet.children[0]);
+    buildDeck(pallet);
+    const n = state.amount, rand = rng(7 + n);
+    const loose = state.tidy === 'loose';
+    if (state.res === 'wood'){
+      logSlots(n).forEach((s,i) => {
+        const l = logMesh();
+        l.position.set(s.x, deckTop + s.y, s.z); l.rotation.y = s.ry;
+        if (loose){ l.position.x += (rand()-.5)*0.08; l.position.z += (rand()-.5)*0.08; l.rotation.y += (rand()-.5)*0.25; }
+        pallet.add(l);
+      });
+    } else {
+      binWalls(pallet);
+      if (n > 0) pallet.add(fillMesh(state.res, n, rand));
+    }
+    if (n >= cap()){
+      const pts = [[-1,1],[1,1],[1,-1],[-1,-1],[-1,1]].map(([x,z]) => new THREE.Vector3(x, 0.01, z));
+      pallet.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), M.full));
+    }
+    document.getElementById('amountOut').textContent = n + ' / ' + cap();
+  }
+
+  function bindSeg(id, key){
+    const el = document.getElementById(id);
+    el.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      state[key] = b.dataset.v;
+      if (key === 'stack'){ const t = state.stack === 'cross' ? 0.35 : 0.5; const th = document.getElementById('thick'); th.value = t; setThick(t); state.amount = cap(); document.getElementById('amount').value = cap(); }
+      if (key === 'res'){ document.querySelectorAll('.wood-only').forEach(x => x.hidden = state.res !== 'wood'); state.amount = Math.round(cap()*0.7); document.getElementById('amount').value = state.amount; }
+      if (key === 'res' || key === 'stack'){ const a = document.getElementById('amount'); a.max = cap(); if (state.amount > cap()) { state.amount = cap(); a.value = cap(); } }
+      el.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+      rebuild();
+    });
+  }
+  bindSeg('kind','kind'); bindSeg('res','res'); bindSeg('tidy','tidy'); bindSeg('stack','stack');
+  document.getElementById('amount').addEventListener('input', e => { state.amount = +e.target.value; rebuild(); });
+  function setThick(v){ LOG_R = v / 2 * 0.96; document.getElementById('thickOut').textContent = String(v).replace('.', ',') + ' бл.'; }
+  document.getElementById('thick').addEventListener('input', e => { setThick(+e.target.value); rebuild(); });
+
+  function resize(){
+    const w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stage);
+  resize(); rebuild();
+  (function loop(){ controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+})();
+</script>
+
+</body></html>

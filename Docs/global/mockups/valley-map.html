@@ -1,0 +1,418 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Карта долины Emberhold</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Golos+Text:wght@400;500;600&display=swap">
+<style>
+/* Layout: заголовок, большая карта высот с локациями и переключателями слоёв, развилки и профиль путей, затем карточки локаций сеткой */
+:root {
+  --bg: #eceee8;
+  --paper: #f6f7f2;
+  --ink: #22282b;
+  --muted: #5d676b;
+  --line: #c9cec6;
+  --ember: #c8611c;
+  --low: #0e7c6b;
+  --high: #8a4fa8;
+  --east: #b0700c;
+  --display: "Alegreya SC", "Georgia", serif;
+  --body: "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14181b; --paper: #1b2125; --ink: #e4e7e2; --muted: #9aa5a8; --line: #313a3f;
+    --ember: #f08a3c; --low: #3cc4a8; --high: #c08ae0; --east: #e0a33a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14181b; --paper: #1b2125; --ink: #e4e7e2; --muted: #9aa5a8; --line: #313a3f;
+  --ember: #f08a3c; --low: #3cc4a8; --high: #c08ae0; --east: #e0a33a; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 48px; display: grid; gap: 28px; }
+header { display: grid; gap: 6px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4vw, 40px); margin: 0; text-wrap: balance; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 24px; margin: 0; }
+.lede { margin: 0; color: var(--muted); max-width: 72ch; }
+.tag { display: inline-block; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+.mapgrid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+@media (max-width: 960px) { .mapgrid { grid-template-columns: 1fr; } }
+.mapbox { overflow: auto; }
+.mapbox canvas { display: block; width: 100%; min-width: 640px; height: auto; border-radius: 10px; cursor: crosshair; }
+.side { display: grid; gap: 16px; padding: 16px 18px; }
+.side h3 { font-family: var(--display); font-size: 17px; margin: 0; }
+.toggles { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.toggles input:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.legend { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.legend li { display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: center; }
+.legend canvas { width: 26px; height: 26px; }
+.ramp { display: grid; gap: 4px; }
+.ramp span#rampbar { display: block; height: 10px; border-radius: 3px; }
+.ramp-ticks { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#readout { font-variant-numeric: tabular-nums; min-height: 3em; }
+.routes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+.route { padding: 16px 18px; display: grid; gap: 6px; align-content: start; }
+.route h3 { font-family: var(--display); font-size: 19px; margin: 0; display: flex; gap: 10px; align-items: center; }
+.route p { margin: 0; }
+.dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.profbox { overflow-x: auto; }
+.profbox canvas { display: block; width: 100%; min-width: 640px; height: auto; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+@media (max-width: 420px) { .cards { grid-template-columns: 1fr; } }
+.card { padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.card h3 { font-family: var(--display); font-weight: 700; font-size: 19px; margin: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.card h3 .num { font-family: var(--body); font-size: 12px; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.card dl { margin: 0; display: grid; grid-template-columns: 84px 1fr; gap: 3px 12px; font-size: 14px; }
+.card dt { color: var(--muted); font-size: 13px; }
+.card dd { margin: 0; min-width: 0; }
+.pill { font-family: var(--body); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 99px; padding: 1px 8px; color: var(--muted); }
+.pill.b { color: var(--ember); border-color: var(--ember); }
+.flow { padding: 16px 18px; display: grid; gap: 8px; }
+.flow ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 82ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="tag">Набросок карты кампании · вариант 3</span>
+    <h1>Долина Emberhold</h1>
+    <p class="lede">От перевала на юго-западе долина петляет на север и у Старой мельницы расходится. К маяку ведут три пути, они сходятся только на Кедровом плато. Туман стелется по низу: чем ниже место, тем он гуще. Локаций 13, из них 5 районов со своим маяком. Мир под карту — 512 × 512 блоков, высота 48.</p>
+  </header>
+
+  <section class="mapgrid">
+    <div class="panel mapbox"><canvas id="hmap" width="1024" height="1024" aria-label="Карта высот долины с локациями"></canvas></div>
+    <aside class="panel side">
+      <div class="toggles" role="group" aria-label="Слои карты">
+        <label><input type="checkbox" id="lyr-routes" checked> Пути</label>
+        <label><input type="checkbox" id="lyr-points" checked> Точки</label>
+        <label><input type="checkbox" id="lyr-names" checked> Названия</label>
+        <label><input type="checkbox" id="lyr-fog" checked> Туман</label>
+      </div>
+      <p class="note" id="readout">Наведи курсор на карту: покажу место и высоту.</p>
+      <div class="ramp" aria-hidden="true"><span id="rampbar"></span><div class="ramp-ticks"><span>0</span><span>12</span><span>24</span><span>36</span><span>48</span></div></div>
+      <p class="note">Цвет — высота в блоках. Тонкие линии через 4 блока, жирные через 12.</p>
+      <h3>Обозначения</h3>
+      <ul class="legend" id="legend"></ul>
+    </aside>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <h2>Развилки и пути к маяку</h2>
+    <div class="routes">
+      <article class="panel route">
+        <h3><span class="dot" style="background:var(--low)"></span>Нижний путь</h3>
+        <p>Мельница, Брод, Топи, серпантин на плато. Самый короткий, но почти весь в густом тумане. У Брода разрушен мост: вброд только днём.</p>
+      </article>
+      <article class="panel route">
+        <h3><span class="dot" style="background:var(--high)"></span>Верхний путь</h3>
+        <p>Мельница, Холмы, Мёртвый город, Карниз на плато. Выше тумана и с двумя маяками по дороге. Карниз узкий: громилы могут его обрушить, тогда его надо достраивать.</p>
+      </article>
+      <article class="panel route">
+        <h3><span class="dot" style="background:var(--east)"></span>Восточный путь</h3>
+        <p>Брод, Горы, Восточный перевал на плато. Самый длинный, и на нём два завала. Зато Горы перестают быть тупиком, и в обход Брода в них ведёт тоннель из Каменоломни.</p>
+      </article>
+      <article class="panel route">
+        <h3><span class="dot" style="background:var(--ember)"></span>Тупики и секреты</h3>
+        <p>Речная пойма и Каменоломня — тупики, туда ходят за ресурсом. Скрытую долину над Поймой видно только с ракеты, и вход в неё надо прокопать.</p>
+      </article>
+    </div>
+    <div class="panel profbox"><canvas id="hprof" width="1024" height="260" aria-label="Профиль высот трёх путей"></canvas></div>
+    <p class="note">Профиль высот трёх путей от перевала до маяка. Серая полоса — высота, где стоит туман: ниже 16 блоков он есть, ниже 8 густой. Нижний путь почти весь в тумане, верхний и восточный большую часть пути идут над ним.</p>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <h2>Локации</h2>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <h2>Особые места</h2>
+    <div class="routes">
+      <article class="panel route"><h3>Туман по низу</h3><p>Туман стоит ниже 16 блоков и густеет ниже 8. Чем выше строишь, тем легче удержать свет. Ночью туман может подниматься выше, а в особые ночи ещё сильнее.</p></article>
+      <article class="panel route"><h3>Завалы</h3><p>Два завала: на дороге от Брода к Горам и на Восточном перевале. Проход открывается, когда рабочие раскопают камни. Камень идёт в дело.</p></article>
+      <article class="panel route"><h3>Тоннель</h3><p>Из Каменоломни в Горы сквозь хребет, около 40 блоков. Его копает игрок, и это долго, зато потом не нужно расчищать завал у Брода.</p></article>
+      <article class="panel route"><h3>Разрушенный мост</h3><p>У Брода. Днём реку переходят вброд, ночью нет. Чертёж моста лежит в руинах заставы рядом.</p></article>
+      <article class="panel route"><h3>Смотровые скалы</h3><p>Пять высоких точек: у Перевала, в Холмах, над Топями, на пике Гор и на Кедровом плато. Сигнальная ракета отсюда освещает гораздо дальше.</p></article>
+      <article class="panel route"><h3>Скрытая долина</h3><p>Над Поймой за хребтом. Видна только с ракеты со скалы в Холмах. Внутри руины с редким чертежом.</p></article>
+    </div>
+  </section>
+
+  <section class="panel flow">
+    <h2>Как идёт прохождение</h2>
+    <ol>
+      <li>Перевал и Берёзовая долина — обучение и первые ночи. Берёз хватает на две ночи, дальше свет тянут вниз к Старой мельнице.</li>
+      <li>Мельница — первая развилка: на запад в Пойму, на север в Холмы, на восток к Броду. Порядок свободный, но без плавильни из Холмов песок Поймы бесполезен.</li>
+      <li>От Брода ещё одна развилка: на юг Каменоломня, на юго-восток к Горам через завал, на северо-восток нижний путь в Топи. Ночью через Брод без моста не пройти.</li>
+      <li>Маяков пять, главному нужно четыре уголька. Один район можно пропустить, но тогда ресурс оттуда придётся добывать без защиты маяка.</li>
+      <li>Финал: на Кедровое плато можно выйти тремя путями: через Топи, по Карнизу из города или через Восточный перевал. С плато последний склон ведёт к Скале маяка.</li>
+    </ol>
+  </section>
+</div>
+
+<script>
+(function () {
+  const W = 512, H = 512, MAXH = 48, S = 2;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const sstep = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+  function hash(x, y) { let n = (x * 374761393 + y * 668265263) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967295; }
+  function vnoise(x, y) { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    return lerp(lerp(hash(xi, yi), hash(xi + 1, yi), u), lerp(hash(xi, yi + 1), hash(xi + 1, yi + 1), u), v); }
+  function fbm(x, y, o = 4) { let s = 0, a = .5, f = 1, n = 0; for (let i = 0; i < o; i++) { s += a * vnoise(x * f + i * 17.3, y * f - i * 9.1); n += a; a *= .5; f *= 2.03; } return s / n; }
+  function ridged(x, y) { let s = 0, a = .5, f = 1, n = 0; for (let i = 0; i < 5; i++) { const r = 1 - Math.abs(vnoise(x * f + i * 31.7, y * f + i * 5.3) * 2 - 1); s += a * r * r; n += a; a *= .5; f *= 2.1; } return s / n; }
+  function smin(a, b, k) { const h = clamp(.5 + .5 * (b - a) / k, 0, 1); return lerp(b, a, h) - k * h * (1 - h); }
+  function terrace(h, step, soft) { const t = h / step, fl = Math.floor(t); return (fl + sstep(1 - soft, 1, t - fl)) * step; }
+  function warp(x, z, a) { return [x + (fbm(x * .02, z * .02 + 40, 3) - .5) * 2 * a, z + (fbm(x * .02 + 70, z * .02, 3) - .5) * 2 * a]; }
+  // гладкая кривая через точки (Catmull-Rom), чтобы путь петлял
+  function spline(pts, n = 8) { const out = []; for (let i = 0; i < pts.length - 1; i++) { const p0 = pts[Math.max(i - 1, 0)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(i + 2, pts.length - 1)];
+      for (let k = 0; k < n; k++) { const t = k / n, t2 = t * t, t3 = t2 * t; out.push([0, 1].map(j => .5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3))); } }
+    out.push(pts[pts.length - 1]); return out; }
+  function prep(pts) { const L = [0]; for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return { pts, L, tot: L[L.length - 1] }; }
+  function polyDist(x, z, P) { let best = 1e9, tt = 0; const p = P.pts; for (let i = 1; i < p.length; i++) { const a = p[i - 1], b = p[i], dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1;
+      const t = clamp(((x - a[0]) * dx + (z - a[1]) * dz) / l2, 0, 1), d = Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz); if (d < best) { best = d; tt = (P.L[i - 1] + t * (P.L[i] - P.L[i - 1])) / P.tot; } } return [best, tt]; }
+
+  // ---------- локации ----------
+  const N = {
+    pass:   { name: 'Перевал', x: 38, z: 472, rx: 13, rz: 13, f: () => 24 },
+    birch:  { name: 'Берёзовая долина', x: 112, z: 410, rx: 48, rz: 34, f: (x, z) => 14 + (fbm(x * .05, z * .05) - .5) * 4 },
+    mill:   { name: 'Старая мельница', x: 172, z: 318, rx: 26, rz: 22, f: (x, z) => 11 + (fbm(x * .06, z * .06) - .5) * 2 },
+    plain:  { name: 'Речная пойма', x: 86, z: 212, rx: 60, rz: 46, f: (x, z) => 7.5 + (fbm(x * .05 + 3, z * .05) - .5) * 3 },
+    hills:  { name: 'Сосновые холмы', x: 214, z: 188, rx: 56, rz: 46, f: (x, z) => terrace(15 + 15 * clamp((230 - z) / 85, 0, 1) + (fbm(x * .05, z * .05) - .5) * 9, 3, .4) },
+    ford:   { name: 'Брод у заставы', x: 292, z: 330, rx: 26, rz: 22, f: (x, z) => 9 + (fbm(x * .06, z * .06) - .5) * 2 },
+    quarry: { name: 'Каменоломня', x: 300, z: 440, rx: 52, rz: 38, f: (x, z) => { let h = 15 + (fbm(x * .06, z * .06) - .5) * 4;
+      for (const [px, pz, rx, rz, dep] of [[288, 430, 18, 12, 7], [324, 452, 14, 10, 5], [268, 458, 10, 8, 4], [334, 422, 9, 7, 3]]) { const [qx, qz] = warp(x, z, 5); h -= dep * (1 - sstep(.3, 1, Math.hypot((qx - px) / rx, (qz - pz) / rz))); }
+      return terrace(h, 2, .12); } },
+    mount:  { name: 'Горы', x: 424, z: 414, rx: 62, rz: 50, f: (x, z) => 18 + 24 * Math.exp(-((x - 452) ** 2 / (2 * 24 ** 2) + (z - 436) ** 2 / (2 * 20 ** 2))) + ridged(x * .05, z * .05) * 8 },
+    city:   { name: 'Мёртвый город', x: 340, z: 166, rx: 50, rz: 36, f: (x, z) => terrace(20 + 3 * clamp((190 - z) / 50, 0, 1) + (fbm(x * .04 + 9, z * .04) - .5) * 4, 2, .3) },
+    swamp:  { name: 'Топи', x: 404, z: 262, rx: 50, rz: 36, f: (x, z) => 5 + (fbm(x * .07, z * .07) - .5) * 1.6 },
+    cedar:  { name: 'Кедровое плато', x: 462, z: 150, rx: 34, rz: 30, f: (x, z) => 25 + (fbm(x * .05, z * .05) - .5) * 5 },
+    rock:   { name: 'Скала маяка', x: 468, z: 58, rx: 14, rz: 12, f: () => 36 },
+    secret: { name: 'Скрытая долина', x: 124, z: 92, rx: 30, rz: 22, f: (x, z) => 19 + (fbm(x * .06, z * .06) - .5) * 4 },
+  };
+  for (const k in N) { const n = N[k]; n.id = k; n.lobes = [[0, 0, n.rx, n.rz]];
+    for (let j = 0; j < 4; j++) { const a = hash(k.length * 13 + j, n.x) * 6.283, r = .35 + .4 * hash(j, n.z);
+      n.lobes.push([Math.cos(a) * n.rx * r, Math.sin(a) * n.rz * r, n.rx * (.35 + .35 * hash(n.x, j + 7)), n.rz * (.35 + .35 * hash(j + 3, n.x + n.z))]); } }
+  // путь с неровной линией: между опорными точками вставляем точки со сдвигом вбок
+  function jitter(pts, seed) { const out = [pts[0]]; for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
+      const k = Math.max(1, Math.round(l / 14)); for (let j = 1; j <= k; j++) { const t = j / (k + 1), o = (hash(seed + i * 7, j) - .5) * Math.min(18, l * .45); out.push([a[0] + dx * t - dz / l * o, a[1] + dz * t + dx / l * o]); } out.push(b); } return out; }
+  const E = [
+    ['pass', 'birch', [[64, 452], [86, 438]], 7, 13],
+    ['birch', 'mill', [[146, 380], [148, 348]], 12, 9],
+    ['mill', 'plain', [[142, 300], [130, 268], [108, 248]], 8, 9],
+    ['mill', 'hills', [[196, 288], [190, 252], [208, 228]], 7, 7],
+    ['mill', 'ford', [[206, 336], [246, 318], [268, 334]], 9, 9],
+    ['ford', 'quarry', [[278, 366], [300, 398]], 6, 7],
+    ['ford', 'mount', [[328, 352], [356, 388], [384, 396]], 7, 8],
+    ['ford', 'swamp', [[326, 312], [346, 286], [372, 282]], 10, 12],
+    ['hills', 'city', [[256, 168], [282, 150], [306, 162]], 6, 7],
+    ['city', 'swamp', [[356, 196], [376, 214], [388, 236]], 5, 6],
+    ['swamp', 'cedar', [[436, 236], [424, 206], [450, 186]], 5, 6],
+    ['cedar', 'rock', [[476, 120], [458, 96], [470, 76]], 4, 4],
+    ['city', 'cedar', [[372, 140], [398, 120], [430, 128]], 2.5, 3, 5, 'Карниз'],
+    ['mount', 'cedar', [[472, 372], [490, 312], [484, 244], [478, 196]], 5, 5, 9, 'Восточный перевал'],
+  ].map(([a, b, mid, w0, w1, bump = 0, ename], ei) => { const A = N[a], B = N[b]; const P = prep(spline(jitter([[A.x, A.z], ...mid, [B.x, B.z]], ei * 31 + 5), 5));
+    const xs = P.pts.map(p => p[0]), zs = P.pts.map(p => p[1]), m = 60;
+    return { a, b, P, w0, w1, bump, name: ename || 'Дорога: ' + A.name + ' → ' + B.name, h0: A.f(A.x, A.z), h1: B.f(B.x, B.z), bb: [Math.min(...xs) - m, Math.min(...zs) - m, Math.max(...xs) + m, Math.max(...zs) + m] }; });
+  const ROUTES = [
+    { key: 'low', name: 'нижний', ids: ['pass', 'birch', 'mill', 'ford', 'swamp', 'cedar', 'rock'], col: '#0e7c6b', tok: '--low' },
+    { key: 'high', name: 'верхний', ids: ['pass', 'birch', 'mill', 'hills', 'city', 'cedar', 'rock'], col: '#8a4fa8', tok: '--high' },
+    { key: 'east', name: 'восточный', ids: ['pass', 'birch', 'mill', 'ford', 'mount', 'cedar', 'rock'], col: '#b0700c', tok: '--east' },
+  ];
+  const onRoute = (r, e) => { const i = r.ids.indexOf(e.a), j = r.ids.indexOf(e.b); return i >= 0 && j >= 0 && Math.abs(i - j) === 1; };
+  const ptAt = (P, t) => { const L = t * P.tot; for (let i = 1; i < P.pts.length; i++) if (P.L[i] >= L) { const u = (L - P.L[i - 1]) / ((P.L[i] - P.L[i - 1]) || 1); return [lerp(P.pts[i - 1][0], P.pts[i][0], u), lerp(P.pts[i - 1][1], P.pts[i][1], u)]; } return P.pts[P.pts.length - 1]; };
+  const edge = (a, b) => E.find(e => e.a === a && e.b === b);
+  const RUBBLE = [ptAt(edge('ford', 'mount').P, .45), ptAt(edge('mount', 'cedar').P, .55)];
+  const BRIDGE = [318, 348];
+  const TUNNEL = [[344, 444], [362, 436], [384, 432]];
+  // вода: ручей с перевала до Топей, река с гор к Броду, озеро в Пойме
+  const stream = prep(spline([[40, 466], [70, 448], [100, 418], [140, 392], [150, 352], [170, 326], [206, 340], [246, 322], [290, 336], [330, 310], [350, 288], [380, 276], [400, 262]], 6));
+  const river = prep(spline(jitter([[440, 408], [408, 398], [376, 392], [352, 380], [322, 350], [296, 334]], 77), 5));
+  const lake = [64, 206, 30, 18];
+
+  // ---------- высоты ----------
+  const hm = new Float32Array(W * H), water = new Float32Array(W * H), who = new Array(W * H);
+  for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
+    const edge = Math.min(x, z, W - 1 - x, H - 1 - z);
+    let h = 30 + 13 * ridged(x * .016, z * .016) + (fbm(x * .06, z * .06) - .5) * 5 + (1 - sstep(0, 24, edge)) * 4;
+    let name = 'Горный хребет', nd = 2;
+    const ux = (fbm(x * .02, z * .02 + 40, 3) - .5) * 2, uz = (fbm(x * .02 + 70, z * .02, 3) - .5) * 2;
+    const vx2 = (vnoise(x * .07 + 3, z * .07) - .5) * 2, vz2 = (vnoise(x * .07, z * .07 + 9) - .5) * 2;
+    for (const k in N) { const n = N[k]; if (Math.abs(x - n.x) > n.rx * 1.6 + 60 || Math.abs(z - n.z) > n.rz * 1.6 + 60) continue;
+      const wa = Math.min(n.rx, n.rz) * .55, wx = x + ux * wa + vx2 * 6, wz = z + uz * wa + vz2 * 6;
+      let d = 1e9; for (const [ox, oz, lx_, lz_] of n.lobes) d = smin(d, (Math.hypot((wx - n.x - ox) / lx_, (wz - n.z - oz) / lz_) - 1) * Math.min(lx_, lz_), 6);
+      if (d > 60) continue;
+      const s = .75 + .7 * fbm(x * .05 + 5, z * .05, 3);
+      h = smin(h, n.f(x, z) + Math.max(d, 0) * s, 5);
+      if (d < nd) { nd = d; name = n.name; } }
+    for (const e of E) { if (x < e.bb[0] || x > e.bb[2] || z < e.bb[1] || z > e.bb[3]) continue; const [d, t] = polyDist(x + ux * 9 + vx2 * 4, z + uz * 9 + vz2 * 4, e.P); const w = lerp(e.w0, e.w1, t) * (.45 + 1.1 * fbm(x * .035 + 11, z * .035, 3)), dd = d - w;
+      if (dd > 50) continue;
+      h = smin(h, lerp(e.h0, e.h1, sstep(0, 1, t)) + e.bump * Math.sin(Math.PI * t) + (fbm(x * .06, z * .06, 3) - .5) * 1.5 + Math.max(dd, 0) * (.8 + .5 * fbm(x * .07, z * .07, 3)), 4);
+      if (dd < nd) { nd = dd; name = e.name; } }
+    const i = z * W + x;
+    for (const [rx_, rz_] of RUBBLE) { const d = Math.hypot(x - rx_, z - rz_); if (d < 7) { h += (1 - sstep(2, 7, d)) * (4 + 2 * vnoise(x * .5, z * .5)); if (d < 5) name = 'Завал'; } }
+    const [ds] = polyDist(x, z, stream); if (ds < 4) { h -= (1 - sstep(.5, 4, ds)) * .9; if (x > 54) water[i] = Math.max(water[i], 1 - sstep(.3, 1.4, ds)); }
+    const [dr, tr] = polyDist(x, z, river); if (dr < 8) { const wr = lerp(.6, 2.2, sstep(0, .25, tr)); h = Math.min(h, lerp(5 + (1 - sstep(0, .25, tr)) * 6, h, sstep(.5, 4 + wr * 2, dr))); water[i] = Math.max(water[i], 1 - sstep(wr * .3, wr, dr)); }
+    const dl = Math.hypot((x - lake[0]) / lake[2], (z - lake[1]) / lake[3]) - 1 + (fbm(x * .08, z * .08) - .5) * .5;
+    if (dl < .4) h = Math.min(h, lerp(3.5, 7.5, sstep(-.4, .4, dl)));
+    water[i] = Math.max(water[i], 1 - sstep(-.08, .08, dl));
+    const sw = Math.hypot((x - N.swamp.x) / (N.swamp.rx * .85), (z - N.swamp.z) / (N.swamp.rz * .85));
+    if (sw < 1) water[i] = Math.max(water[i], (1 - sstep(.38, .46, fbm(x * .09, z * .09 + 4))) * (1 - sstep(.8, 1, sw)));
+    hm[i] = clamp(h, 0, 46); who[i] = name;
+  }
+
+  // ---------- рельеф в картинку ----------
+  const stops = [[0, [88, 128, 96]], [5, [104, 146, 98]], [10, [140, 170, 108]], [16, [182, 190, 128]], [22, [205, 190, 140]], [28, [190, 160, 122]], [34, [160, 140, 120]], [40, [150, 146, 142]], [44, [222, 220, 216]], [48, [246, 245, 242]]];
+  const ramp = h => { for (let i = 1; i < stops.length; i++) if (h <= stops[i][0]) { const [h0, c0] = stops[i - 1], [h1, c1] = stops[i], t = (h - h0) / (h1 - h0); return c0.map((c, k) => lerp(c, c1[k], t)); } return stops[stops.length - 1][1]; };
+  document.getElementById('rampbar').style.background = 'linear-gradient(90deg,' + stops.map(([h, c]) => `rgb(${c.join(',')}) ${h / 48 * 100}%`).join(',') + ')';
+  const at = (A, x, z) => A[clamp(z, 0, H - 1) * W + clamp(x, 0, W - 1)];
+  const bil = (A, x, z) => { const xi = Math.floor(x), zi = Math.floor(z), u = x - xi, v = z - zi; return lerp(lerp(at(A, xi, zi), at(A, xi + 1, zi), u), lerp(at(A, xi, zi + 1), at(A, xi + 1, zi + 1), u), v); };
+  const cv = document.getElementById('hmap'), ctx = cv.getContext('2d');
+  const img = ctx.createImageData(W * S, H * S);
+  const lx = -.6, lz = -.6, ly = .53;
+  for (let pz = 0; pz < H * S; pz++) for (let px = 0; px < W * S; px++) {
+    const x = px / S, z = pz / S, h = bil(hm, x, z);
+    let c;
+    if (bil(water, x, z) > .5) c = [78, 132, 168];
+    else {
+      const gx = bil(hm, x + .5, z) - bil(hm, x - .5, z), gz = bil(hm, x, z + .5) - bil(hm, x, z - .5);
+      c = ramp(h);
+      const nx = -gx * 1.6, nz = -gz * 1.6, nl = Math.hypot(nx, 1, nz), dot = (nx * lx + ly + nz * lz) / nl;
+      const sh = clamp(.45 + .55 * dot / ly, .68, 1.18), steep = clamp((Math.hypot(gx, gz) - 1.2) / 2, 0, 1);
+      c = c.map((v, k) => lerp(v, [138, 130, 122][k], steep * .5) * sh);
+      const f = h / 4, fr = Math.min(f - Math.floor(f), Math.ceil(f) - f), w = (Math.abs(gx) + Math.abs(gz)) / 4 / S + .02;
+      const line = 1 - sstep(w * .4, w * 1.4, fr), f12 = h / 12, major = Math.min(f12 - Math.floor(f12), Math.ceil(f12) - f12) * 3 < .5;
+      c = c.map(v => v * (1 - line * (major ? .32 : .15)));
+    }
+    const i = (pz * W * S + px) * 4; img.data[i] = c[0]; img.data[i + 1] = c[1]; img.data[i + 2] = c[2]; img.data[i + 3] = 255;
+  }
+
+  // ---------- туман по низу: чем ниже, тем гуще ----------
+  const FOG_TOP = 16;
+  const fogImg = ctx.createImageData(W * S, H * S);
+  for (let pz = 0; pz < H * S; pz++) for (let px = 0; px < W * S; px++) { const h = bil(hm, px / S, pz / S), a = clamp((FOG_TOP - h) / 12, 0, 1);
+    const n = .75 + .5 * fbm(px * .02, pz * .02, 3), i = (pz * W * S + px) * 4; fogImg.data[i] = 214; fogImg.data[i + 1] = 222; fogImg.data[i + 2] = 236; fogImg.data[i + 3] = 150 * a * n; }
+  const fogCv = document.createElement('canvas'); fogCv.width = W * S; fogCv.height = H * S; fogCv.getContext('2d').putImageData(fogImg, 0, 0);
+
+  // ---------- значки ----------
+  const ICON = {
+    rubble: (c, s) => { c.fillStyle = '#7d7671'; [[-.45, .3, .38], [.1, .35, .42], [.5, .4, .28], [-.15, -.05, .34], [.3, 0, .26]].forEach(([x, y, r]) => { c.beginPath(); c.arc(x * s, y * s, r * s, 0, 7); c.fill(); }); c.strokeStyle = '#23292c'; c.lineWidth = s * .12; c.beginPath(); c.moveTo(-s * .6, -s * .6); c.lineTo(s * .6, s * .6); c.moveTo(s * .6, -s * .6); c.lineTo(-s * .6, s * .6); c.stroke(); },
+    bridge: (c, s) => { c.fillStyle = '#23292c'; c.fillRect(-s * .8, -s * .15, s * .55, s * .22); c.fillRect(s * .3, -s * .15, s * .5, s * .22); c.fillRect(-s * .7, 0, s * .16, s * .6); c.fillRect(s * .55, 0, s * .16, s * .6); c.fillStyle = '#d4651d'; c.fillRect(-s * .18, -s * .2, s * .1, s * .3); c.fillRect(s * .08, -s * .02, s * .1, s * .3); },
+    lookout: (c, s) => { c.fillStyle = '#23292c'; c.beginPath(); c.moveTo(-s * .7, s * .6); c.lineTo(0, -s * .5); c.lineTo(s * .7, s * .6); c.closePath(); c.fill(); c.fillStyle = '#fff'; c.beginPath(); c.ellipse(0, s * .2, s * .32, s * .17, 0, 0, 7); c.fill(); c.fillStyle = '#23292c'; c.beginPath(); c.arc(0, s * .2, s * .1, 0, 7); c.fill(); c.strokeStyle = '#d4651d'; c.lineWidth = s * .12; c.beginPath(); c.moveTo(0, -s * .5); c.lineTo(0, -s * 1.1); c.lineTo(s * .45, -s * .95); c.stroke(); },
+    tunnel: (c, s) => { c.fillStyle = '#7d7671'; c.beginPath(); c.arc(0, s * .45, s * .7, Math.PI, 0); c.fill(); c.fillStyle = '#111'; c.beginPath(); c.arc(0, s * .5, s * .4, Math.PI, 0); c.fill(); },
+    secret: (c, s) => { c.fillStyle = '#d4651d'; c.beginPath(); for (let k = 0; k < 8; k++) { const r = k % 2 ? s * .32 : s * .85, a = k * Math.PI / 4 - Math.PI / 2; c.lineTo(Math.cos(a) * r, Math.sin(a) * r); } c.closePath(); c.fill(); c.strokeStyle = '#23292c'; c.lineWidth = s * .1; c.stroke(); },
+    beacon: (c, s) => { c.fillStyle = '#d4651d'; c.beginPath(); c.moveTo(0, -s * 1.15); c.quadraticCurveTo(s * .45, -s * .75, 0, -s * .45); c.quadraticCurveTo(-s * .45, -s * .75, 0, -s * 1.15); c.fill();
+      c.fillStyle = '#23292c'; c.fillRect(-s * .4, -s * .45, s * .8, s * .2); c.beginPath(); c.moveTo(-s * .3, -s * .25); c.lineTo(s * .3, -s * .25); c.lineTo(s * .45, s * .6); c.lineTo(-s * .45, s * .6); c.closePath(); c.fill(); },
+    brazier: (c, s) => { c.fillStyle = '#d4651d'; c.beginPath(); c.moveTo(0, -s * .8); c.quadraticCurveTo(s * .4, -s * .4, 0, -s * .1); c.quadraticCurveTo(-s * .4, -s * .4, 0, -s * .8); c.fill();
+      c.fillStyle = '#23292c'; c.beginPath(); c.moveTo(-s * .6, -s * .05); c.lineTo(s * .6, -s * .05); c.quadraticCurveTo(s * .5, s * .35, 0, s * .35); c.quadraticCurveTo(-s * .5, s * .35, -s * .6, -s * .05); c.fill(); c.fillRect(-s * .12, s * .3, s * .24, s * .3); },
+    ruin: (c, s) => { c.fillStyle = '#23292c'; c.fillRect(-s * .6, -s * .1, s * .3, s * .7); c.fillRect(-s * .2, -s * .6, s * .3, s * 1.2); c.fillRect(s * .1, -s * .3, s * .15, s * .3); c.fillRect(s * .2, s * .1, s * .4, s * .5); },
+    lair: (c, s) => { c.fillStyle = '#6f7f93'; c.beginPath(); c.arc(0, s * .5, s * .7, Math.PI, 0); c.fill(); c.fillStyle = '#23292c'; c.beginPath(); c.arc(0, s * .55, s * .38, Math.PI, 0); c.fill();
+      c.fillStyle = '#f08a3c'; c.fillRect(-s * .18, s * .3, s * .1, s * .1); c.fillRect(s * .08, s * .3, s * .1, s * .1); },
+    camp: (c, s) => { c.fillStyle = '#d4651d'; c.beginPath(); c.moveTo(0, -s * .9); c.quadraticCurveTo(s * .55, -s * .3, 0, s * .2); c.quadraticCurveTo(-s * .55, -s * .3, 0, -s * .9); c.fill(); c.fillStyle = '#23292c'; c.fillRect(-s * .6, s * .2, s * 1.2, s * .25); },
+    lighthouse: (c, s) => { c.fillStyle = 'rgba(245,180,107,.55)'; c.beginPath(); c.arc(0, -s * 1.1, s * .8, 0, 7); c.fill(); ICON.beacon(c, s * 1.3); },
+  };
+  const LEG = [['beacon', 'Маяк района: цель главы, туман в районе уходит навсегда, даёт уголёк'], ['brazier', 'Старая жаровня: вечный огонь, опора для цепочки костров'], ['ruin', 'Руины: чертежи, записки, новые поселенцы'], ['lair', 'Логово: отсюда ночью идут существа'], ['camp', 'Стартовый костёр'], ['lighthouse', 'Главный маяк'], ['rubble', 'Завал: проход закрыт, нужно раскопать'], ['bridge', 'Разрушенный мост: вброд только днём'], ['tunnel', 'Тоннель, который прокапывает игрок'], ['lookout', 'Смотровая скала: ракета отсюда светит дальше'], ['secret', 'Секрет: видно только с сигнальной ракеты']];
+  const lg = document.getElementById('legend');
+  for (const [k, t] of LEG) { const li = document.createElement('li'), c = document.createElement('canvas'); c.width = c.height = 52; const g = c.getContext('2d'); g.translate(26, 30); ICON[k](g, 18); li.append(c, t); lg.append(li); }
+  const P = [
+    ['camp', 40, 470], ['brazier', 140, 386], ['ruin', 92, 396], ['lair', 70, 420],
+    ['ruin', 176, 310], ['brazier', 160, 332],
+    ['beacon', 58, 236], ['brazier', 114, 252], ['ruin', 112, 196], ['lair', 42, 178],
+    ['beacon', 238, 160], ['brazier', 196, 236], ['brazier', 222, 206], ['ruin', 188, 170], ['lair', 258, 206],
+    ['ruin', 298, 324], ['brazier', 280, 342],
+    ['ruin', 280, 428], ['brazier', 310, 420], ['lair', 336, 462],
+    ['beacon', 452, 432], ['brazier', 404, 402], ['brazier', 424, 444], ['ruin', 392, 426], ['lair', 474, 396],
+    ['beacon', 362, 150], ['ruin', 318, 158], ['ruin', 340, 178], ['ruin', 356, 168], ['brazier', 322, 186], ['lair', 382, 146],
+    ['beacon', 424, 272], ['brazier', 382, 254], ['ruin', 394, 278], ['lair', 436, 248],
+    ['brazier', 452, 162], ['ruin', 474, 140], ['lair', 486, 166],
+    ['lighthouse', 468, 56],
+    ['rubble', ...RUBBLE[0]], ['rubble', ...RUBBLE[1]], ['bridge', ...BRIDGE], ['tunnel', ...TUNNEL[0]], ['tunnel', ...TUNNEL[2]],
+    ['lookout', 60, 446], ['lookout', 182, 146], ['lookout', 380, 198], ['lookout', 466, 452], ['lookout', 446, 122],
+    ['secret', 130, 96], ['ruin', 112, 86], ['brazier', 140, 80],
+  ];
+  const LBL = { pass: [-30, 26], birch: [-36, 40], mill: [-46, 30], plain: [-40, 58], hills: [-34, -50], ford: [-14, -26], quarry: [-36, 50], mount: [-28, 62], city: [-32, -42], swamp: [-6, 50], cedar: [-74, -10], rock: [-80, 4], secret: [-40, -26] };
+
+  const lyr = id => document.getElementById(id).checked;
+  function draw() {
+    ctx.putImageData(img, 0, 0);
+    if (lyr('lyr-fog')) ctx.drawImage(fogCv, 0, 0);
+    ctx.save(); ctx.scale(S, S); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    if (lyr('lyr-routes')) {
+      for (const e of E) { const rs = ROUTES.filter(r => onRoute(r, e));
+        ctx.strokeStyle = rs.length > 1 ? '#d4651d' : rs.length ? rs[0].col : 'rgba(212,101,29,.8)';
+        ctx.lineWidth = rs.length ? 1.6 : 1.1; ctx.setLineDash(rs.length ? [] : [.1, 3]);
+        ctx.beginPath(); e.P.pts.forEach(([x, z], i) => i ? ctx.lineTo(x, z) : ctx.moveTo(x, z)); ctx.stroke(); }
+      ctx.strokeStyle = 'rgba(30,30,30,.85)'; ctx.lineWidth = 1.2; ctx.setLineDash([2, 2]);
+      ctx.beginPath(); TUNNEL.forEach(([x, z], i) => i ? ctx.lineTo(x, z) : ctx.moveTo(x, z)); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (lyr('lyr-points')) for (const [k, x, z] of P) { ctx.save(); ctx.translate(x, z); ctx.shadowColor = 'rgba(255,255,255,.9)'; ctx.shadowBlur = 2; ICON[k](ctx, k === 'lighthouse' ? 7 : 5.5); ctx.restore(); }
+    if (lyr('lyr-names')) { ctx.font = '700 9px "Alegreya SC", Georgia, serif';
+      for (const k in N) { const n = N[k], [ox, oz] = LBL[k]; ctx.lineWidth = 2.6; ctx.strokeStyle = 'rgba(20,24,27,.72)'; ctx.fillStyle = '#fff'; ctx.strokeText(n.name, n.x + ox, n.z + oz); ctx.fillText(n.name, n.x + ox, n.z + oz); } }
+    ctx.restore();
+  }
+  draw();
+  ['lyr-routes', 'lyr-points', 'lyr-names', 'lyr-fog'].forEach(id => document.getElementById(id).addEventListener('change', draw));
+  if (document.fonts) document.fonts.ready.then(draw);
+  const out = document.getElementById('readout');
+  cv.addEventListener('mousemove', e => { const r = cv.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / r.width * W), z = Math.floor((e.clientY - r.top) / r.height * H);
+    if (x < 0 || z < 0 || x >= W || z >= H) return; const i = z * W + x;
+    out.textContent = `${who[i]} · блок ${x}, ${z} · ${water[i] > .5 ? 'вода, дно на ' : 'высота '}${Math.round(hm[i])}${hm[i] < FOG_TOP ? ' · ' + (hm[i] < 8 ? 'густой туман' : 'туман') : ''}`; });
+  cv.addEventListener('mouseleave', () => { out.textContent = 'Наведи курсор на карту: покажу место и высоту.'; });
+
+  // ---------- профиль двух путей ----------
+  function routeProfile(ids) { const pts = []; for (let i = 1; i < ids.length; i++) { const e = E.find(e => e.a === ids[i - 1] && e.b === ids[i]); pts.push(...(i > 1 ? e.P.pts.slice(1) : e.P.pts)); }
+    let d = 0; const marks = []; const out = pts.map((p, i) => { if (i) d += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); for (const k of ids) if (Math.hypot(p[0] - N[k].x, p[1] - N[k].z) < .5) marks.push([d, k]); return [d, bil(hm, p[0], p[1])]; });
+    return { out, len: d, marks }; }
+  ROUTES.forEach(r => r.prof = routeProfile(r.ids)); const maxD = Math.max(...ROUTES.map(r => r.prof.len));
+  const pc = document.getElementById('hprof'), p = pc.getContext('2d');
+  function drawProfile() {
+    const cs = getComputedStyle(document.documentElement), tok = n => cs.getPropertyValue(n).trim();
+    const L = 46, R = 16, T = 18, B = 30, PW = pc.width - L - R, PH = pc.height - T - B, X = d => L + d / maxD * PW, Y = h => T + PH - h / MAXH * PH;
+    p.clearRect(0, 0, pc.width, pc.height); p.font = '12px "Golos Text", system-ui, sans-serif'; p.textBaseline = 'middle';
+    for (let h = 0; h <= MAXH; h += 12) { p.strokeStyle = tok('--line'); p.lineWidth = 1; p.beginPath(); p.moveTo(L, Y(h)); p.lineTo(L + PW, Y(h)); p.stroke(); p.fillStyle = tok('--muted'); p.textAlign = 'right'; p.fillText(h, L - 8, Y(h)); }
+    p.fillStyle = 'rgba(140,160,190,.18)'; p.fillRect(L, Y(FOG_TOP), PW, Y(0) - Y(FOG_TOP)); p.fillStyle = 'rgba(140,160,190,.18)'; p.fillRect(L, Y(8), PW, Y(0) - Y(8));
+    p.fillStyle = tok('--muted'); p.textAlign = 'right'; p.fillText('туман ниже ' + FOG_TOP, L + PW - 6, Y(FOG_TOP) - 8);
+    for (const [R_, col] of ROUTES.map(r => [r.prof, tok(r.tok)])) {
+      p.beginPath(); R_.out.forEach(([d, h], i) => i ? p.lineTo(X(d), Y(h)) : p.moveTo(X(d), Y(h))); p.strokeStyle = col; p.lineWidth = 2.2; p.stroke();
+      p.fillStyle = col; p.textAlign = 'center';
+      R_.marks.forEach(([d, k]) => { const h = R_.out.find(q => q[0] >= d)[1]; p.beginPath(); p.arc(X(d), Y(h), 3.5, 0, 7); p.fill(); });
+    }
+    p.fillStyle = tok('--muted'); p.textAlign = 'center';
+    const lbl = { mill: 'Мельница', ford: 'Брод', hills: 'Холмы', city: 'Город', swamp: 'Топи', mount: 'Горы', cedar: 'Плато', rock: 'Маяк', birch: 'Берёзы', pass: 'Перевал' };
+    const done = new Set();
+    ROUTES.forEach((r, ri) => r.prof.marks.forEach(([d, k]) => { if (done.has(k)) return; done.add(k); const h = r.prof.out.find(q => q[0] >= d)[1]; p.fillText(lbl[k], clamp(X(d), L + 24, L + PW - 24), Y(h) + (ri === 0 ? 16 : -16)); }));
+    p.fillText('расстояние вдоль пути, блоков', L + PW / 2, pc.height - 10);
+    p.textAlign = 'left'; let tx = L + 8; ROUTES.forEach(r => { p.fillStyle = tok(r.tok); const t = r.name + ' ' + Math.round(r.prof.len); p.fillText(t, tx, T + 6); tx += p.measureText(t).width + 18; });
+  }
+  drawProfile();
+  try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawProfile); } catch (e) {}
+  new MutationObserver(drawProfile).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (document.fonts) document.fonts.ready.then(drawProfile);
+
+  // ---------- карточки ----------
+  const C = [
+    ['pass', null, 'Старт. Узкое ущелье между скалами, отсюда начинается ручей.', 'Камень', 'Почти нет', 'Стартовый костёр'],
+    ['birch', null, 'Широкая котловина, обучение и первые ночи.', 'Берёза, камень', 'Ползуны', 'Жаровня на спуске, руины хутора, мелкое логово ползунов'],
+    ['mill', null, 'Первая развилка на три стороны. Ручей крутит старое колесо.', 'Берёза', 'Ползуны', 'Руины мельницы с чертежом фонаря, жаровня'],
+    ['plain', 'Песок → стекло', 'Боковая долина без выхода, низко и ровно, озеро и тростник.', 'Песок, берёза, сосна', 'Ползуны из зарослей у воды', 'Маяк на мысу у озера, жаровня на входе, руины рыбацкой деревни, логово'],
+    ['hills', 'Плавильня, уголь', 'Террасы ступенями вверх, начало верхнего пути.', 'Сосна, уголь в обрывах, камень', 'Ползуны, первые громилы', 'Маяк на вершине, две жаровни по склону, руины заставы, логово'],
+    ['ford', null, 'Вторая развилка. Река с гор, мост через неё разрушен: вброд можно только днём, ночью нужен свой мост.', 'Камень', 'Ползуны и громилы', 'Руины заставы с чертежом моста, жаровня у брода, разрушенный мост'],
+    ['quarry', null, 'Широкий тупик с несколькими карьерами. Из дальнего карьера можно прокопать тоннель сквозь хребет в Горы.', 'Много камня, уголь', 'Громилы', 'Руины каменотёсов, жаровня у входа, логово громил в штольне, начало тоннеля'],
+    ['mount', 'Железо → металл', 'Высокая долина с пиком. Дорогу от Брода перекрывает завал, а на север уходит Восточный перевал к Кедровому плато, тоже с завалом.', 'Вековой кедр, железная руда, уголь', 'Громилы', 'Маяк под пиком, две жаровни, руины рудника, логово, смотровая скала на пике'],
+    ['city', 'Масло, сторожевые башни', 'Плато на уступах выше тумана. Отсюда крутой спуск в Топи и узкий Карниз прямо на Кедровое плато.', 'Масло в руинах, камень разобранных домов', 'Тени', 'Маяк на площади, много руин с чертежами, жаровня, склеп теней, смотровая скала над Топями'],
+    ['swamp', 'Самый густой туман уходит', 'Самое низкое место, болото и густой туман. Нижний путь идёт через него, верхний и восточный обходят.', 'Мало, смола', 'Все виды существ', 'Маяк на острове, жаровня, затопленная деревня, логово'],
+    ['cedar', null, 'Плато перед финалом. Сюда сходятся все три пути: серпантин из Топей, Карниз из города и Восточный перевал.', 'Вековой кедр', 'Тени и громилы', 'Жаровня, руины храма огня, логово, смотровая скала'],
+    ['secret', null, 'Закрытая долина за хребтом над Поймой, дороги туда нет. Видно только с сигнальной ракеты со смотровой скалы в Холмах, вход надо прокопать.', 'Кедр, камень', 'Нет', 'Руины с редким чертежом (зеркало для направленного света), жаровня'],
+    ['rock', null, 'Главный маяк на скале. Нужно 4 уголька из 5.', '—', 'Все и сразу', 'Главный маяк'],
+  ];
+  const cards = document.getElementById('cards');
+  C.forEach(([k, beacon, what, res, threat, pts], i) => { const n = N[k], a = document.createElement('article'); a.className = 'panel card';
+    let lo = 99, hi = 0; for (let z = Math.max(0, n.z - n.rz * .7 | 0); z < Math.min(H, n.z + n.rz * .7); z += 2) for (let x = Math.max(0, n.x - n.rx * .7 | 0); x < Math.min(W, n.x + n.rx * .7); x += 2) if (who[z * W + x] === n.name && water[z * W + x] < .5) { lo = Math.min(lo, hm[z * W + x]); hi = Math.max(hi, hm[z * W + x]); }
+    a.innerHTML = `<h3>${n.name} <span class="num">${Math.round(lo)}–${Math.round(hi)} бл.</span>${beacon ? `<span class="pill b">маяк</span>` : ''}</h3>
+      <dl><dt>Что это</dt><dd>${what}</dd><dt>Ресурсы</dt><dd>${res}</dd><dt>Угрозы</dt><dd>${threat}</dd><dt>Точки</dt><dd>${pts}</dd>${beacon ? `<dt>Маяк даёт</dt><dd>${beacon}${k === 'rock' ? '' : ', уголёк'}</dd>` : ''}</dl>`;
+    cards.append(a); });
+})();
+</script>
+
+</body></html>

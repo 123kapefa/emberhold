@@ -1,0 +1,134 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Откуда приходят существа</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans+SC:wght@500;700&family=PT+Sans:wght@400;700&family=PT+Mono&display=swap">
+<style>
+/* Layout: одна колонка; два больших рисунка (где появляются существа, как растёт угроза) с подписями. Ночная тема намеренно одна. */
+:root{
+  --night:#12151c; --panel:#1a1f29; --line:#2c3442; --fog:#5d6b80;
+  --ink:#e6e1d6; --muted:#9aa3b2; --ember:#f0a04b; --hearth:#ffd36b; --eternal:#8fd3ff; --enemy:#e0605a; --old:#7f8cff;
+  --f-display:"Alegreya Sans SC","PT Sans",system-ui,sans-serif;
+  --f-body:"PT Sans",system-ui,sans-serif;
+  --f-mono:"PT Mono",ui-monospace,monospace;
+  color-scheme:dark;
+}
+body{background:var(--night);color:var(--ink);font:16px/1.55 var(--f-body)}
+.wrap{max-width:980px;margin:0 auto;padding-block:32px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:36px}
+h1,h2{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:.02em}
+h1{font-size:2rem;color:var(--hearth)} h2{font-size:1.35rem}
+p{margin:0;max-width:70ch}
+.note{color:var(--muted);font-size:.9rem}
+section{display:grid;gap:14px}
+.fig{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;overflow-x:auto}
+.fig svg{display:block;width:100%;height:auto;min-width:560px}
+ul{margin:0;padding-left:20px;display:grid;gap:6px;max-width:72ch}
+svg text{font-family:var(--f-body)}
+.lbl{fill:var(--ink);font-size:14px}
+.sub{fill:var(--muted);font-size:12.5px}
+.num{fill:var(--muted);font-family:var(--f-mono);font-size:11px}
+</style>
+<div class="wrap">
+  <header style="display:grid;gap:8px">
+    <h1>Откуда приходят существа</h1>
+    <p>Решено 2026-11-01 для «Механик 2»: где ночью появляются существа и как со временем растёт угроза. Числа условные, подбираем на плейтестах. Подробно: глава «Существа из тумана» → «Появление, натиск и разрушение».</p>
+  </header>
+
+  <section>
+    <h2>1. Существа идут из истоков по коридорам рельефа</h2>
+    <div class="fig"><svg id="spawn" viewBox="0 0 900 460" role="img" aria-label="Вид сверху: истоки тумана по краям, пути существ идут по проходам между скалами к огням, вал уводит поток к воротам"></svg></div>
+    <ul>
+      <li><b>Истоки</b> (фиолетовые круги): логова, низины, ущелья. Существа рождаются только там, а не вдоль всей границы света.</li>
+      <li><b>Этой ночью активны два истока</b> (яркие). Третий спит; в сумерки туман с активной стороны густеет.</li>
+      <li><b>Скалы и обрывы</b> (серые) дают коридоры. Существа идут самым дешёвым путём, поэтому оборону ставят в проходах.</li>
+      <li><b>Вал игрока</b> (коричневый) для существ — рельеф: они его не трогают и идут в обход к воротам, где ждут колья и воины. Только если обхода нет совсем, медленно лезут через вал.</li>
+      <li><b>Радиус истока:</b> дальний огонь слева вне радиусов, к нему никто не идёт.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. Угроза растёт от продвижения, а не от числа ночей</h2>
+    <div class="fig"><svg id="curve" viewBox="0 0 900 360" role="img" aria-label="График угрозы по ночам: сейчас растёт без конца; предложение — ступени по районам с потолком"></svg></div>
+    <ul>
+      <li><b>Сейчас</b> (серая линия): каждая ночь +25%, без конца. Если игрок застрял, через 10 ночей существ в 3,5 раза больше, и выход только один: ещё больше людей.</li>
+      <li><b>Предложение</b> (оранжевая): у каждого района своя сила тумана. Ночи внутри района добавляют немного, но упираются в потолок. Стоишь на месте — угроза перестаёт расти, умереть от застоя нельзя, но и нового ничего не получаешь.</li>
+      <li>Следующий район сильнее, зато в нём металл для нового оружия и брони. Сила растёт вместе со снаряжением, а не вместо него.</li>
+      <li>Чем меньше районов осталось в тумане, тем он гуще в оставшихся: вся сила тумана собирается в них, и последние районы самые тяжёлые.</li>
+    </ul>
+  </section>
+</div>
+<script>
+const ns='http://www.w3.org/2000/svg';
+function el(t,a,p){const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+function txt(p,x,y,s,cls,anchor){const t=el('text',{x,y,class:cls||'lbl','text-anchor':anchor||'start'},p);t.textContent=s;return t}
+// ---------- spawn figure ----------
+(function(){
+  const s=document.getElementById('spawn');
+  const defs=el('defs',{},s);
+  const m=el('mask',{id:'lit'},defs);
+  el('rect',{x:0,y:0,width:900,height:460,fill:'white'},m);
+  const fires=[{x:470,y:230,r:80,h:true},{x:380,y:290,r:62},{x:560,y:300,r:60},{x:130,y:330,r:60}];
+  fires.forEach(f=>el('circle',{cx:f.x,cy:f.y,r:f.r,fill:'black'},m));
+  el('rect',{x:0,y:0,width:900,height:460,fill:'#26301f'},s);
+  el('rect',{x:0,y:0,width:900,height:460,fill:'#1c2230','fill-opacity':.9,mask:'url(#lit)'},s);
+  // cliffs
+  [['M560 40 L700 70 L720 150 L640 170 L600 120 Z'],['M760 200 L880 180 L890 330 L790 320 L740 260 Z'],['M250 60 L380 40 L400 110 L300 150 L240 120 Z'],['M620 380 L760 360 L800 440 L600 450 Z']]
+    .forEach(([d])=>{el('path',{d,fill:'#3a3f48',stroke:'#5b616c'},s)});
+  txt(s,640,105,'скалы','sub','middle');txt(s,815,260,'обрыв','sub','middle');
+  // istoki radii
+  const ist=[{x:830,y:80,on:true,n:'ущелье'},{x:470,y:20,on:true,n:'логово'},{x:850,y:430,on:false,n:'низина'}];
+  ist.forEach(i=>{el('circle',{cx:i.x,cy:i.y,r:330,fill:'none',stroke:'#7f8cff','stroke-opacity':i.on?.22:.1,'stroke-dasharray':'3 6'},s)});
+  // player val (earth wall) arc north-east of hearth with a gate gap
+  el('path',{d:'M395 150 Q 470 115 520 128',fill:'none',stroke:'#8a6238','stroke-width':9,'stroke-linecap':'round'},s);
+  el('path',{d:'M560 145 Q 600 175 610 225',fill:'none',stroke:'#8a6238','stroke-width':9,'stroke-linecap':'round'},s);
+  // gate in the gap
+  el('rect',{x:533,y:126,width:18,height:12,fill:'#b98a56',transform:'rotate(25 542 132)'},s);
+  txt(s,580,128,'ворота, колья','sub');
+  txt(s,400,138,'вал игрока','sub');
+  // paths
+  const path=(d,on)=>el('path',{d,fill:'none',stroke:on?'#e0605a':'#e0605a','stroke-opacity':on?.95:.25,'stroke-width':on?2.4:1.5,'stroke-dasharray':'7 5'},s);
+  path('M815 95 C 760 140, 730 170, 735 190 C 700 170, 640 175, 600 150 L 548 134',true);
+  path('M470 35 C 470 70, 440 90, 420 110 C 450 100, 500 105, 540 128',true);
+  path('M835 420 C 760 345, 700 340, 610 320',false);
+  [[790,118],[742,182],[660,170],[460,70],[440,100],[500,112]].forEach(([x,y])=>el('circle',{cx:x,cy:y,r:4.5,fill:'#e0605a'},s));
+  // istoki glyphs
+  ist.forEach(i=>{el('circle',{cx:i.x,cy:i.y,r:15,fill:'#2a1d2a',stroke:'#7f8cff','stroke-width':i.on?3:1.5,'stroke-opacity':i.on?1:.5},s);
+    txt(s,i.x,i.y+(i.y>400?-24:32),i.n+(i.on?' · активен':' · спит'),'sub','middle')});
+  // fires
+  fires.forEach(f=>{el('circle',{cx:f.x,cy:f.y,r:f.r,fill:'none',stroke:'#f0a04b','stroke-opacity':.35,'stroke-dasharray':'2 3'},s);el('circle',{cx:f.x,cy:f.y,r:5,fill:'#f0a04b'},s)});
+  el('circle',{cx:470,cy:230,r:10,fill:'none',stroke:'#ffd36b','stroke-width':2},s);txt(s,470,262,'очаг','sub','middle');
+  txt(s,130,410,'дальний огонь: вне радиуса истоков,','sub','middle');txt(s,130,426,'к нему никто не идёт','sub','middle');
+  // legend
+  const L=el('g',{transform:'translate(220 452)'},s);
+  el('circle',{cx:0,cy:-4,r:6,fill:'#2a1d2a',stroke:'#7f8cff','stroke-width':2},L);txt(L,12,0,'исток','sub');
+  el('line',{x1:70,y1:-4,x2:100,y2:-4,stroke:'#e0605a','stroke-width':2.4,'stroke-dasharray':'7 5'},L);txt(L,106,0,'путь существ','sub');
+  el('line',{x1:210,y1:-4,x2:240,y2:-4,stroke:'#8a6238','stroke-width':7},L);txt(L,246,0,'вал (рельеф)','sub');
+  el('rect',{x:340,y:-10,width:14,height:12,fill:'#3a3f48',stroke:'#5b616c'},L);txt(L,360,0,'скалы','sub');
+})();
+// ---------- threat curve ----------
+(function(){
+  const s=document.getElementById('curve');
+  const X0=70,X1=860,Y0=310,Y1=30,N=30,MAX=6;
+  const x=n=>X0+(X1-X0)*(n-1)/(N-1), y=v=>Y0-(Y0-Y1)*v/MAX;
+  for(let v=0;v<=MAX;v++){el('line',{x1:X0,y1:y(v),x2:X1,y2:y(v),stroke:'#2c3442'},s);txt(s,X0-10,y(v)+4,'×'+v,'num','end')}
+  [1,5,10,15,20,25,30].forEach(n=>txt(s,x(n),Y0+20,n,'num','middle'));
+  txt(s,(X0+X1)/2,Y0+42,'ночь','sub','middle');
+  // current: 1 + 0.25*(n-1)
+  const cp=el('clipPath',{id:'plot'},el('defs',{},s));el('rect',{x:X0,y:Y1-6,width:X1-X0,height:Y0-Y1+6},cp);
+  let d='';for(let n=1;n<=N;n++){const v=1+.25*(n-1);d+=(n===1?'M':'L')+x(n)+' '+y(v)}
+  el('path',{d,fill:'none',stroke:'#9aa3b2','stroke-width':2,'stroke-dasharray':'5 4','clip-path':'url(#plot)'},s);
+  txt(s,x(10)+8,y(3.5),'сейчас: +25% за ночь, без конца','sub');
+  // proposed: districts at nights 1,9,15,22 ; base 1,1.8,2.7,3.8 ; growth +8%/night cap +40%
+  const starts=[[1,1,'район 1'],[9,1.8,'район 2'],[15,2.7,'район 3'],[22,3.8,'район 4']];
+  let p='';starts.forEach(([s0,b,name],i)=>{const end=i<starts.length-1?starts[i+1][0]:N+1;
+    for(let n=s0;n<end;n++){const v=b*Math.min(1+.08*(n-s0),1.4);p+=(p?'L':'M')+x(n)+' '+y(v)}
+    el('line',{x1:x(s0),y1:Y0,x2:x(s0),y2:Y1,stroke:'#8fd3ff','stroke-opacity':.25,'stroke-dasharray':'2 4'},s);
+    txt(s,x(s0)+6,Y1+14,name,'sub');
+    if(i>0)txt(s,x(s0)+6,Y1+30,'маяк зажжён','num');});
+  el('path',{d:p,fill:'none',stroke:'#f0a04b','stroke-width':3},s);
+  // plateau note
+  txt(s,x(3),y(1.55),'потолок района','sub');
+  el('circle',{cx:x(30),cy:y(3.8*1.4),r:4,fill:'#f0a04b'},s);
+})();
+</script>
+
+</body></html>

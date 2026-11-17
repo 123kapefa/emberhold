@@ -1,0 +1,1576 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Анимации врагов</title>
+<style>
+:root{--bg:#141c28;--panel:rgba(18,24,32,.84);--text:#e9edf2;--muted:#9aa6b4;--accent:#f0a24a;--line:rgba(255,255,255,.12)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141c28}}
+:root[data-theme="dark"]{--bg:#141c28}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;overflow:hidden}
+canvas{display:block}
+#ui{position:absolute;left:16px;top:12px;right:16px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none}
+.grp{pointer-events:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;display:flex;gap:2px;flex-wrap:wrap;align-items:center;backdrop-filter:blur(6px)}
+.grp span{font-size:12px;color:var(--muted);padding:0 6px}
+button{font:inherit;font-size:13px;color:var(--text);background:transparent;border:0;border-radius:7px;padding:5px 9px;cursor:pointer}
+button:hover{background:rgba(255,255,255,.08)}
+button.on{background:var(--accent);color:#1a1209;font-weight:600}
+button.act{background:rgba(240,162,74,.18)}
+#info{position:absolute;left:16px;bottom:14px;max-width:min(560px,calc(100% - 32px));background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.45;pointer-events:none}
+#info b{font-size:15px}#info .w{color:var(--muted)}#info p{margin:4px 0 0}
+#hint{position:absolute;right:16px;bottom:14px;font-size:12px;color:var(--muted);text-shadow:0 1px 3px #000;pointer-events:none}
+body.noui #ui,body.noui #hint,body.noui #info{display:none}
+@media (max-width:700px){#hint{display:none}button{padding:5px 7px;font-size:12px}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="ui">
+  <div class="grp" id="creatures"><span>Существо</span>
+    <button data-v="crawler">Ползун</button><button data-v="brute">Громила</button><button data-v="shade">Тень</button><button data-v="moths">Мотыльки</button><button data-v="mistmother">Туманница</button><button data-v="stilt">Ходуля</button></div>
+  <div class="grp" id="modes"><span>Состояние</span>
+    <button data-v="idle">1. Покой</button><button data-v="run">2. Бег</button><button data-v="drain" id="actBtn">3. Атака</button><button data-v="hit" class="act">4. Удар</button><button data-v="death" class="act">5. Смерть</button><button data-v="scene">Сценка</button></div>
+  <div class="grp" id="levels"><span>Уровень</span><button data-v="0">Обычный</button><button data-v="1">Матёрый</button><button data-v="2">Древний</button></div>
+  <div class="grp" id="speeds"><span>Скорость</span><button data-v="1">1×</button><button data-v="0.25">¼×</button></div>
+  <div class="grp" id="times"><span>Время</span><button data-v="day">День</button><button data-v="night">Ночь</button></div>
+</div>
+<div id="info"></div>
+<div id="hint">Рабочий у костра ростом 1.9 блока · тянуть, чтобы крутить · колесо или щипок для зума</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+// ===== Бестиарий Emberhold: модели в гранёном стиле (1 единица = 1 блок) =====
+const V3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
+function rngC(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+// ---------- палитра ----------
+const C = {
+  fog: 0x2b333f, fogDark: 0x1d232c, fogBelly: 0x46515f, frost: 0xb3cde3, bone: 0xcfc6b0, claw: 0x8f99a6,
+  mud: 0x4e5634, mudDark: 0x363b24, weed: 0x5f7a3a, bark: 0x5a3e2c, barkDark: 0x3c2a1f, root: 0x6b4a33, moss: 0x5d7034,
+  stone: 0x8a8e92, stoneDark: 0x5f6368, stoneWarm: 0x9a9284, snow: 0xe8eef2, rust: 0x7a4a2e, iron: 0x5b5f63,
+  slime: 0x7f9a5a, amber: 0xc98a2e, pale: 0xbac7c9, drown: 0x7d958c, feather: 0x24262b, owl: 0x9aa0a0, cedar: 0x37574b,
+  wisp: 0xbfe8c8, deer: 0xdfe3e2, gold: 0xb08d4a,
+};
+const EYE_COL = [0xcff4ff, 0xa8ecff, 0xe6fbff];
+
+// ---------- материалы ----------
+const matCache = new Map();
+function M(color, opts = {}) {
+  const key = color + JSON.stringify(opts);
+  if (!matCache.has(key)) {
+    const o = { color, roughness: opts.rough ?? 0.85, flatShading: true };
+    if (opts.emissive) { o.emissive = new THREE.Color(opts.emissive); o.emissiveIntensity = opts.ei ?? 1; }
+    if (opts.opacity) { o.transparent = true; o.opacity = opts.opacity; o.depthWrite = opts.opacity > .7; }
+    if (opts.metal) o.metalness = opts.metal;
+    matCache.set(key, new THREE.MeshStandardMaterial(o));
+  }
+  return matCache.get(key);
+}
+const eyeMat = (l) => new THREE.MeshBasicMaterial({ color: EYE_COL[l] });
+let glowTexC;
+function glowSprite(color, size, opacity = 1) {
+  if (!glowTexC) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.25, 'rgba(255,255,255,.45)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); glowTexC = new THREE.CanvasTexture(c); }
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexC, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity }));
+  s.scale.setScalar(size); s.userData.glow = opacity; return s;
+}
+
+// ---------- примитивы ----------
+function jitter(g, amt, seed) {
+  const r = rngC(seed), p = g.attributes.position, map = new Map();
+  for (let i = 0; i < p.count; i++) {
+    const k = p.getX(i).toFixed(3) + ',' + p.getY(i).toFixed(3) + ',' + p.getZ(i).toFixed(3);
+    if (!map.has(k)) map.set(k, [(r() - .5) * amt, (r() - .5) * amt, (r() - .5) * amt]);
+    const d = map.get(k); p.setXYZ(i, p.getX(i) * (1 + d[0]), p.getY(i) * (1 + d[1]), p.getZ(i) * (1 + d[2]));
+  }
+  g.computeVertexNormals(); return g;
+}
+class Builder {
+  constructor(level, seed = 1) { this.g = new THREE.Group(); this.level = level; this.seed = seed; this.n = 0; this.frostPts = []; }
+  add(m, parent) { m.castShadow = true; m.receiveShadow = true; (parent || this.g).add(m); return m; }
+  // эллипсоид
+  E(c, r, color, rot, o = {}) {
+    const m = new THREE.Mesh(jitter(new THREE.IcosahedronGeometry(1, o.detail ?? 1), o.j ?? .16, this.seed * 97 + this.n++), M(color, o));
+    m.scale.set(...(Array.isArray(r) ? r : [r, r, r])); m.position.set(...c); if (rot) m.rotation.set(...rot); return this.add(m, o.parent);
+  }
+  // отрезок между точками (конечность)
+  S(a, b, r0, r1, color, o = {}) {
+    const A = V3(a), B = V3(b), len = A.distanceTo(B);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r1 ?? r0 * .75, r0, len, o.sides ?? 5), M(color, o));
+    m.position.copy(A).add(B).multiplyScalar(.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+    return this.add(m, o.parent);
+  }
+  // цепочка: суставы с шарами
+  chain(pts, r0, r1, color, o = {}) {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const t0 = i / (pts.length - 1), t1 = (i + 1) / (pts.length - 1);
+      this.S(pts[i], pts[i + 1], r0 + (r1 - r0) * t0, r0 + (r1 - r0) * t1, color, o);
+      if (i > 0 && !o.noJoints) this.E(pts[i], (r0 + (r1 - r0) * t0) * 1.15, color, null, { ...o, detail: 0 });
+    }
+  }
+  // конус: из точки base в направлении dir
+  K(base, dir, r, h, color, o = {}) {
+    const d = V3(dir).normalize();
+    const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, o.sides ?? 5), M(color, o));
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d); m.position.copy(V3(base)).addScaledVector(d, h / 2);
+    return this.add(m, o.parent);
+  }
+  // коробка
+  B(c, s, color, rot, o = {}) {
+    const g = new THREE.BoxGeometry(...s); if (o.j) jitter(g, o.j, this.seed * 13 + this.n++);
+    const m = new THREE.Mesh(g, M(color, o)); m.position.set(...c); if (rot) m.rotation.set(...rot); return this.add(m, o.parent);
+  }
+  // глаз со свечением
+  eye(c, r, o = {}) {
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), o.mat || eyeMat(this.level)); m.position.set(...c); (o.parent || this.g).add(m);
+    const s = glowSprite(o.color ?? EYE_COL[this.level], r * (8 + this.level * 3), .9); s.position.set(...c); (o.parent || this.g).add(s); return m;
+  }
+  // зубы вдоль дуги
+  teeth(center, w, n, h, dir = [0, -1, 0], color = C.bone, r = .025) {
+    for (let i = 0; i < n; i++) { const x = center[0] + (n === 1 ? 0 : (i / (n - 1) - .5) * w); this.K([x, center[1], center[2]], dir, r, h * (i % 2 ? .7 : 1), color, { sides: 4 }); }
+  }
+  // крыло на шарнире (для взмахов)
+  wing(root, side, len, width, color, o = {}) {
+    const pivot = new THREE.Group(); pivot.position.set(...root); pivot.userData.flap = side; pivot.userData.flapAmp = o.amp ?? .6; this.g.add(pivot);
+    const n = o.feathers ?? 4;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1 || 1);
+      const m = new THREE.Mesh(jitter(new THREE.IcosahedronGeometry(1, 0), .1, this.n++), M(i % 2 ? color : (o.color2 ?? color), o));
+      m.scale.set(len * (.55 - t * .25), .025, width * (.55 - t * .1)); m.position.set(side * len * (.45 + t * .2), 0, -t * width * .5 + width * .15);
+      m.rotation.y = side * t * .35; this.add(m, pivot);
+    }
+    return pivot;
+  }
+  // ледяные кристаллы роста по уровням: точки с направлениями
+  frost(pts) { this.frostPts.push(...pts); }
+  finish(def) {
+    const l = this.level, r = rngC(this.seed * 7 + l);
+    const want = [0, 1, 2][l] * (def.frostPer ?? 3);
+    for (let i = 0; i < Math.min(want, this.frostPts.length * 3); i++) {
+      const [p, d] = this.frostPts[i % this.frostPts.length];
+      const jit = [(r() - .5) * .12, 0, (r() - .5) * .12];
+      const dir = [d[0] + (r() - .5) * .5, d[1] + (r() - .5) * .3, d[2] + (r() - .5) * .5];
+      const size = (def.frostSize ?? .1) * (1 + l * .25) * (.7 + r() * .6);
+      this.K([p[0] + jit[0], p[1], p[2] + jit[2]], dir, size * .45, size * 2.6, C.frost, { emissive: 0x3d6488, ei: .35 + l * .3, sides: 4 });
+    }
+    if (l >= 1) {
+      const box = new THREE.Box3().setFromObject(this.g);
+      const glow = new THREE.PointLight(0x9fd8ff, .15 + l * .2, 2 + l * 1.5, 2); glow.position.set(0, box.max.y * .85, 0); this.g.add(glow);
+    }
+    levelLook(this);
+    return this.g;
+  }
+}
+const mir = (fn) => { fn(-1); fn(1); };
+
+const CREATURES = [];
+function def(d) { CREATURES.push(d); }
+
+// Рост относительно рабочего (1.9 блока): h — высота модели, w — размах крыльев, f — готовый множитель для стаи
+const SIZE = {
+  crawler: ['h', 1], tarblob: ['h', 1.3], tinnik: ['h', 1.8], rootling: ['h', 2], stoneeater: ['h', 2],
+  drowned: ['h', 2.4], lamplighter: ['h', 2.4], armor: ['h', 2.5], avalanche: ['h', 2.5], shade: ['h', 2.8],
+  mistmother: ['h', 3], stag: ['h', 3], brute: ['h', 3.5], stilt: ['h', 5], golem: ['h', 6], cedarguard: ['h', 7], keeper: ['h', 10],
+  slimes: ['h', 2.2], moths: ['f', 1.5], jackdaws: ['f', 2], owl: ['w', 3.5],
+};
+const sizeCache = new Map();
+function sizeFactor(d) {
+  const s = SIZE[d.id]; if (!s) return 1;
+  if (s[0] === 'f') return s[1];
+  if (!sizeCache.has(d.id)) {
+    const b = new Builder(0, d.id.length * 7 + 1); d.build(b, 0);
+    const box = new THREE.Box3().setFromObject(b.g);
+    const cur = s[0] === 'h' ? box.max.y : box.max.x - box.min.x;
+    sizeCache.set(d.id, s[1] / cur);
+    b.g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  }
+  return sizeCache.get(d.id);
+}
+function buildCreatureV2(d, level) {
+  const b = new Builder(level, d.id.length * 7 + 1);
+  d.build(b, level);
+  const g = b.finish(d);
+  g.scale.setScalar([1, 1.18, 1.36][level] * sizeFactor(d));
+  g.userData.def = d;
+  return g;
+}
+
+// ================= облик уровней: туман забирает существо =================
+// Матёрый: иней и синеватый отлив, ледяная броня сверху, светящиеся трещины, изморозь под ногами.
+// Древний: полупрозрачное туманное тело, ледяное ядро, корона кристаллов, кружащие осколки,
+// кольцо инея и тёмный круг на земле — вокруг древнего свет слабеет.
+const ICE = { color: 0xd4ecfa, emissive: 0x4a88c0 };
+function levelLook(b) {
+  const l = b.level; if (l === 0) return;
+  const g = b.g, r = rngC(b.seed * 31 + l * 7);
+  g.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(g), size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  const sz = Math.max(size.x, size.y, size.z), R = Math.max(size.x, size.z) * .55;
+  const add = (m) => { m.userData.lvlAdd = true; m.castShadow = false; g.add(m); return m; };
+  const meshes = []; g.traverse(o => { if (o.isMesh && o.material.isMeshStandardMaterial) meshes.push(o); });
+  // 1. отлив и иней, у древнего — туманное тело
+  const mats = new Map();
+  for (const m of meshes) {
+    const src = m.material;
+    if (!mats.has(src)) {
+      const c = src.clone();
+      c.color.lerp(new THREE.Color(l === 1 ? 0x8fb4d4 : 0xb8d8f0), l === 1 ? .3 : .45);
+      if (c.emissive.getHex() === 0) { c.emissive = new THREE.Color(l === 1 ? 0x0e2034 : 0x24527c); c.emissiveIntensity = 1; }
+      if (l === 2 && !src.transparent) { c.transparent = true; c.opacity = .6; c.depthWrite = true; }
+      mats.set(src, c);
+    }
+    m.material = mats.get(src);
+  }
+  // точки на поверхности крупных частей
+  const big = meshes.filter(m => { const s = new THREE.Vector3(); m.getWorldScale(s); const gp = m.geometry.parameters || {}; return (gp.radius || gp.width || gp.radiusBottom || .3) * Math.max(s.x, s.y, s.z) > sz * .05; });
+  if (!big.length) return;
+  const nm = new THREE.Matrix3();
+  function surfacePoint(wantUp) {
+    for (let tries = 0; tries < 40; tries++) {
+      const m = big[Math.floor(r() * big.length)]; const pos = m.geometry.attributes.position, nor = m.geometry.attributes.normal; if (!nor) continue;
+      const i = Math.floor(r() * pos.count);
+      const p = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+      const n = new THREE.Vector3().fromBufferAttribute(nor, i).applyMatrix3(nm.getNormalMatrix(m.matrixWorld)).normalize();
+      if (p.y < size.y * .08) continue;
+      if (wantUp && n.y < .45) continue;
+      return [p, n];
+    }
+    return null;
+  }
+  // 2. светящиеся трещины
+  const crackMat = new THREE.MeshStandardMaterial({ color: 0x9fd8ff, emissive: 0x7fc3ff, emissiveIntensity: l === 1 ? 1 : 1.6, flatShading: true });
+  for (let i = 0; i < (l === 1 ? 10 : 16); i++) {
+    const sp = surfacePoint(false); if (!sp) continue; const [p, n] = sp;
+    const dir = new THREE.Vector3(r() - .5, r() - .5, r() - .5).cross(n).normalize();
+    for (let k = 0; k < 3; k++) {
+      const len = sz * (.035 + r() * .03);
+      const c = new THREE.Mesh(new THREE.BoxGeometry(sz * .008, len, sz * .008), crackMat);
+      c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir); c.position.copy(p).addScaledVector(n, sz * .004).addScaledVector(dir, len / 2); add(c);
+      p.addScaledVector(dir, len); dir.applyAxisAngle(n, (r() - .5) * 1.6);
+    }
+  }
+  // 3. ледяная броня сверху
+  const iceMat = new THREE.MeshStandardMaterial({ color: ICE.color, emissive: ICE.emissive, emissiveIntensity: l === 1 ? .35 : .7, roughness: .2, transparent: true, opacity: .85, flatShading: true });
+  for (let i = 0; i < (l === 1 ? 7 : 12); i++) {
+    const sp = surfacePoint(true); if (!sp) continue; const [p, n] = sp;
+    const plate = new THREE.Mesh(jitter(new THREE.IcosahedronGeometry(1, 0), .3, b.n++), iceMat);
+    const w = sz * (.05 + r() * .04); plate.scale.set(w, w * .3, w * .8);
+    plate.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n); plate.position.copy(p).addScaledVector(n, w * .12); add(plate);
+    if (r() < .5) { const k = new THREE.Mesh(new THREE.ConeGeometry(w * .25, w * 1.2, 4), iceMat); k.quaternion.copy(plate.quaternion); k.position.copy(p).addScaledVector(n, w * .6); add(k); }
+  }
+  // 4. изморозь на земле
+  const frostGround = new THREE.Mesh(new THREE.CircleGeometry(R * (l === 1 ? 1 : 1.15), 18), new THREE.MeshStandardMaterial({ color: 0xdcecf6, emissive: 0x2a4a68, transparent: true, opacity: l === 1 ? .4 : .5, depthWrite: false, roughness: .4 }));
+  frostGround.rotation.x = -Math.PI / 2; frostGround.position.set(ctr.x, .015, ctr.z); add(frostGround);
+  for (let i = 0; i < (l === 1 ? 8 : 14); i++) { const a = r() * 6.28, d = R * (.4 + r() * .7); const k = new THREE.Mesh(new THREE.ConeGeometry(sz * .012, sz * (.03 + r() * .04), 4), iceMat); k.position.set(ctr.x + Math.cos(a) * d, sz * .015, ctr.z + Math.sin(a) * d); k.rotation.set((r() - .5) * .6, 0, (r() - .5) * .6); add(k); }
+  if (l < 2) return;
+  // 5. древний: ледяное ядро
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(sz * .07, 0), new THREE.MeshBasicMaterial({ color: 0xe6f8ff })); core.position.copy(ctr); core.position.y = box.min.y + size.y * .55; add(core);
+  const cg = glowSprite(0x9fd8ff, sz * .45, .8); cg.position.copy(core.position); g.add(cg);
+  // корона кристаллов
+  const top = new THREE.Vector3(ctr.x, box.max.y, ctr.z);
+  for (let i = 0; i < 7; i++) { const a = i / 7 * 6.28; const h = sz * (.09 + (i % 2) * .05); const k = new THREE.Mesh(new THREE.ConeGeometry(sz * .02, h, 4), iceMat); k.position.set(top.x + Math.cos(a) * sz * .06, top.y - sz * .01 + h / 2, top.z + Math.sin(a) * sz * .06); k.rotation.set(Math.sin(a) * .35, 0, -Math.cos(a) * .35); add(k); }
+  // кружащие осколки льда
+  for (let i = 0; i < 9; i++) { const k = new THREE.Mesh(new THREE.OctahedronGeometry(sz * (.018 + r() * .015), 0), iceMat); k.userData.orbit = { cx: ctr.x, cz: ctr.z, r: R * (.95 + r() * .2), y: box.min.y + size.y * (.25 + r() * .55), ph: i / 9 * 6.28, sp: .5 + r() * .3 }; k.position.set(ctr.x + R, k.userData.orbit.y, ctr.z); add(k); }
+  // кольцо инея и тёмный круг: свет вокруг слабеет
+  const ring = new THREE.Mesh(new THREE.RingGeometry(R * 1.12, R * 1.24, 32), new THREE.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: .55, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.set(ctr.x, .025, ctr.z); add(ring);
+  const dark = new THREE.Mesh(new THREE.CircleGeometry(R * 1.5, 32), new THREE.MeshBasicMaterial({ color: 0x02040a, transparent: true, opacity: .35, depthWrite: false }));
+  dark.rotation.x = -Math.PI / 2; dark.position.set(ctr.x, .01, ctr.z); add(dark);
+  for (let i = 0; i < 12; i++) { const a = i / 12 * 6.28; const k = new THREE.Mesh(new THREE.ConeGeometry(sz * .015, sz * .06, 4), iceMat); k.position.set(ctr.x + Math.cos(a) * R * 1.18, sz * .03, ctr.z + Math.sin(a) * R * 1.18); add(k); }
+}
+
+// ===== base: общие помощники этого файла =====
+const BASE_CRACK = 0x9fd8ff, BASE_GLOW = 0x7fc3ff, BASE_WISP = 0xaabfd2;
+// светящаяся трещина-ломаная
+function base_crack(b, pts, w, l, o = {}) {
+  for (let i = 0; i < pts.length - 1; i++) b.S(pts[i], pts[i + 1], w, w * .7, BASE_CRACK, { emissive: BASE_GLOW, ei: (o.ei ?? .7) + l * .4, sides: 4, parent: o.parent });
+}
+// плоская полоса (ткань, ремень) между точками; yaw поворачивает ширину вокруг оси
+function base_plank(b, a, c, w, t, color, yaw = 0, o = {}) {
+  const A = V3(a), B = V3(c), len = A.distanceTo(B);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, len, t), M(color, o));
+  m.position.copy(A).add(B).multiplyScalar(.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()); m.rotateY(yaw);
+  return b.add(m, o.parent);
+}
+// рваная тканевая лента: два сужающихся куска и зубец
+function base_strip(b, top, len, w, color, yaw, out = [0, 0], o = {}) {
+  const mid = [top[0] + out[0] * .5, top[1] - len * .55, top[2] + out[1] * .5], end = [top[0] + out[0], top[1] - len, top[2] + out[1]];
+  base_plank(b, top, mid, w, .015, color, yaw, o);
+  base_plank(b, mid, end, w * .7, .015, color, yaw, o);
+  b.K([end[0], end[1] + .03, end[2]], [out[0] * .3, -1, out[1] * .3], w * .35, len * .2, color, { sides: 3, ...o });
+}
+// кольцо (тор)
+function base_ring(b, c, r, tube, color, rot, o = {}) {
+  const m = new THREE.Mesh(new THREE.TorusGeometry(r, tube, o.rs ?? 4, o.ts ?? 10), M(color, o));
+  m.position.set(...c); if (rot) m.rotation.set(...rot); if (o.scale) m.scale.set(...o.scale); return b.add(m, o.parent);
+}
+// пучок шерсти из маленьких конусов
+function base_tuft(b, c, dir, n, r, h, color, seed, o = {}) {
+  const rr = rngC(seed);
+  for (let i = 0; i < n; i++) {
+    const d = [dir[0] + (rr() - .5) * .9, dir[1] + (rr() - .5) * .9, dir[2] + (rr() - .5) * .9];
+    b.K([c[0] + (rr() - .5) * r * 3, c[1] + (rr() - .5) * r * 2, c[2] + (rr() - .5) * r * 3], d, r, h * (.7 + rr() * .6), color, { sides: 3, ...o });
+  }
+}
+// клок тумана
+// клочья тумана убраны у всех существ: выглядели как твёрдые шары
+function base_wisp() { return null; }
+// сустав-цепочка с чередованием цветов сегментов и отдельным цветом суставов
+function base_limb(b, pts, r0, r1, colors, jointColor, o = {}) {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ra = r0 + (r1 - r0) * i / (pts.length - 1), rb = r0 + (r1 - r0) * (i + 1) / (pts.length - 1);
+    b.S(pts[i], pts[i + 1], ra, rb, colors[i % colors.length], o);
+    if (i > 0) b.E(pts[i], ra * 1.3, jointColor, null, { ...o, detail: 0, j: .25 });
+  }
+}
+
+// ----- 1. Ползун -----
+def({ id: 'crawler', name: 'Ползун', group: 'base', where: 'Везде', threat: 'Мелкий и быстрый. Ползёт к огню и гасит его, вытягивая жар.', height: .55, frostPer: 3, frostSize: .07,
+  build(b, l) {
+    const shell = 0x323b48, plate = 0x262d38, spike = 0x6c7682;
+    // сегментированное брюшко
+    const segs = [[-.06, .24, .16], [-.18, .22, .15], [-.3, .18, .13], [-.41, .13, .1]];
+    segs.forEach(([z, rx, ry], i) => {
+      b.E([0, .3 + i * .005, z], [rx, ry, .09], i % 2 ? shell : C.fog);
+      b.E([0, .3 + ry * .85, z - .01], [rx * .85, .04, .08], plate, [.25, 0, 0], { detail: 0 });          // спинная пластина
+      b.K([0, .3 + ry * .95, z - .02], [0, 1, -.5], .022, .07 - i * .01, spike, { sides: 4 });           // гребень
+      mir(s => { b.E([s * rx * .93, .3, z], .014, BASE_CRACK, null, { emissive: BASE_GLOW, ei: .5 + l * .3, detail: 0 }); }); // дыхальца
+    });
+    // хвост-жало
+    b.chain([[0, .3, -.48], [0, .36, -.58], [0, .46, -.6], [0, .52, -.55]], .045, .015, shell);
+    b.K([0, .52, -.55], [0, .2, 1], .018, .07, C.bone, { sides: 4 });
+    // грудь с пластиной
+    b.E([0, .32, .1], [.17, .13, .14], C.fog);
+    b.E([0, .42, .1], [.14, .04, .12], plate, [.1, 0, 0], { detail: 0 });
+    mir(s => b.K([s * .06, .44, .1], [s * .3, 1, -.3], .016, .05, spike, { sides: 4 }));
+    // голова
+    b.E([0, .3, .25], [.12, .1, .1], 0x262d38);
+    b.E([0, .37, .3], [.12, .03, .05], C.fogDark, [.3, 0, 0], { detail: 0 });                              // надбровье
+    b.E([0, .24, .32], [.065, .028, .03], 0x5a2a36);                                                     // дёсны
+    b.teeth([0, .26, .345], .08, 5, .035, [0, -1, .2], C.bone, .008);
+    b.teeth([0, .22, .34], .06, 4, .025, [0, 1, .2], 0xb8ae96, .007);
+    b.E([0, .225, .02], [.1, .05, .2], C.fogBelly, null, { emissive: 0x5a86a8, ei: .4 + l * .2 });       // холодное брюхо
+    base_crack(b, [[.03, .4, .02], [.08, .39, -.05], [.06, .43, -.14], [.1, .42, -.24]], .008, l);
+    base_crack(b, [[-.04, .38, .12], [-.1, .36, .05]], .007, l);
+    mir(s => {
+      b.K([s * .07, .38, .28], [s * .5, 1, -.6], .016, .09, C.bone, { sides: 4 });                        // рожки
+      b.chain([[s * .05, .27, .33], [s * .1, .22, .42], [s * .05, .14, .46]], .025, .012, C.bone);       // жвалы
+      b.K([s * .095, .22, .42], [-s, -.2, 0], .008, .035, 0xe0d8c4, { sides: 3 });                         // зазубрины
+      b.K([s * .075, .18, .45], [-s, -.2, .2], .007, .03, 0xe0d8c4, { sides: 3 });
+      b.chain([[s * .08, .26, .32], [s * .14, .2, .37], [s * .13, .13, .4]], .012, .006, C.fogBelly);    // щупики
+      b.chain([[s * .05, .36, .3], [s * .12, .5, .36], [s * .2, .6, .33]], .01, .005, C.fogBelly, { noJoints: true }); // усики
+      b.E([s * .2, .6, .33], .012, BASE_CRACK, null, { emissive: BASE_GLOW, ei: .6 + l * .3, detail: 0 });
+      for (let i = 0; i < 3; i++) {
+        const z = .14 - i * .14, sp = (i - 1) * .12, col = i === 1 ? C.fogDark : C.fog;
+        const p = [[s * .12, .3, z], [s * .3, .44, z + sp * .4], [s * .42, .47, z + sp * .7], [s * .55, .26, z + sp * 1.1], [s * .6, .05, z + sp * 1.3]];
+        base_limb(b, p, .035, .014, [col, shell, col, plate], 0x3e4856);
+        b.K(p[2], [s * .3, 1, 0], .012, .06, spike, { sides: 4 });                                           // шип колена
+        b.E([s * .21, .38, z + sp * .2], [.03, .025, .03], C.fogBelly, null, { detail: 0 });                // полоса на бедре
+        b.K(p[4], [s * .4, -.6, .6], .01, .045, C.claw, { sides: 4 });                                     // два когтя
+        b.K(p[4], [s * .4, -.6, -.6], .01, .045, C.claw, { sides: 4 });
+        base_tuft(b, [s * .15, .32, z], [s, .4, 0], 3, .012, .05, 0x1a2029, 10 + i * 3 + (s > 0 ? 1 : 0));
+      }
+    });
+    base_wisp(b, [0, .25, -.62], .09, .14); base_wisp(b, [.06, .18, -.78], .07, .1); base_wisp(b, [-.05, .12, -.9], .05, .08);
+    const eyes = [[.05, .35, .33], [-.05, .35, .33], [.09, .32, .31], [-.09, .32, .31], [0, .38, .32], [.03, .4, .3], [-.03, .4, .3]];
+    eyes.slice(0, [2, 4, 7][l]).forEach(e => b.eye(e, .02));
+    b.frost([[[0, .45, -.05], [0, 1, -.3]], [[.1, .43, -.2], [.4, 1, -.2]], [[-.1, .43, -.2], [-.4, 1, -.2]], [[0, .45, .1], [0, 1, .2]], [[0, .42, -.32], [0, 1, -.5]]]);
+  } });
+
+// ----- 2. Громила -----
+def({ id: 'brute', name: 'Громила', group: 'base', where: 'Холмы, Каменоломня, Горы, плато', threat: 'Медленный и тяжёлый. Идёт напролом и ломает стены и постройки.', height: 2.3, frostPer: 4, frostSize: .16,
+  build(b, l) {
+    const hide = 0x353e4b, plateA = C.stoneDark, plateB = 0x6e7378, gum = 0x5c2c34, rope = C.bark;
+    b.E([0, 1.38, -.05], [.78, .6, .58], C.fog, [.3, 0, 0]);
+    b.E([0, 1.0, .05], [.58, .42, .44], C.fogBelly);
+    for (let i = 0; i < 3; i++) b.E([0, 1.1 - i * .14, .43 - i * .01], [.36 - i * .05, .06, .1], i % 2 ? C.fogDark : hide, [-.1, 0, 0], { detail: 0 }); // полосы брюха
+    mir(s => b.E([s * .26, 1.3, .4], [.26, .2, .13], hide, [-.3, 0, s * .2], { detail: 0, j: .2 }));              // грудные плиты
+    // каменные плиты спины в три ряда
+    for (let i = 0; i < 4; i++) {
+      const y = 1.82 - i * .08, z = -.35 - i * .12;
+      b.E([0, y, z], [.5 - i * .06, .14, .22], i % 2 ? plateB : C.fogDark, [.6, 0, 0], { detail: 0, j: .25 });
+      b.K([0, y + .1, z + .02], [0, 1, -.7], .06, .2 - i * .03, i % 2 ? C.stone : plateB, { sides: 4 });
+      mir(s => b.E([s * .45, y - .14, z + .06], [.24, .1, .17], i % 2 ? plateA : plateB, [.6, 0, s * .55], { detail: 0, j: .3 }));
+    }
+    b.E([.3, 1.86, -.35], [.12, .04, .1], C.moss, [.6, 0, 0], { detail: 0 }); b.E([-.2, 1.66, -.68], [.1, .04, .08], C.moss, [.6, 0, 0], { detail: 0 });
+    base_tuft(b, [0, 1.84, .1], [0, 1, .3], 7, .04, .16, C.fogDark, 21);
+    // голова
+    b.E([0, 1.42, .58], [.27, .22, .24], C.fog);
+    b.E([0, 1.57, .72], [.25, .07, .09], C.fogDark, [.2, 0, 0], { detail: 0 });            // надбровье
+    mir(s => b.E([s * .1, 1.5, .76], .055, 0x0a0d12, null, { detail: 0 }));               // глазницы
+    b.E([0, 1.43, .8], [.08, .07, .07], hide);                                               // нос
+    mir(s => b.E([s * .035, 1.41, .865], .017, 0x05070a, null, { detail: 0 }));            // ноздри
+    b.E([0, 1.37, .76], [.2, .06, .1], C.fog);                                              // морда
+    b.E([0, 1.28, .7], [.22, .1, .14], C.fogDark);                                          // челюсть
+    b.E([0, 1.33, .8], [.17, .025, .05], gum);                                              // дёсны
+    b.teeth([0, 1.36, .82], .18, 6, .05, [0, -1, .1], 0xd9d2bf, .015);                      // верхний ряд
+    b.teeth([0, 1.3, .8], .24, 5, .06, [0, 1, .1], C.bone, .02);                            // нижние клыки вверх
+    b.E([0, 1.3, .86], [.06, .02, .07], 0x7a3a44, [-.4, 0, 0]);                              // язык
+    base_tuft(b, [0, 1.2, .72], [0, -1, .3], 4, .03, .1, C.fogDark, 22);                   // борода
+    b.S([.06, 1.62, .78], [.16, 1.48, .8], .012, .01, 0x8a8f99);                            // шрам через бровь
+    // трещины
+    base_crack(b, [[-.25, 1.25, .5], [-.05, 1.14, .5], [.12, 1.12, .5], [.22, .98, .47], [.18, .84, .46]], .022, l, { ei: .5 });
+    base_crack(b, [[.12, 1.12, .5], [.25, 1.24, .5], [.36, 1.22, .45]], .016, l, { ei: .5 });
+    base_crack(b, [[-.05, 1.14, .5], [-.1, 1.0, .5], [-.22, .92, .46]], .016, l, { ei: .5 });
+    base_crack(b, [[.15, 1.62, -.72], [.25, 1.42, -.72], [.2, 1.2, -.66]], .02, l, { ei: .5 });
+    mir(s => {
+      // уши и рога
+      b.K([s * .23, 1.5, .55], [s, .4, -.3], .06, .15, C.fogDark, { sides: 4 });
+      b.chain([[s * .17, 1.6, .58], [s * .3, 1.72, .54], [s * .39, 1.79, .62]], .05, .03, C.bone);
+      b.K([s * .39, 1.79, .62], [-s * .1, .5, 1], .03, .14, 0xe0d8c4, { sides: 4 });
+      b.K([s * .26, 1.29, .8], [s * .2, 1, .25], .035, .17, C.bone, { sides: 4 });           // большие клыки
+      // плечо с каменным наплечником
+      b.E([s * .8, 1.66, .08], [.33, .29, .31], C.fog);
+      for (let i = 0; i < 3; i++) b.E([s * (.78 + i * .1), 1.88 - i * .13, .08], [.3 - i * .04, .08, .3 - i * .03], [plateA, plateB, plateA][i], [0, 0, s * (-.35 - i * .25)], { detail: 0, j: .25 });
+      b.K([s * .92, 1.85, .05], [s * .4, 1, 0], .07, .3, C.bone);                              // рог на плече
+      b.K([s * .72, 1.92, -.05], [s * .2, 1, -.3], .04, .16, 0xb8ae96, { sides: 4 });
+      base_tuft(b, [s * .62, 1.76, .25], [s * .3, .6, .6], 4, .035, .12, C.fogDark, 30 + s);
+      // рука
+      b.chain([[s * .9, 1.6, .15], [s * 1.08, .95, .45], [s * 1.02, .36, .58]], .24, .27, C.fog);
+      b.E([s * 1.06, 1.25, .3], [.2, .26, .2], C.fog, [.4, 0, s * .2]);                        // бицепс
+      b.K([s * 1.13, .98, .28], [s * .3, -.2, -1], .07, .2, C.stone, { sides: 4 });          // шип локтя
+      b.E([s * 1.2, .75, .5], [.13, .17, .19], plateA, [.2, 0, 0], { detail: 0, j: .3 });     // наручи
+      b.E([s * 1.2, .52, .56], [.12, .14, .18], plateB, [.1, 0, 0], { detail: 0, j: .3 });
+      base_ring(b, [s * 1.03, .44, .58], .27, .05, C.iron, [Math.PI / 2 + .15, 0, 0], { metal: .4, rough: .6 }); // кандалы
+      b.E([s * 1.02, .2, .66], [.32, .21, .32], C.stoneDark, null, { j: .3 });                // кулак-валун
+      for (let k = 0; k < 4; k++) {
+        const x = s * (.83 + k * .12);
+        b.E([x, .3, .88], .075, k % 2 ? 0x6a6f75 : hide, null, { detail: 0, j: .2 });       // костяшки
+        b.K([x, .3, .93], [0, -.5, 1], .03, .1, C.claw, { sides: 4 });
+      }
+      b.chain([[s * .78, .3, .58], [s * .74, .25, .8]], .08, .06, C.fog);                     // большой палец
+      b.K([s * .74, .25, .84], [-s * .2, -.3, 1], .025, .08, C.claw, { sides: 4 });
+      // нога
+      b.chain([[s * .35, .85, -.2], [s * .42, .45, -.05], [s * .44, .12, -.15]], .2, .17, C.fog);
+      b.E([s * .43, .47, .12], [.13, .13, .08], plateA, null, { detail: 0, j: .3 });          // наколенник
+      b.E([s * .44, .07, -.08], [.17, .08, .22], C.fogDark, null, { detail: 0 });
+      for (let k = 0; k < 3; k++) {
+        const x = s * (.36 + k * .08);
+        b.E([x, .06, .12], .06, k === 1 ? hide : C.fogDark, null, { detail: 0 });
+        b.K([x, .05, .17], [0, -.25, 1], .025, .07, C.claw, { sides: 4 });
+      }
+      base_tuft(b, [s * .44, .2, -.1], [0, -.3, 1], 4, .035, .1, C.fogDark, 40 + s);
+    });
+    // рубцы на левой руке, трещины на правой
+    b.S([-1.22, 1.38, .3], [-1.28, 1.12, .4], .015, .012, 0x8a8f99); b.S([-1.28, 1.3, .25], [-1.2, 1.2, .45], .012, .01, 0x8a8f99);
+    base_crack(b, [[1.3, .85, .42], [1.26, .7, .5], [1.3, .55, .45]], .016, l, { ei: .5 });
+    // обрывок цепи на правых кандалах
+    for (let i = 0; i < 3; i++) base_ring(b, [1.3, .4 - i * .08, .6 + i * .02], .045, .015, C.iron, [0, i % 2 ? Math.PI / 2 : 0, 0], { metal: .4, rough: .6 });
+    // пояс с рваной набедренной тканью
+    base_ring(b, [0, .86, .05], 1, .05, rope, [Math.PI / 2, 0, 0], { scale: [.57, .44, 1], ts: 12 });
+    const cloth = [0x3b3430, 0x4a3f35, 0x2e2a28];
+    [[-.2, .47, 0, .5], [-.07, .5, .1, .58], [.08, .5, -.05, .52], [.21, .46, 0, .45]].forEach(([x, z, dx, len], i) => base_strip(b, [x, .86, z], len, .13, cloth[i % 3], 0, [dx * .3, .06]));
+    [[-.25, -.38, .5], [0, -.42, .6], [.25, -.38, .45]].forEach(([x, z, len], i) => base_strip(b, [x, .86, z], len, .15, cloth[(i + 1) % 3], 0, [0, -.05]));
+    // туман у ног
+    base_wisp(b, [.6, .12, .3], .25, .12); base_wisp(b, [-.7, .1, .1], .28, .1); base_wisp(b, [0, .15, -.6], .3, .1);
+    const eyes = [[.1, 1.5, .78], [-.1, 1.5, .78], [0, 1.62, .76]]; eyes.slice(0, l >= 2 ? 3 : 2).forEach(e => b.eye(e, .045));
+    b.frost([[[0, 1.92, -.2], [0, 1, -.3]], [[.45, 1.75, -.3], [.6, 1, -.3]], [[-.45, 1.75, -.3], [-.6, 1, -.3]], [[0, 1.75, -.6], [0, .6, -1]], [[.85, 1.95, .1], [.3, 1, 0]], [[-.85, 1.95, .1], [-.3, 1, 0]], [[1.2, .8, .55], [.6, 1, 0]], [[-1.2, .8, .55], [-.6, 1, 0]]]);
+  } });
+
+// ----- 3. Тень -----
+def({ id: 'shade', name: 'Тень', group: 'base', where: 'Мёртвый город, плато, Топи', threat: 'Проходит сквозь слабый свет, видна только в ярком. Крадётся к огню в обход фонарей.', height: 2.3, frostPer: 2, frostSize: .07, float: .12,
+  build(b, l) {
+    const robe = 0x151a22, robe2 = 0x1d232c, robe3 = 0x242b36, bone = 0xa49c8a;
+    for (let i = 0; i < 3; i++) b.K([0, .15 + i * .08, 0], [0, 1, 0], .5 - i * .1, 1.75 - i * .1, [robe, C.fogDark, robe][i], { sides: 7 });
+    for (let i = 0; i < 11; i++) { const a = i / 11 * Math.PI * 2; b.K([Math.cos(a) * .42, .3, Math.sin(a) * .42], [Math.cos(a) * .3, -1, Math.sin(a) * .3], .07, .45 + (i % 3) * .12, i % 2 ? robe : robe2, { sides: 3 }); } // рваный подол
+    for (let i = 0; i < 7; i++) { const a = (i + .5) / 7 * Math.PI * 2; b.K([Math.cos(a) * .33, .55, Math.sin(a) * .33], [Math.cos(a) * .25, -1, Math.sin(a) * .25], .05, .4 + (i % 2) * .15, robe3, { sides: 3 }); } // второй ярус лохмотьев
+    // приоткрытая грудь: рёбра и холодное сердце
+    b.B([0, 1.38, .12], [.13, .3, .04], 0x07090c, [-.08, 0, 0]);
+    for (let i = 0; i < 4; i++) b.S([-.06 + i * 0, 1.28 + i * .07, .145 - i * .006], [.06, 1.28 + i * .07, .145 - i * .006], .009, .009, bone, { sides: 4 });
+    b.S([0, 1.24, .14], [0, 1.52, .12], .012, .012, bone, { sides: 4 });
+    b.E([0, 1.4, .155], .028, BASE_CRACK, null, { emissive: BASE_GLOW, ei: 1 + l * .4, detail: 0 });
+    base_crack(b, [[0, 1.4, .15], [.09, 1.47, .13], [.13, 1.6, .1]], .007, l);
+    base_crack(b, [[0, 1.4, .15], [-.08, 1.3, .15], [-.1, 1.12, .19]], .007, l);
+    // пояс с погасшим фонарём и костяным амулетом
+    base_ring(b, [0, 1.13, 0], .225, .022, C.bark, [Math.PI / 2, 0, 0], { ts: 9 });
+    b.S([.2, 1.12, .08], [.36, .98, .1], .008, .008, C.bark);
+    b.B([.36, .9, .1], [.09, .12, .09], C.iron, null, { metal: .4, rough: .6 });
+    b.B([.36, .9, .1], [.1, .08, .06], 0x2a3340, null, { rough: .3 });
+    b.K([.36, .96, .1], [0, 1, 0], .07, .06, C.iron, { sides: 4, metal: .4 });
+    b.S([-.18, 1.12, .12], [-.27, .95, .14], .006, .006, C.bark);
+    b.E([-.27, .92, .14], [.03, .045, .02], bone, null, { detail: 0 });
+    b.K([-.27, .88, .14], [0, -1, 0], .012, .06, bone, { sides: 3 });
+    // капюшон
+    b.E([0, 1.95, 0], [.25, .29, .25], robe);
+    b.K([0, 2.1, -.12], [0, .5, -1], .18, .45, robe);                       // хвост капюшона
+    b.K([.04, 2.0, -.2], [.2, -.6, -1], .1, .4, robe2, { sides: 4 });       // второй рваный хвост
+    base_ring(b, [0, 1.92, .17], .15, .04, robe3, [-.15, 0, 0], { scale: [1, 1.3, 1], ts: 9 }); // край капюшона
+    b.E([0, 1.92, .13], [.16, .19, .1], 0x05070a);                          // пустота лица
+    b.teeth([0, 1.79, .2], .08, 5, .03, [0, 1, .15], bone, .008);           // челюсть во тьме
+    // наплечная накидка в два слоя с лентами
+    b.E([0, 1.6, .05], [.3, .12, .22], C.fogDark, null, { detail: 0 });
+    b.E([0, 1.68, .02], [.24, .09, .19], robe3, null, { detail: 0 });
+    for (let i = 0; i < 9; i++) {
+      const a = -Math.PI * .1 + i / 8 * Math.PI * 1.2 + Math.PI, ca = Math.cos(a), sa = Math.sin(a);
+      base_strip(b, [ca * .25, 1.58, sa * .18 - .02], .25 + (i % 3) * .1, .1, i % 2 ? robe2 : robe3, -a - Math.PI / 2, [ca * .06, sa * .06]);
+    }
+    mir(s => {
+      b.chain([[s * .25, 1.62, .05], [s * .48, 1.2, .2], [s * .6, .74, .32]], .055, .035, robe);
+      b.K([s * .57, .86, .29], [-s * .25, 1, -.25], .12, .42, robe2, { sides: 5 });  // рукав, расширяется книзу
+      base_strip(b, [s * .62, .86, .25], .28, .06, robe3, 0, [s * .03, -.04]);
+      base_strip(b, [s * .52, .86, .3], .36, .05, robe, 0, [s * .01, -.03]);
+      // кисть: ладонь, четыре пальца по три фаланги с ногтями
+      b.E([s * .6, .7, .32], [.045, .07, .04], 0x2a3038, null, { detail: 0 });
+      for (let f = 0; f < 4; f++) {
+        const t = f / 3 - .5, x0 = s * (.6 + t * .06), z0 = .32 + t * .08;
+        const p = [[x0, .66, z0], [s * (.62 + t * .1), .54, z0 + t * .05 + .02], [s * (.63 + t * .13), .43, z0 + t * .09 + .04], [s * (.62 + t * .14), .34, z0 + t * .12 + .07]];
+        b.chain(p, .014, .007, C.claw);
+        b.K(p[3], [0, -1, .3], .007, .05, 0x5b636e, { sides: 3 });
+      }
+      b.chain([[s * .57, .68, .35], [s * .52, .6, .4], [s * .5, .52, .42]], .012, .007, C.claw);  // большой палец
+    });
+    // туман у подола
+    const r = rngC(31);
+    for (let i = 0; i < 7; i++) { const a = r() * 6.28; base_wisp(b, [Math.cos(a) * (.4 + r() * .2), .05 + r() * .25, Math.sin(a) * (.4 + r() * .2) - .1], .12 + r() * .1, .1 + r() * .08); }
+    base_wisp(b, [0, .3, -.7], .2, .08); base_wisp(b, [.1, .5, -1.0], .15, .06);
+    const eyes = [[.06, 1.95, .21], [-.06, 1.95, .21], [0, 2.03, .2], [.11, 1.88, .19], [-.11, 1.88, .19]];
+    eyes.slice(0, [2, 3, 5][l]).forEach(e => b.eye(e, .022));
+    b.frost([[[0, 2.2, -.1], [0, 1, -.4]], [[.15, 2.15, -.05], [.5, 1, -.2]], [[-.15, 2.15, -.05], [-.5, 1, -.2]], [[.25, 1.68, 0], [.6, 1, 0]], [[-.25, 1.68, 0], [-.6, 1, 0]]]);
+  } });
+
+// ----- 4. Мотыльки -----
+def({ id: 'moths', name: 'Мотыльки тумана', group: 'base', where: 'Везде, чаще у воды', threat: 'Стайка летит на свет и облепляет фонарь: огонь тускнеет и светит слабее. Стены их не держат.', height: 2.4, frostPer: 1, frostSize: .03,
+  build(b, l) {
+    const r = rngC(4), n = [4, 5, 6][l];
+    for (let i = 0; i < n; i++) {
+      const sub = new Builder(l, 50 + i); const s = .9 + r() * .3;
+      sub.E([0, 0, .05], [.075, .065, .085], C.fog);                                                   // грудь
+      for (let k = 0; k < 4; k++) sub.E([0, -.005 - k * .006, -.04 - k * .065], [.06 - k * .011, .052 - k * .009, .045], k % 2 ? 0x5a6573 : C.fogBelly, null, { detail: 0 }); // брюшко сегментами
+      sub.K([0, -.03, -.27], [0, -.2, -1], .015, .05, C.fogDark, { sides: 4 });
+      sub.E([0, .01, .15], .055, C.fog);                                                                // голова
+      base_tuft(sub, [0, .04, .1], [0, 1, .4], 6, .015, .06, 0x9aa3ad, 60 + i);                          // меховой воротник
+      sub.chain([[0, -.02, .19], [0, -.06, .22], [0, -.07, .19]], .006, .004, C.bone);                    // хоботок
+      mir(sd => {
+        const pv = sub.wing([sd * .04, .02, .03], sd, .42, .3, 0x8f98a3, { color2: 0x6f7884, amp: .9, feathers: 4 });
+        sub.E([sd * .22, .03, .04], [.05, .012, .045], 0x3a4250, null, { parent: pv, detail: 0 });       // кольцо глазка
+        sub.E([sd * .22, .04, .04], [.028, .012, .025], BASE_CRACK, null, { parent: pv, detail: 0, emissive: BASE_GLOW, ei: .6 + l * .3 });
+        sub.S([sd * .05, .03, .03], [sd * .36, .03, -.04], .004, .003, 0x4a525e, { parent: pv, sides: 3 }); // жилка
+        sub.wing([sd * .03, -.01, -.06], sd, .3, .22, 0x7a8390, { color2: 0x5d6672, amp: .7, feathers: 3 }); // задние крылья
+        // перистые усики
+        sub.S([sd * .02, .04, .18], [sd * .12, .12, .32], .006, .003, C.bone);
+        for (let k = 1; k <= 3; k++) { const t = k / 4; sub.K([sd * (.02 + .1 * t), .04 + .08 * t, .18 + .14 * t], [sd, .3, .2], .004, .035, 0xd9d2bf, { sides: 3 }); }
+        // три пары ножек
+        for (let k = 0; k < 3; k++) sub.chain([[sd * .04, -.04, .09 - k * .05], [sd * .1, -.07, .1 - k * .06], [sd * .11, -.13, .12 - k * .08]], .006, .003, C.fogDark, { noJoints: true });
+      });
+      sub.eye([.03, .03, .19], .015); sub.eye([-.03, .03, .19], .015);
+      base_wisp(sub, [0, -.04, -.35], .06, .14); base_wisp(sub, [.02, -.06, -.5], .04, .1);
+      const g = sub.g; g.scale.setScalar(s); g.position.set((r() - .5) * 1.4, 1.1 + r() * 1.1, (r() - .5) * 1.2); g.rotation.y = r() * 6; g.userData.bob = { ph: r() * 6 }; b.g.add(g);
+    }
+    { const gs = glowSprite(0xffc070, 1.2, .5); gs.position.set(0, 1.6, 0); b.g.add(gs); }
+    // пыльца-иней, сыплющаяся вниз
+    const r2 = rngC(44);
+    for (let i = 0; i < 6 + l * 3; i++) b.E([(r2() - .5) * 1.2, .3 + r2() * 1.1, (r2() - .5) * 1.0], .02, BASE_CRACK, null, { emissive: BASE_GLOW, ei: .5, detail: 0, opacity: .5 });
+  } });
+
+// ----- 5. Туманница -----
+def({ id: 'mistmother', name: 'Туманница', group: 'base', where: 'Везде, с середины кампании', threat: 'Сама не нападает: выдыхает туман и подтягивает его к огню. Рядом с ней остальные сильнее, рабочие бросают работу.', height: 2.2, frostPer: 2, frostSize: .08,
+  build(b, l) {
+    const hide = 0x353e4b, rib = 0x26303c, shawl = 0x3a4250;
+    b.E([0, 1.05, -.15], [.45, .5, .4], C.fog);                                  // тело
+    for (let i = 0; i < 3; i++) b.E([0, 1.12 - i * .15, .2 - i * .02], [.3 - i * .04, .07, .1], i % 2 ? C.fogDark : hide, [-.2, 0, 0], { detail: 0 }); // пластины груди
+    for (let i = 0; i < 3; i++) b.E([0, .7 + i * .05, -.2 - i * .12], [.3 - i * .04, .08, .14], i % 2 ? C.fogBelly : 0x56616f, null, { detail: 0 }); // брюшные кольца
+    // мешок с туманом, рёбра-обручи и светящиеся жилы
+    b.E([0, 1.55, -.45], [.62, .55, .55], 0x8fa6bd, null, { opacity: .55, emissive: 0x4a6a8a, ei: .35 + l * .2, detail: 2, j: .08 });
+    b.E([0, 1.55, -.45], [.3, .28, .3], 0x6f88a4, null, { opacity: .5, detail: 1 });
+    [-.38, 0, .38].forEach(xo => { const k = Math.sqrt(1 - (xo / .64) ** 2); base_ring(b, [xo, 1.55, -.45], 1, .028, rib, [0, Math.PI / 2, 0], { scale: [.56 * k, .57 * k, 1], ts: 12 }); });
+    base_ring(b, [0, 1.25, -.45], 1, .03, rib, [Math.PI / 2, 0, 0], { scale: [.5, .45, 1], ts: 12 });
+    for (let k = 0; k < 5; k++) {
+      const a = -.9 + k * .45, pts = [];
+      for (let t = 0; t <= 3; t++) { const th = .5 + t * .45; pts.push([Math.sin(th) * Math.sin(a) * .64, 1.55 + Math.cos(th) * .57, -.45 + Math.sin(th) * Math.cos(a) * .57 * (k % 2 ? 1 : -1)]); }
+      base_crack(b, pts, .01, l, { ei: .5 });
+    }
+    // трубы-выдохи с раструбами
+    mir(s => {
+      b.chain([[s * .3, 1.92, -.5], [s * .4, 2.08, -.6], [s * .46, 2.2, -.62]], .07, .05, C.fogDark, { sides: 6 });
+      b.K([s * .47, 2.25, -.62], [-s * .2, -1, 0], .1, .14, hide, { sides: 6 });
+      base_ring(b, [s * .37, 2.04, -.57], .07, .015, rib, [Math.PI / 2, 0, s * .5]);
+      base_wisp(b, [s * .5, 2.4, -.65], .14, .18);
+    });
+    b.chain([[0, 2.02, -.7], [0, 2.12, -.8]], .05, .04, C.fogDark, { sides: 6 });
+    b.K([0, 2.16, -.82], [0, -1, .2], .07, .1, hide, { sides: 6 });
+    // накидка на загривке с лентами
+    b.E([0, 1.42, .02], [.36, .12, .26], shawl, [.2, 0, 0], { detail: 0, j: .25 });
+    for (let i = 0; i < 6; i++) { const x = (i / 5 - .5) * .7; base_strip(b, [x, 1.36, .12 - Math.abs(x) * .2], .25 + (i % 3) * .1, .07, i % 2 ? shawl : 0x2b333f, 0, [x * .2, .03]); }
+    // голова, опущенная вниз
+    b.E([0, 1.35, .25], [.2, .22, .2], C.fogDark);
+    b.E([0, 1.47, .37], [.17, .05, .07], hide, [.3, 0, 0], { detail: 0 });         // надбровье
+    for (let i = 0; i < 3; i++) b.E([0, 1.53 + i * .04, .3 - i * .05], [.14 - i * .02, .025, .06], i % 2 ? C.fog : hide, null, { detail: 0 }); // морщины лба
+    mir(s => {
+      b.K([s * .17, 1.42, .2], [s, -.6, -.4], .05, .16, C.fogDark, { sides: 4 });  // висячие уши
+      b.S([s * .08, 1.25, .4], [s * .2, 1.1, .45], .005, .003, C.fogBelly);        // вибриссы
+      b.S([s * .06, 1.22, .42], [s * .16, 1.04, .5], .005, .003, C.fogBelly);
+    });
+    // хобот-выдох из колец
+    const tr = [[0, 1.28, .4], [0, 1.12, .5], [0, .97, .55], [0, .85, .52]];
+    b.chain(tr, .075, .04, C.fogDark);
+    for (let i = 0; i < 3; i++) { const p = tr[i + 1]; base_ring(b, p, .065 - i * .008, .016, i % 2 ? hide : C.fog, [Math.PI / 2 - .5 + i * .3, 0, 0]); }
+    b.K([0, .8, .5], [0, 1, .15], .065, .1, hide, { sides: 6 });                    // раструб
+    mir(s => b.E([s * .02, .78, .5], .012, 0x05070a, null, { detail: 0 }));       // ноздри
+    base_wisp(b, [0, .62, .58], .14, .2); base_wisp(b, [.05, .45, .7], .18, .14);
+    // ноги с шипами и когтями
+    mir(s => {
+      const fl = [[s * .3, .9, 0], [s * .48, .62, .1], [s * .52, .35, .17], [s * .45, .05, .2]];
+      const bl = [[s * .25, .85, -.4], [s * .46, .58, -.55], [s * .52, .3, -.66], [s * .48, .05, -.7]];
+      [fl, bl].forEach((p, k) => {
+        base_limb(b, p, .065, .03, [C.fogDark, C.fog, C.fogDark], hide);
+        b.K(p[1], [s * .5, .6, k ? -.4 : .3], .02, .08, C.bone, { sides: 4 });
+        b.K(p[3], [s * .2, -.5, .8], .015, .06, C.claw, { sides: 4 }); b.K(p[3], [s * .6, -.5, .2], .015, .06, C.claw, { sides: 4 });
+        base_tuft(b, [s * .34, .85, p[0][2]], [s, -.2, 0], 4, .025, .09, 0x1a2029, 70 + k * 2 + (s > 0));
+      });
+    });
+    // свисающие из мешка нити с каплями тумана
+    [[.2, -.3], [-.25, -.55], [.05, -.75]].forEach(([x, z], i) => { const y0 = 1.1, y1 = .6 - i * .1; b.S([x, y0, z], [x, y1, z], .008, .004, C.fogBelly); b.E([x, y1 - .03, z], .03, BASE_CRACK, null, { emissive: BASE_GLOW, ei: .5 + l * .3, detail: 0, opacity: .7 }); });
+    const r = rngC(9);
+    b.eye([.07, 1.38, .42], .025); b.eye([-.07, 1.38, .42], .025); if (l >= 1) b.eye([0, 1.45, .42], .02);
+    if (l >= 2) { b.eye([.13, 1.43, .38], .015); b.eye([-.13, 1.43, .38], .015); }
+    b.frost([[[0, 2.08, -.4], [0, 1, 0]], [[.38, 2.0, -.45], [.5, 1, -.3]], [[-.38, 2.0, -.45], [-.5, 1, -.3]], [[0, 1.5, .1], [0, 1, .3]]]);
+  } });
+
+// ----- 6. Ходуля -----
+def({ id: 'stilt', name: 'Ходуля', group: 'base', where: 'Холмы, Горы, плато', threat: 'Маленькое тело на длинных ногах. Перешагивает стены до трёх блоков и садится прямо на костёр.', height: 3.4, frostPer: 2, frostSize: .07,
+  build(b, l) {
+    const plate = 0x3a4452, joint = 0x6c7480, dark = 0x262d38;
+    b.E([0, 2.9, 0], [.32, .2, .36], C.fog); b.E([0, 2.8, 0], [.25, .12, .28], C.fogBelly);
+    for (let i = 0; i < 3; i++) b.E([0, 2.73 - i * .015, .1 - i * .12], [.2 - i * .03, .05, .07], i % 2 ? C.fogBelly : 0x56616f, null, { detail: 0 }); // брюшные кольца
+    // карапакс из налегающих пластин с гребнем
+    for (let i = 0; i < 4; i++) {
+      const z = .2 - i * .13;
+      b.E([0, 3.06 - Math.abs(z) * .25, z], [.26 - Math.abs(i - 1.5) * .03, .06, .11], i % 2 ? plate : C.fogDark, [.25, 0, 0], { detail: 0, j: .2 });
+      b.K([0, 3.1 - Math.abs(z) * .25, z], [0, 1, -.5], .025, .1, joint, { sides: 4 });
+    }
+    mir(s => b.E([s * .22, 2.97, -.02], [.1, .05, .26], dark, [0, 0, s * .5], { detail: 0 }));
+    base_crack(b, [[.08, 3.08, .12], [.12, 3.06, 0], [.08, 3.04, -.15], [.14, 3.0, -.25]], .009, l);
+    base_tuft(b, [0, 2.95, -.32], [0, .3, -1], 6, .025, .12, 0x1a2029, 80);
+    // голова с жвалами
+    b.E([0, 2.8, .2], [.14, .09, .08], dark);
+    b.E([0, 2.85, .24], [.13, .03, .05], C.fogDark, [.3, 0, 0], { detail: 0 });
+    b.E([0, 2.7, .26], [.05, .02, .025], 0x5a2a36);
+    b.teeth([0, 2.71, .275], .06, 4, .03, [0, -1, .2], C.bone, .007);
+    mir(s => {
+      b.chain([[s * .05, 2.72, .25], [s * .1, 2.62, .32], [s * .05, 2.52, .34]], .02, .01, C.bone);
+      b.chain([[s * .09, 2.74, .22], [s * .15, 2.62, .25], [s * .14, 2.5, .26]], .01, .005, C.fogBelly);
+    });
+    // четыре ноги с лишним суставом
+    for (let i = 0; i < 4; i++) {
+      const a = i / 4 * Math.PI * 2 + Math.PI / 4, ca = Math.cos(a), sa = Math.sin(a), P = (k, y) => [ca * k, y, sa * k];
+      const pts = [P(.2, 2.85), P(.55, 3.2), P(.85, 3.36), P(1.15, 2.5), P(1.36, 1.5), P(1.47, .62), P(1.5, .08)];
+      base_limb(b, pts, .05, .014, i % 2 ? [C.fogDark, C.fog] : [C.fog, dark], joint);
+      b.K(pts[2], [ca * .4, 1, sa * .4], .025, .14, C.bone, { sides: 4 });                   // шип колена
+      b.K(pts[4], [ca, .2, sa], .015, .08, joint, { sides: 4 });
+      b.E(P(1.0, 2.95), [.045, .045, .045], plate, null, { detail: 0 });                    // утолщение бедра
+      base_tuft(b, P(.33, 2.98), [ca, .5, sa], 3, .015, .07, 0x1a2029, 90 + i);
+      for (let t = -1; t <= 1; t++) { const ta = a + t * .7; b.K(P(1.5, .08), [Math.cos(ta), -.6, Math.sin(ta)], .012, .07, C.claw, { sides: 4 }); } // три когтя
+    }
+    // свисающие нити-щупальца с каплями, костяной оберег
+    for (let i = 0; i < 7; i++) {
+      const a = i / 7 * 6.28, y1 = 2.0 - (i % 3) * .25;
+      b.chain([[Math.cos(a) * .12, 2.75, Math.sin(a) * .12], [Math.cos(a) * .17, 2.35, Math.sin(a) * .17], [Math.cos(a) * .2, y1, Math.sin(a) * .2]], .015, .004, i % 2 ? C.fogBelly : 0x56616f, { noJoints: true });
+      if (i % 2 === 0) b.E([Math.cos(a) * .2, y1 - .02, Math.sin(a) * .2], .02, BASE_CRACK, null, { emissive: BASE_GLOW, ei: .5 + l * .3, detail: 0 });
+      else base_wisp(b, [Math.cos(a) * .2, y1 - .05, Math.sin(a) * .2], .06, .2);
+    }
+    b.S([.05, 2.74, -.1], [.08, 2.35, -.12], .005, .005, C.bark);
+    b.S([.02, 2.33, -.12], [.14, 2.37, -.12], .015, .012, C.bone); b.S([.08, 2.3, -.12], [.08, 2.18, -.12], .012, .008, C.bone);
+    base_wisp(b, [0, 2.6, -.3], .2, .1); base_wisp(b, [.1, 2.4, -.5], .14, .08);
+    const eyes = [[.08, 2.8, .26], [-.08, 2.8, .26], [0, 2.75, .28], [.13, 2.84, .21], [-.13, 2.84, .21]];
+    eyes.slice(0, [2, 3, 5][l]).forEach(e => b.eye(e, .025));
+    b.frost([[[0, 3.12, 0], [0, 1, 0]], [[.15, 3.05, -.15], [.4, 1, -.4]], [[-.15, 3.05, .15], [-.4, 1, .4]], [[.6, 3.3, .6], [.3, 1, .3]], [[-.6, 3.3, -.6], [-.3, 1, -.3]]]);
+  } });
+
+// ================= местные =================
+
+// ===== Ползун с суставами и процедурными анимациями =====
+// Модель берётся из бестиария (crawler), тело делится на части с шарнирами (грудь, голова, жвалы,
+// брюшко, хвост), а шесть лап собираются заново: бедро и голень, колено считается двухзвенной IK
+// от тазобедренного сустава до ступни. Ступни ставятся походкой «треногой», как у насекомых.
+// Все размеры в единицах модели; корень масштабируется до роста 1 блок (× уровень).
+
+const RIG_LEVEL_SCALE = [1, 1.18, 1.36];
+const LEG_L1 = .3, LEG_L2 = .42;                     // бедро и голень
+const HIPS = [.14, 0, -.14];                            // z тазобедренных суставов: передняя, средняя, задняя пары
+const FEET = [.4, .03, -.34];                           // z ступней в покое
+const FOOT_X = .52;
+const TRIPOD = [[0, 1, 0], [1, 0, 1]];                  // [сторона L/R][пара] → группа треноги 0/1 (L0,R1,L2 и R0,L1,R2)
+const MOUTH = new THREE.Vector3(0, .24, .42);
+
+function rigTint(color, l) {
+  const c = new THREE.Color(color);
+  if (l) c.lerp(new THREE.Color(l === 1 ? 0x8fb4d4 : 0xb8d8f0), l === 1 ? .3 : .45);
+  return c;
+}
+
+class CrawlerRig {
+  constructor(level) {
+    this.level = level;
+    const def = CREATURES.find(d => d.id === 'crawler');
+    const b = new Builder(level, def.id.length * 7 + 1);
+    def.build(b, level);
+    const g = b.finish(def);
+    g.updateMatrixWorld(true);
+
+    this.root = new THREE.Group();
+    this.body = this.pivot(this.root, [0, .3, 0]);
+    this.thorax = this.pivot(this.body, [0, .3, 0]);
+    this.head = this.pivot(this.body, [0, .3, .22]);
+    this.jaw = [this.pivot(this.head, [-.05, .27, .33]), this.pivot(this.head, [.05, .27, .33])];
+    this.abdomen = this.pivot(this.body, [0, .3, -.04]);
+    this.tail = this.pivot(this.abdomen, [0, .3, -.46]);
+    this.ground = this.pivot(this.root, [0, 0, 0]);
+
+    // все материалы свои у каждого ползуна: их гасят, подсвечивают и делают прозрачными
+    this.mats = new Map(); this.sprites = [];
+    this.root.updateMatrixWorld(true);
+    const items = []; g.traverse(o => { if (o !== g && (o.isMesh || o.isSprite || o.isLight)) items.push(o); });
+    const p = new THREE.Vector3();
+    for (const o of items) {
+      o.getWorldPosition(p);
+      const tiny = o.isMesh && o.geometry.parameters?.radius === 1 && o.scale.x < .02;
+      let target;
+      if (o.userData.lvlAdd && p.y < .06) target = this.ground;
+      else if (o.userData.orbit) { target = this.body; }
+      else if (Math.abs(p.x) > .13 && p.y < .5 && p.z > -.22 && p.z < .27 && !tiny && !o.isSprite && !o.isLight) { o.parent.remove(o); continue; } // старые лапы
+      else if (p.z > .2) target = (Math.abs(p.x) >= .03 && p.y < .29 && p.z > .33) ? this.jaw[p.x < 0 ? 0 : 1] : this.head;
+      else if (p.z < -.45) target = this.tail;
+      else if (p.z < -.02) target = this.abdomen;
+      else target = this.thorax;
+      target.attach(o);
+      if (o.isMesh) o.material = this.own(o.material);
+      if (o.isSprite) { o.material = o.material.clone(); this.sprites.push(o); }
+    }
+    this.root.scale.setScalar(RIG_LEVEL_SCALE[level] * sizeFactor(def));
+    this.belly = [...this.mats.values()].filter(m => m.emissive && m.emissive.getHex() === 0x5a86a8);
+
+    // новые лапы: бедро, колено, голень, шип колена, два когтя
+    const l = level, op = l === 2 ? { transparent: true, opacity: .6 } : {};
+    const mk = (c) => this.own(new THREE.MeshStandardMaterial({ color: rigTint(c, l), roughness: .85, flatShading: true, emissive: l ? new THREE.Color(l === 1 ? 0x0e2034 : 0x24527c) : 0x000000, ...op }));
+    const segMat = [mk(C.fog), mk(C.fogDark)], jointMat = mk(0x3e4856), clawMat = mk(C.claw), spikeMat = mk(0x6c7682);
+    this.legs = [];
+    for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {
+      const leg = { s, i, group: TRIPOD[s < 0 ? 0 : 1][i], hip: new THREE.Vector3(s * .12, .3, HIPS[i]), rest: new THREE.Vector3(s * FOOT_X, .02, FEET[i]) };
+      leg.foot = leg.rest.clone(); leg.plant = leg.rest.clone();
+      const seg = (r0, r1, m) => { const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, 1, 5), m); mesh.castShadow = true; this.root.add(mesh); return mesh; };
+      leg.femur = seg(.035, .026, segMat[i % 2]); leg.tibia = seg(.026, .012, segMat[(i + 1) % 2]);
+      leg.knee = new THREE.Mesh(new THREE.IcosahedronGeometry(.034, 0), jointMat); leg.knee.castShadow = true; this.root.add(leg.knee);
+      leg.spike = new THREE.Mesh(new THREE.ConeGeometry(.012, .06, 4), spikeMat); this.root.add(leg.spike);
+      leg.claws = [0, 1].map(() => { const c = new THREE.Mesh(new THREE.ConeGeometry(.01, .045, 4), clawMat); this.root.add(c); return c; });
+      this.legs.push(leg);
+    }
+    // состояние
+    this.t = 0; this.gait = 0; this.speed = 0; this.pose = { crouch: 0, latch: 0, recoil: 0, fold: 0, flash: 0, fade: 0, chew: 0, glow: 0 };
+    this.solveLegs(0);
+  }
+  // шарнир в точке at (координаты модели); позиция хранится относительно родительского шарнира
+  pivot(parent, at) { const g = new THREE.Group(), pr = parent.userData.rest || [0, 0, 0]; g.userData.rest = at; g.position.set(at[0] - pr[0], at[1] - pr[1], at[2] - pr[2]); parent.add(g); parent.updateMatrixWorld(true); return g; }
+  own(m) { if (!this.mats.has(m)) { const c = m.clone(); c.userData.base = { emissive: c.emissive?.clone(), ei: c.emissiveIntensity, opacity: c.opacity, transparent: c.transparent }; this.mats.set(m, c); this.mats.set(c, c); } return this.mats.get(m); }
+
+  // двухзвенная IK: колено поднято вверх и наружу
+  solveLeg(leg, hipR) {
+    const F = leg.foot, d0 = F.clone().sub(hipR), d = Math.min(d0.length(), LEG_L1 + LEG_L2 - .001);
+    const dir = d0.normalize();
+    const a = (LEG_L1 * LEG_L1 - LEG_L2 * LEG_L2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, LEG_L1 * LEG_L1 - a * a));
+    const pole = new THREE.Vector3(leg.s * .9, .8, 0).sub(dir.clone().multiplyScalar(dir.dot(new THREE.Vector3(leg.s * .9, .8, 0)))).normalize();
+    const K = hipR.clone().addScaledVector(dir, a).addScaledVector(pole, h);
+    const footR = hipR.clone().addScaledVector(dir, d);
+    this.place(leg.femur, hipR, K); this.place(leg.tibia, K, footR);
+    leg.knee.position.copy(K);
+    leg.spike.position.copy(K).addScaledVector(pole, .03); leg.spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pole.clone().add(new THREE.Vector3(leg.s * .3, 0, 0)).normalize());
+    leg.claws.forEach((c, k) => { const cd = new THREE.Vector3(leg.s * .4, -.6, k ? .6 : -.6).normalize(); c.position.copy(footR).addScaledVector(cd, .02); c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), cd); });
+  }
+  place(mesh, A, B) { const d = B.clone().sub(A); mesh.position.copy(A).addScaledVector(d, .5); mesh.scale.set(1, d.length(), 1); mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); }
+  solveLegs() {
+    this.body.updateMatrix(); this.thorax.updateMatrix();
+    const m = this.body.matrix.clone().multiply(this.thorax.matrix);
+    const inv = new THREE.Matrix4().makeTranslation(0, -.3, 0); // тазы заданы в координатах модели
+    for (const leg of this.legs) this.solveLeg(leg, leg.hip.clone().applyMatrix4(inv).applyMatrix4(m));
+  }
+
+  // ---------- поведение за кадр ----------
+  // speed — скорость бега в единицах модели/с (0 — стоит); opts: latch (0..1 присосался), fold (0..1 смерть)
+  update(dt, speed) {
+    this.t += dt; const t = this.t, P = this.pose;
+    // походка: цикл треноги, частота растёт со скоростью
+    const run = Math.min(1, speed / 1.2);
+    this.speed += (speed - this.speed) * Math.min(1, dt * 8);
+    const cycle = .3, stance = .55, stride = this.speed * cycle * stance;
+    if (this.speed > .02) this.gait = (this.gait + dt / cycle) % 1;
+    for (const leg of this.legs) {
+      const ph = (this.gait + leg.group * .5) % 1;
+      const target = leg.rest.clone();
+      if (this.speed > .02) {
+        if (ph < 1 - stance) { const k = ph / (1 - stance); target.z += stride * (k - .5); target.y += Math.sin(k * Math.PI) * (.06 + .1 * run); }   // перенос лапы вперёд по дуге
+        else { const k = (ph - (1 - stance)) / stance; target.z += stride * (.5 - k); }                                                              // опора: лапа уходит назад
+      } else {
+        // покой: изредка переставляет одну лапу
+        const shuffle = Math.sin(t * .9 + leg.i * 2.1 + leg.s) ; if (shuffle > .97) target.y += (shuffle - .97) * 2.5;
+      }
+      // присосался: передние лапы обнимают костёр, остальные шире
+      if (P.latch > 0) { if (leg.i === 0) { target.z += .18 * P.latch; target.x -= leg.s * .12 * P.latch; target.y += .05 * P.latch; } else target.x += leg.s * .05 * P.latch; }
+      // удар: лапы дёргаются
+      if (P.recoil > 0) { target.x += Math.sin(t * 45 + leg.i * 3 + leg.s) * .05 * P.recoil; target.y += Math.max(0, Math.sin(t * 38 + leg.i)) * .08 * P.recoil; }
+      // смерть: лапы поджимаются под тело
+      if (P.fold > 0) { target.lerp(new THREE.Vector3(leg.s * .2, .28, leg.hip.z * .8), P.fold * .85); }
+      leg.foot.copy(target);
+    }
+    // тело: покачивание на бегу, дыхание в покое, приседание при ударе/смерти
+    const breath = Math.sin(t * 2.2);
+    const bob = this.speed > .02 ? Math.abs(Math.sin(this.gait * Math.PI * 2)) * .025 : breath * .006;
+    this.body.position.y = .3 + bob - .07 * P.latch - .22 * P.fold + .03 * P.recoil;
+    this.body.position.z = -.12 * P.recoil;
+    this.body.rotation.x = .08 * P.latch - .35 * P.recoil + (this.speed > .02 ? .04 : 0) - .1 * P.fold;
+    this.body.rotation.z = (this.speed > .02 ? Math.sin(this.gait * Math.PI * 2) * .05 : 0) + Math.sin(t * 50) * .06 * P.recoil + .5 * P.fold * Math.sin(1.3);
+    this.thorax.scale.set(1 + breath * .015, 1 + breath * .02, 1);
+    // голова: оглядывается в покое, опущена у огня, жвалы жуют
+    const look = this.speed > .02 || P.latch > 0 ? 0 : Math.sin(t * .7) * .35 * Math.max(0, Math.sin(t * .31 + 1));
+    this.head.rotation.y = look * (1 - P.fold);
+    this.head.rotation.x = .25 * P.latch + Math.sin(t * 9) * .05 * P.latch - .3 * P.recoil + .3 * P.fold;
+    const chew = P.latch > 0 ? (.35 + Math.sin(t * 14) * .3) * P.latch : (Math.sin(t * 3.3) > .9 ? .2 : 0) + .4 * P.recoil;
+    this.jaw[0].rotation.y = chew; this.jaw[1].rotation.y = -chew;
+    // брюшко: сзади раскачивается, у огня пульсирует жаром, хвост поджимается
+    this.abdomen.rotation.y = this.speed > .02 ? Math.sin(this.gait * Math.PI * 2) * .12 : Math.sin(t * 1.3) * .05;
+    const pulse = P.latch > 0 ? 1 + Math.max(0, Math.sin(t * 6)) * .1 * P.latch : 1;
+    this.abdomen.scale.set(pulse, pulse, 1 + (pulse - 1) * .5);
+    this.abdomen.rotation.x = -.1 * P.recoil + .2 * P.fold;
+    this.tail.rotation.x = Math.sin(t * 2.5) * .12 + .5 * P.latch + .6 * P.recoil + .8 * P.fold;
+    // свечение брюха от вытянутого жара, вспышка при ударе, растворение
+    for (const m of this.belly) { m.emissive.setRGB(.35 + P.glow * .65, .52 + P.glow * .2, .66 - P.glow * .4); m.emissiveIntensity = .4 + P.glow * 1.6; }
+    for (const m of new Set(this.mats.values())) {
+      const b = m.userData.base;
+      if (m.emissive && !this.belly.includes(m)) { m.emissive.copy(b.emissive).lerp(new THREE.Color(0xdff4ff), P.flash); m.emissiveIntensity = b.ei + P.flash * 1.5; }
+      m.transparent = b.transparent || P.fade > 0; m.opacity = b.opacity * (1 - P.fade); m.depthWrite = P.fade < .3 && (!b.transparent || b.opacity > .7);
+    }
+    for (const s of this.sprites) s.material.opacity = (1 - P.fade) * (1 - P.fold * .7);
+    this.solveLegs();
+  }
+  mouthWorld() { return this.head.localToWorld(MOUTH.clone().sub(new THREE.Vector3(0, .3, .22))); }
+}
+
+// ===== Риги остальных базовых врагов: громила, тень, мотыльки, туманница, ходуля =====
+// Общая основа: модель из бестиария делится на части с шарнирами по положению деталей
+// (координаты модели), материалы клонируются на каждый экземпляр: их подсвечивают при ударе
+// и растворяют при смерти. Поза задаётся полями pose: act (атака по роли), recoil (удар),
+// flash (вспышка), fold (падение при смерти), fade (растворение), vis (видимость тени).
+const FLASH_COL = new THREE.Color(0xdff4ff);
+const ease = k => k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k);
+const seg01 = (k, a, b) => ease((k - a) / (b - a));
+const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+
+class Rig {
+  constructor(id, level) {
+    this.id = id; this.level = level; this.def = CREATURES.find(d => d.id === id);
+    const b = new Builder(level, id.length * 7 + 1); this.def.build(b, level);
+    this.model = b.finish(this.def); this.model.updateMatrixWorld(true);
+    this.root = new THREE.Group(); this.ground = this.pivot(this.root, [0, 0, 0]);
+    this.mats = new Map(); this.sprites = []; this.t = 0; this.speed = 0; this.gait = 0;
+    this.scale = RIG_LEVEL_SCALE[level] * sizeFactor(this.def);
+    this.pose = { recoil: 0, flash: 0, fade: 0, fold: 0, act: 0, glow: 0, vis: 1, over: 0 };
+    this.hc = 1;                                               // высота центра тела (для частиц удара)
+  }
+  pivot(parent, at) { const g = new THREE.Group(), pr = parent.userData.rest || [0, 0, 0]; g.userData.rest = at; g.position.set(at[0] - pr[0], at[1] - pr[1], at[2] - pr[2]); parent.add(g); parent.updateMatrixWorld(true); return g; }
+  own(m) { if (!this.mats.has(m)) { const c = m.clone(); c.userData.base = { emissive: c.emissive?.clone(), ei: c.emissiveIntensity, opacity: c.opacity, transparent: c.transparent }; this.mats.set(m, c); this.mats.set(c, c); } return this.mats.get(m); }
+  adopt(o, target) { target.attach(o); if (o.isMesh) o.material = this.own(o.material); if (o.isSprite) { o.material = o.material.clone(); this.sprites.push(o); } }
+  // раскладывает детали модели по шарнирам; classify(деталь, точка) → шарнир или null (убрать)
+  split(classify) {
+    this.root.updateMatrixWorld(true);
+    const items = []; this.model.traverse(o => { if (o !== this.model && (o.isMesh || o.isSprite || o.isLight)) items.push(o); });
+    const p = V();
+    for (const o of items) {
+      o.getWorldPosition(p);
+      const tgt = o.userData.lvlAdd && p.y < .06 ? this.ground : classify(o, p);
+      if (!tgt) { o.parent.remove(o); continue; }
+      if (Array.isArray(tgt)) { this.adopt(o, tgt[0]); o.position.set(...tgt[1]); continue; }   // [шарнир, новое место]
+      this.adopt(o, tgt);
+    }
+    this.root.scale.setScalar(this.scale);
+  }
+  fx() {
+    const P = this.pose, op = (1 - P.fade) * (.1 + .9 * P.vis);
+    for (const m of new Set(this.mats.values())) {
+      const b = m.userData.base;
+      if (m.emissive) { m.emissive.copy(b.emissive).lerp(FLASH_COL, P.flash); m.emissiveIntensity = b.ei + P.flash * 1.5; }
+      m.transparent = b.transparent || op < .999; m.opacity = b.opacity * op; m.depthWrite = op > .7 && (!b.transparent || b.opacity > .7);
+    }
+    for (const s of this.sprites) s.material.opacity = (s.userData.glow ?? 1) * op * (1 - P.fold * .7);
+  }
+  // точка модели, закреплённая на шарнире, в мировых координатах
+  world(piv, at) { const r = piv.userData.rest || [0, 0, 0]; return piv.localToWorld(V(at[0] - r[0], at[1] - r[1], at[2] - r[2])); }
+  center() { return this.root.localToWorld(V(0, this.hc, 0)); }
+}
+
+// ---------- Громила: тяжёлый шаг, удар двумя кулаками сверху ----------
+class BruteRig extends Rig {
+  constructor(level) {
+    super('brute', level);
+    const R = this.root, S = [-1, 1];
+    this.hips = this.pivot(R, [0, .86, 0]);
+    this.torso = this.pivot(this.hips, [0, .92, 0]);
+    this.head = this.pivot(this.torso, [0, 1.4, .45]);
+    this.sh = S.map(s => this.pivot(this.torso, [s * .88, 1.62, .12]));
+    this.el = S.map((s, i) => this.pivot(this.sh[i], [s * 1.08, .95, .45]));
+    this.hip = S.map(s => this.pivot(this.hips, [s * .36, .85, -.2]));
+    this.kn = S.map((s, i) => this.pivot(this.hip[i], [s * .42, .48, -.05]));
+    this.split((o, p) => {
+      const ax = Math.abs(p.x), i = p.x < 0 ? 0 : 1;
+      if (ax > .62 && p.y < 1.55) return p.y > .97 ? this.sh[i] : this.el[i];   // руки: плечо и предплечье с кулаком
+      if (ax > .27 && p.y < .8) return p.y > .5 ? this.hip[i] : this.kn[i];      // ноги: бедро и голень
+      if (p.z > .515 && p.y > 1.15 && ax < .45) return this.head;
+      return p.y < .9 ? this.hips : this.torso;
+    });
+    this.hc = 1.3;
+  }
+  // act — фаза одного удара 0..1: замах (до .45), пауза, удар (.58–.66), возврат
+  update(dt, speed) {
+    this.t += dt; const t = this.t, P = this.pose;
+    this.speed += (speed - this.speed) * Math.min(1, dt * 4);
+    const v = this.speed, w = Math.min(1, v / .25), A = .3, L = .78;
+    if (v > .01) this.gait += dt * v / (4 * L * Math.sin(A));             // частота шага под скорость: ступни не скользят
+    const q = this.gait * Math.PI * 2, br = Math.sin(t * 1.5), k = P.act, r = P.recoil, f = P.fold;
+    const raise = k > 0 ? seg01(k, 0, .45) * (1 - seg01(k, .58, .66)) : 0;
+    const slam = k > 0 ? seg01(k, .58, .66) * (1 - seg01(k, .72, 1)) : 0;
+    const look = (1 - w) * (1 - Math.min(1, k * 4)) * Math.sin(t * .45) * .4 * Math.max(0, Math.sin(t * .23 + 1));
+    this.hips.position.y = .86 - .05 * w * Math.sin(q) ** 2 - .1 * slam - .42 * f;
+    this.hips.position.z = -.08 * r;
+    this.hips.rotation.x = .25 * f;
+    this.torso.rotation.x = .1 * w + .02 * br - .22 * raise + .45 * slam - .2 * r + .55 * f;
+    this.torso.rotation.y = .12 * w * Math.sin(q) + .2 * r;
+    this.torso.rotation.z = .07 * w * Math.sin(q);
+    this.torso.scale.set(1 + .012 * br, 1 + .02 * br, 1 + .012 * br);
+    this.head.rotation.x = -.35 * raise + .2 * slam - .45 * r + .35 * f + (Math.sin(t * 2.6) > .97 ? -.15 : 0) * (1 - w);
+    this.head.rotation.y = look - .08 * w * Math.sin(q);
+    for (let i = 0; i < 2; i++) {
+      const s = i ? 1 : -1, qi = q + i * Math.PI;
+      this.hip[i].rotation.x = -A * w * Math.sin(qi) - 1.1 * f;
+      this.kn[i].rotation.x = .75 * w * Math.max(0, Math.cos(qi)) + 1.9 * f;
+      this.sh[i].rotation.x = .25 * w * Math.sin(qi) + .04 * Math.sin(t * 1.5 + i) - 2.7 * raise - 1.3 * slam - .7 * f;
+      this.sh[i].rotation.z = s * (.05 + .03 * br + .15 * raise);
+      this.el[i].rotation.x = -.15 * w - .5 * raise - .2 * f;
+    }
+    this.fx();
+  }
+  fists() { return this.el.map((e, i) => this.world(e, [(i ? 1 : -1) * 1.02, .2, .66])); }
+}
+
+// ---------- Тень: парит, подол трепещет, накрывает огонь руками ----------
+class ShadeRig extends Rig {
+  constructor(level) {
+    super('shade', level);
+    const S = [-1, 1];
+    this.body = this.pivot(this.root, [0, .9, 0]);
+    this.hem = this.pivot(this.body, [0, .62, 0]);
+    this.head = this.pivot(this.body, [0, 1.74, 0]);
+    this.sh = S.map(s => this.pivot(this.body, [s * .25, 1.62, .05]));
+    this.el = S.map((s, i) => this.pivot(this.sh[i], [s * .48, 1.2, .2]));
+    this.split((o, p) => {
+      const ax = Math.abs(p.x), i = p.x < 0 ? 0 : 1;
+      if ((ax > .42 && p.y > .3 && p.y < 1.2) || (ax > .33 && p.y >= 1.15 && p.y < 1.55)) return p.y > 1.2 ? this.sh[i] : this.el[i];
+      if (p.y > 1.72 && ax < .3) return this.head;
+      if (p.y < .62) return this.hem;
+      return this.body;
+    });
+    this.hc = 1.4;
+  }
+  update(dt, speed) {
+    this.t += dt; const t = this.t, P = this.pose;
+    this.speed += (speed - this.speed) * Math.min(1, dt * 3);
+    const w = Math.min(1, this.speed / .4), a = P.act, f = P.fold, r = P.recoil, fl = this.def.float || 0;
+    this.body.position.y = .9 + fl + Math.sin(t * 1.4) * .04 + .12 * a + Math.sin(t * 3) * .03 * a - .3 * f;
+    this.body.position.z = -.15 * r;
+    this.body.rotation.x = .28 * w + .35 * a - .3 * r + .3 * f;
+    this.body.rotation.z = Math.sin(t * .8) * .04 * (1 - w) + Math.sin(t * 40) * .05 * r;
+    this.body.scale.set(1 + .1 * f, 1 - .4 * f, 1 + .1 * f);
+    // подол: тянется назад в полёте, трепещет, над огнём расходится
+    this.hem.rotation.x = .3 * w + Math.sin(t * 4.2) * .06 + Math.sin(t * 9) * .04 * w - .2 * a;
+    this.hem.rotation.z = Math.sin(t * 3.1) * .05;
+    const flare = 1 + .25 * a + .1 * r + .3 * f; this.hem.scale.set(flare, 1 - .3 * f, flare);
+    // голова: медленно склоняется набок, над огнём смотрит вниз
+    this.head.rotation.z = Math.sin(t * .6) * .18 * (1 - w) * (1 - a);
+    this.head.rotation.x = .1 * w + .35 * a - .4 * r + .5 * f;
+    this.head.rotation.y = Math.sin(t * .37) * .3 * (1 - w) * (1 - a);
+    for (let i = 0; i < 2; i++) {
+      const s = i ? 1 : -1;
+      this.sh[i].rotation.x = .55 * w - 1.05 * a + Math.sin(t * 1.2 + i) * .05 + .3 * r - .2 * f;
+      this.sh[i].rotation.z = s * (.08 + .35 * a + .3 * r - .05 * f);
+      this.el[i].rotation.x = -.45 * a - .15 * w + Math.sin(t * 2 + i * 1.3) * .08 * (1 - a) + Math.sin(t * 9 + i) * .04 * a + .3 * f;
+    }
+    this.fx();
+  }
+  hands() { return this.el.map((e, i) => this.world(e, [(i ? 1 : -1) * .62, .5, .4])); }
+}
+
+// ---------- Мотыльки: каждый летит сам, стайка держится облаком ----------
+class MothsRig extends Rig {
+  constructor(level) {
+    super('moths', level);
+    this.moths = []; this.cling = null;
+    const r = rngC(77);
+    for (const o of [...this.model.children]) {
+      if (o.isGroup && o.userData.bob) {
+        const m = { g: o, s: o.scale.x, wings: [], ph: r() * 6.28, sp: .8 + r() * .4, pos: o.position.clone(), prev: o.position.clone(), yaw: o.rotation.y, fall: 0, spot: V(r() - .5, r() * .8 - .2, r() - .5).normalize() };
+        o.traverse(c => { if (c.userData.flap) m.wings.push(c); if (c.isMesh) c.material = this.own(c.material); if (c.isSprite) { c.material = c.material.clone(); this.sprites.push(c); } });
+        this.root.add(o); this.moths.push(m);
+      } else if (o.userData.lvlAdd && o.position.y < .06) this.adopt(o, this.ground);
+      else if (o.isLight) this.adopt(o, this.root);
+    }
+    // пятна для облепленного фонаря: равномерно вокруг
+    this.moths.forEach((m, i) => { const a = i / this.moths.length * Math.PI * 2; m.spot.set(Math.cos(a), (i % 2 ? .35 : -.25), Math.sin(a)).normalize(); });
+    this.root.scale.setScalar(this.scale);
+    this.hc = 1.6;
+  }
+  update(dt, speed) {
+    this.t += dt; const t = this.t, P = this.pose;
+    this.speed += (speed - this.speed) * Math.min(1, dt * 3);
+    const w = Math.min(1, this.speed / .5), a = P.act, r = P.recoil, f = P.fold, n = this.moths.length;
+    let cl = null;
+    if (this.cling && a > 0) { this.root.updateMatrixWorld(true); cl = this.root.worldToLocal(this.cling.clone()); }
+    this.moths.forEach((m, i) => {
+      const ph = m.ph, tt = t * m.sp;
+      // облако в покое, вытянутый поток в полёте
+      const cloud = V(Math.cos(tt * .6 + ph) * .6, 1.6 + Math.sin(tt * 1.1 + ph * 2) * .25, Math.sin(tt * .6 + ph) * .5);
+      const stream = V(Math.sin(tt * 2 + ph) * .35, 1.6 + Math.sin(tt * 3 + ph) * .15, (i - (n - 1) / 2) * .3 + Math.sin(tt * 1.3 + ph) * .1);
+      const target = cloud.lerp(stream, w);
+      if (cl) target.lerp(cl.clone().addScaledVector(m.spot, .3 + Math.sin(t * 1.5 + i) * .015), ease(a));
+      if (r > 0) target.add(V(Math.cos(ph) * 1.1, .4, Math.sin(ph) * 1.1).multiplyScalar(r));
+      m.prev.copy(m.pos);
+      if (f > 0) { m.fall = Math.min(1, m.fall + dt * (1.2 + (i % 3) * .3)); m.pos.y = Math.max(.06, m.pos.y - dt * 3.5 * m.fall); m.g.rotation.z += dt * 4 * (i % 2 ? 1 : -1) * (m.pos.y > .07); }
+      else { m.fall = 0; m.pos.lerp(target, 1 - Math.exp(-dt * (cl ? 4 : 2.5 + r * 6))); }
+      const vel = m.pos.clone().sub(m.prev).divideScalar(Math.max(dt, 1e-4));
+      // разворот по направлению полёта; на фонаре — мордой к свету
+      let want = m.yaw;
+      if (cl && a > .5) { const d = cl.clone().sub(m.pos); want = Math.atan2(d.x, d.z); }
+      else if (vel.lengthSq() > .02) want = Math.atan2(vel.x, vel.z);
+      let dy = want - m.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); m.yaw += dy * Math.min(1, dt * 5);
+      m.g.position.copy(m.pos); m.g.position.y += Math.sin(t * 9 * m.sp + ph) * .02 * (1 - a) * (1 - f);
+      m.g.rotation.y = m.yaw;
+      if (f === 0) { m.g.rotation.z = -dy * .8; m.g.rotation.x = THREE.MathUtils.clamp(-vel.y * .3, -.5, .5) - .5 * ease(a); }
+      // крылья: быстрые взмахи в полёте, медленно раскрываются на фонаре, сложены при падении
+      for (const p of m.wings) {
+        const side = p.userData.flap, amp = p.userData.flapAmp;
+        const fast = Math.sin(t * (14 + 6 * r) * m.sp + ph) * amp * (.7 + .3 * w), slow = (Math.sin(t * 1.8 + i) * .35 + .1) * .6;
+        const z = THREE.MathUtils.lerp(.15 + fast, slow, ease(a)) * (1 - f) + 1.3 * f;
+        p.rotation.z = side * z;
+      }
+    });
+    this.fx();
+  }
+  center() { const c = V(); this.moths.forEach(m => c.add(m.g.getWorldPosition(V()))); return c.divideScalar(this.moths.length); }
+}
+
+// ---------- Туманница: медленный шаг на четырёх ногах, вдох мешком и выдох туманом ----------
+class MistRig extends Rig {
+  constructor(level) {
+    super('mistmother', level);
+    this.body = this.pivot(this.root, [0, .95, -.15]);
+    this.sac = this.pivot(this.body, [0, 1.25, -.45]);
+    this.head = this.pivot(this.body, [0, 1.3, .2]);
+    this.trunk = this.pivot(this.head, [0, 1.27, .4]);
+    // ноги: передняя и задняя с каждой стороны, шарнир в тазу и в колене
+    this.legs = [];
+    for (const s of [-1, 1]) for (const k of [0, 1]) {
+      const hip = this.pivot(this.root, k ? [s * .25, .85, -.4] : [s * .3, .9, 0]);
+      const knee = this.pivot(hip, k ? [s * .46, .58, -.55] : [s * .48, .62, .1]);
+      this.legs.push({ s, k, hip, knee });
+    }
+    const leg = (s, k) => this.legs.find(l => l.s === s && l.k === k);
+    this.split((o, p) => {
+      const ax = Math.abs(p.x);
+      if (ax > .27 && p.y < .95) { const l = leg(p.x < 0 ? -1 : 1, p.z > -.2 ? 0 : 1); return p.y < .6 ? l.knee : l.hip; }
+      if (p.y > 1.15 && p.z < -.1) return this.sac;
+      if (p.z > .38 && p.y < 1.3 && ax < .22) return this.trunk;
+      if (p.z > .15 && p.y > 1.15) return this.head;
+      return this.body;
+    });
+    this.hc = 1.3;
+  }
+  // act — фаза цикла: вдох (мешок раздувается) до .45, выдох .45–.9
+  update(dt, speed) {
+    this.t += dt; const t = this.t, P = this.pose;
+    this.speed += (speed - this.speed) * Math.min(1, dt * 3);
+    const v = this.speed, w = Math.min(1, v / .2), A = .25, L = .85;
+    if (v > .01) this.gait += dt * v / (4 * L * Math.sin(A));
+    const q = this.gait * Math.PI * 2, k = P.act, r = P.recoil, f = P.fold;
+    const inhale = k > 0 ? seg01(k, 0, .4) * (1 - seg01(k, .48, .9)) : 0, exhale = k > 0 ? seg01(k, .42, .5) * (1 - seg01(k, .85, 1)) : 0;
+    for (const l of this.legs) {
+      const qi = q + (l.s < 0 ? (l.k ? Math.PI : 0) : (l.k ? 0 : Math.PI));     // диагональные пары шагают вместе
+      l.hip.rotation.x = -A * w * Math.sin(qi);
+      l.hip.rotation.z = l.s * .45 * f;
+      l.knee.rotation.x = .55 * w * Math.max(0, Math.cos(qi)) * (l.k ? -1 : 1) + .4 * f * (l.k ? -1 : 1);
+    }
+    const br = Math.sin(t * 1.1);
+    this.body.position.y = .95 + .025 * w * Math.abs(Math.sin(q * 2)) + .01 * br - .45 * f;
+    this.body.rotation.z = .05 * w * Math.sin(q) + Math.sin(t * .5) * .02 + Math.sin(t * 35) * .03 * r;
+    this.body.rotation.x = -.06 * inhale + .08 * exhale + .25 * f;
+    const sc = (1 + .04 * br + .28 * inhale - .06 * exhale + Math.sin(t * 25) * .05 * r) * (1 - .35 * f);
+    this.sac.scale.set(sc, sc * 1.03, sc);
+    this.head.rotation.x = .1 + Math.sin(t * .5) * .06 - .3 * inhale + .1 * exhale - .3 * r + .5 * f;
+    this.head.rotation.y = Math.sin(t * .31) * .2 * (1 - w) * (1 - Math.min(1, k * 3));
+    this.trunk.rotation.x = Math.sin(t * .9) * .12 * (1 - w) + .1 * w * Math.sin(q * 2) - .25 * inhale - .75 * exhale + .4 * f;
+    this.trunk.rotation.z = Math.sin(t * .7) * .1 * (1 - exhale);
+    this.fx();
+  }
+  trunkTip() { return this.world(this.trunk, [0, .78, .52]); }
+  pipeTips() { return [-1, 1].map(s => this.world(this.sac, [s * .5, 2.28, -.62])); }
+}
+
+// ---------- Ходуля: четыре длинные ноги на IK, ступни стоят на земле, шагает через стены ----------
+const ST_L1 = .85, ST_L2 = 3.15, ST_R = 1.5;
+class StiltRig extends Rig {
+  constructor(level) {
+    super('stilt', level);
+    this.body = this.pivot(this.root, [0, 2.85, 0]);
+    this.head = this.pivot(this.body, [0, 2.78, .2]);
+    this.dangle = this.pivot(this.body, [0, 2.75, 0]);
+    this.split((o, p) => {
+      const rad = Math.hypot(p.x, p.z);
+      if (rad > .42 && !o.isLight) return null;                                  // старые ноги: собираются заново ниже
+      if (o.userData.lvlAdd && p.y < 2.6) return [this.body, [0, -.02, 0]];        // ледяное ядро древнего — внутрь тела
+      if (p.y < 2.72 && rad < .3 && p.y > 1.4) return this.dangle;
+      if (p.z > .15 && p.y < 2.9 && p.y > 2.4) return this.head;
+      return this.body;
+    });
+    const l = level, op = l === 2 ? { transparent: true, opacity: .6 } : {};
+    const mk = (c) => this.own(new THREE.MeshStandardMaterial({ color: rigTint(c, l), roughness: .85, flatShading: true, emissive: l ? new THREE.Color(l === 1 ? 0x0e2034 : 0x24527c) : 0x000000, ...op }));
+    const segMat = [mk(C.fog), mk(0x262d38)], jointMat = mk(0x6c7480), clawMat = mk(C.claw), boneMat = mk(C.bone);
+    const add = (geo, m) => { const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; this.root.add(mesh); return mesh; };
+    this.legs = [];
+    for (let i = 0; i < 4; i++) {
+      const a = i / 4 * Math.PI * 2 + Math.PI / 4, ca = Math.cos(a), sa = Math.sin(a);
+      const leg = { i, a, out: V(ca, 0, sa), group: i % 2, hip: V(ca * .2, 0, sa * .2), rest: V(ca * ST_R, .02, sa * ST_R), plant: null, from: V(), to: V(), swing: false, k: 0, lift: 0, foot: V() };
+      leg.femur = add(new THREE.CylinderGeometry(.035, .05, 1, 6), segMat[i % 2]);
+      leg.tibia = add(new THREE.CylinderGeometry(.012, .035, 1, 6), segMat[(i + 1) % 2]);
+      leg.knee = add(new THREE.IcosahedronGeometry(.06, 0), jointMat);
+      leg.mid = [.3, .6].map(() => add(new THREE.IcosahedronGeometry(.032, 0), jointMat));
+      leg.spike = add(new THREE.ConeGeometry(.025, .16, 4), boneMat);
+      leg.claws = [-1, 0, 1].map(() => add(new THREE.ConeGeometry(.012, .08, 4), clawMat));
+      this.legs.push(leg);
+    }
+    this.belly = new THREE.PointLight(0xff8a3c, 0, 3, 2); this.belly.position.set(0, 2.6, 0); this.body.add(this.belly);
+    this.obstacle = () => 0;            // высота препятствия в точке мира (задаёт страница)
+    this.hc = 2.85;
+  }
+  place(mesh, A, B) { const d = B.clone().sub(A); mesh.position.copy(A).addScaledVector(d, .5); mesh.scale.set(1, d.length(), 1); mesh.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize()); }
+  // куда ставить ступню (мир): точка покоя, раздвинутая при посадке/смерти и вынесенная вперёд на ходу
+  restWorld(leg, ahead) { const spread = 1 + .85 * this.pose.act + .7 * this.pose.fold; return this.root.localToWorld(leg.rest.clone().multiply(V(spread, 1, spread)).add(V(0, 0, ahead))); }
+  liftFor(A, B) { let h = 0; for (let k = 0; k <= 8; k++) h = Math.max(h, this.obstacle(A.clone().lerp(B, k / 8))); return h > 0 ? h + .6 : .5 * this.root.scale.x; }
+  clearOf(P, dir) { for (let n = 0; n < 20 && this.obstacle(P) > 0; n++) P.addScaledVector(dir, .25); if (this.obstacle(P.clone().addScaledVector(dir, -.35)) > 0) P.addScaledVector(dir, .35); return P; }
+  update(dt, speed) {
+    this.t += dt; const t = this.t, P = this.pose;
+    this.speed += (speed - this.speed) * Math.min(1, dt * 4);
+    const v = this.speed, w = Math.min(1, v / .3), moving = v > .02, cycle = .9, stance = .6;
+    this.root.updateMatrixWorld(true);
+    const fwd = V(0, 0, 1).applyQuaternion(this.root.quaternion);
+    if (!this.legs[0].plant) for (const leg of this.legs) leg.plant = this.restWorld(leg, 0);
+    if (moving) this.gait = (this.gait + dt / cycle) % 1;
+    let stepping = this.legs.some(l => l.swing);
+    for (const leg of this.legs) {
+      const ph = (this.gait + leg.group * .5) % 1;
+      if (moving && ph < 1 - stance && !leg.swing && ph < .15) {           // отрыв: выбрать, куда встать
+        leg.swing = true; leg.k = 0; leg.dur = cycle * (1 - stance); leg.from.copy(leg.plant);
+        leg.to = this.clearOf(this.restWorld(leg, v * cycle * stance * .5 + v * cycle * (1 - stance)), fwd);
+        leg.lift = this.liftFor(leg.from, leg.to);
+      } else if (!moving && !leg.swing && !stepping && P.act === 0 && P.fold === 0) {   // стоя: переставить отставшую лапу
+        const want = this.restWorld(leg, 0);
+        if (want.distanceTo(leg.plant) > .5 * this.root.scale.x) { leg.swing = true; stepping = true; leg.k = 0; leg.dur = .45; leg.from.copy(leg.plant); leg.to = this.clearOf(want, fwd); leg.lift = this.liftFor(leg.from, leg.to); }
+      }
+      if (!leg.swing && (P.act > 0 || P.fold > 0)) leg.plant.lerp(this.restWorld(leg, 0), Math.min(1, dt * 3));
+      if (leg.swing) {
+        leg.k += dt / leg.dur;
+        if (leg.k >= 1) { leg.swing = false; leg.plant.copy(leg.to); leg.foot.copy(leg.plant); }
+        else { leg.foot.copy(leg.from).lerp(leg.to, ease(leg.k)); leg.foot.y += Math.sin(leg.k * Math.PI) * leg.lift; }
+      } else leg.foot.copy(leg.plant);
+    }
+    // тело: над стеной приподнимается, на костре опускается, при смерти падает
+    const bob = moving ? Math.sin(this.gait * Math.PI * 4) * .04 : Math.sin(t * 1.6) * .02;
+    this.body.position.y = 2.85 + bob + .35 * P.over - 2.15 * ease(P.act) - 2.25 * ease(P.fold) + .15 * P.recoil + Math.sin(t * 2.2) * .03 * P.act;
+    this.body.rotation.x = .06 * w - .1 * P.recoil + .2 * P.fold;
+    this.body.rotation.z = Math.sin(t * 40) * .05 * P.recoil + .3 * P.fold;
+    this.head.rotation.y = Math.sin(t * .5) * .4 * (1 - w) * (1 - P.act) * Math.max(0, Math.sin(t * .27 + 2));
+    this.head.rotation.x = .3 * P.act - .3 * P.recoil;
+    this.dangle.rotation.x = -.25 * w + Math.sin(t * 1.7) * .08; this.dangle.rotation.z = Math.sin(t * 1.3) * .08;
+    this.dangle.scale.y = 1 - .75 * P.act - .7 * P.fold;
+    this.belly.intensity = P.glow * 3;
+    // ноги: двухзвенная IK от таза к ступне, колено вверх и наружу
+    this.body.updateMatrix();
+    const inv = this.root.matrixWorld.clone().invert();
+    for (const leg of this.legs) {
+      const hipR = leg.hip.clone().applyMatrix4(this.body.matrix), F = leg.foot.clone().applyMatrix4(inv);
+      if (P.recoil > 0) F.y += Math.max(0, Math.sin(t * 30 + leg.i * 2)) * .15 * P.recoil;
+      const d0 = F.clone().sub(hipR), d = THREE.MathUtils.clamp(d0.length(), ST_L2 - ST_L1 + .01, ST_L1 + ST_L2 - .001), dir = d0.normalize();
+      const a = (ST_L1 * ST_L1 - ST_L2 * ST_L2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, ST_L1 * ST_L1 - a * a));
+      const pl = leg.out.clone().multiplyScalar(.5).add(V(0, 1, 0)); const pole = pl.sub(dir.clone().multiplyScalar(dir.dot(pl))).normalize();
+      const K = hipR.clone().addScaledVector(dir, a).addScaledVector(pole, h), footR = hipR.clone().addScaledVector(dir, d);
+      this.place(leg.femur, hipR, K); this.place(leg.tibia, K, footR);
+      leg.knee.position.copy(K); leg.mid.forEach((m, j) => m.position.copy(K).lerp(footR, [.3, .6][j]));
+      leg.spike.position.copy(K).addScaledVector(pole, .06); leg.spike.quaternion.setFromUnitVectors(V(0, 1, 0), pole.clone().add(leg.out.clone().multiplyScalar(.4)).normalize());
+      leg.claws.forEach((c, j) => { const ta = leg.a + (j - 1) * .7, cd = V(Math.cos(ta), -.6, Math.sin(ta)).normalize(); c.position.copy(footR).addScaledVector(cd, .035); c.quaternion.setFromUnitVectors(V(0, 1, 0), cd); });
+    }
+    this.fx();
+  }
+  center() { return this.body.getWorldPosition(V()); }
+}
+
+
+const q = new URLSearchParams(location.search);
+const state = { creature: q.get('c') || 'crawler', mode: q.get('mode') || 'scene', level: +(q.get('level') || 0), time: q.get('time') || 'night', speed: +(q.get('speed') || 1) };
+if (q.get('ui') === '0') document.body.classList.add('noui');
+
+// ---------- существа: скорость в блоках/с, удары до смерти, круг бега, место покоя, камера ----------
+// камера с той стороны, где виден и костёр, и путь врага; k — отдаление, h — высота цели
+const camAt = (k, h = 0) => { const T = [3.4, 1.2 + h, -1.1]; return [T[0] - 1.9 * k, T[1] + 4.8 * k, T[2] + 11.1 * k, ...T]; };
+const CR = {
+  crawler: { make: l => new CrawlerRig(l), run: 2.5, hp: 2, circle: 2.4, idle: [1.6, .4, -1.9], cam: [3.2, 3.0, 5.6, .6, .35, 0], foldT: .6, dust: [.5, .4, .1], act: '3. Гасит огонь' },
+  brute: { make: l => new BruteRig(l), run: 1.3, hp: 4, circle: 3.6, idle: [3.8, 1.3, -1.9], cam: camAt(1.2, .8), foldT: 1.0, dust: [1.4, 2.6, .3], act: '3. Ломает стену' },
+  shade: { make: l => new ShadeRig(l), run: 1.8, hp: 2, circle: 3.2, idle: [2.4, .7, -1.9], cam: camAt(.9), foldT: .8, dust: [.6, 2.4, .2], act: '3. Крадётся к огню' },
+  moths: { make: l => new MothsRig(l), run: 3, hp: 2, circle: 3.4, idle: [2.4, .5, -1.9], cam: camAt(.95), foldT: .8, dust: [1.2, 2.6, .12], act: '3. Облепляют фонарь' },
+  mistmother: { make: l => new MistRig(l), run: 1, hp: 3, circle: 3.6, idle: [2.8, .8, -1.9], cam: camAt(1), foldT: 1.0, dust: [1.2, 2.6, .25], act: '3. Выдыхает туман' },
+  stilt: { make: l => new StiltRig(l), run: 2, hp: 3, circle: 4.2, idle: [4.2, .8, -1.9], cam: camAt(1.35, 1.2), foldT: 1.0, dust: [1.6, 4.4, .3], act: '3. Садится на костёр' },
+};
+const conf = () => CR[state.creature];
+
+// ---------- сцена ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(36, 1, .05, 200);
+const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxPolarAngle = Math.PI * .49; controls.minDistance = 1.5; controls.maxDistance = 40;
+// камера отъезжает от цели пропорционально уровню: древний в 1.36 раза крупнее
+function setCam(c, k = 1) { controls.target.set(c[3], c[4] * k, c[5]); camera.position.set(c[3] + (c[0] - c[3]) * k, c[4] * k + (c[1] - c[4]) * k, c[5] + (c[2] - c[5]) * k); controls.update(); }
+const hemi = new THREE.HemisphereLight(0xc4d0dc, 0x4c5232, 1.1); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff0dc, 2.3); sun.position.set(8, 14, 9); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, far: 60 }); sun.shadow.bias = -.0005; sun.shadow.normalBias = .03; scene.add(sun);
+const fireLight = new THREE.PointLight(0xff9a3c, 0, 12, 1.6); fireLight.position.set(0, .9, 0); fireLight.castShadow = true; fireLight.shadow.mapSize.set(1024, 1024); scene.add(fireLight);
+
+const gg = new THREE.PlaneGeometry(80, 80, 80, 80); gg.rotateX(-Math.PI / 2);
+const gp = gg.attributes.position, gc = new Float32Array(gp.count * 3), gB = new THREE.Color(0x6f7a3c), gD = new THREE.Color(0x56602f);
+for (let i = 0; i < gp.count; i++) { const x = gp.getX(i), z = gp.getZ(i); const n = Math.sin(x * .7) * Math.cos(z * .6) * .5 + Math.sin(x * .23 + z * .31) * .5; const c = gB.clone().lerp(gD, THREE.MathUtils.clamp(n * .6 + .3, 0, 1)); gc.set([c.r, c.g, c.b], i * 3); }
+gg.setAttribute('color', new THREE.BufferAttribute(gc, 3));
+const ground = new THREE.Mesh(gg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })); ground.receiveShadow = true; scene.add(ground);
+
+// костёр: топливо 1..0 гасит пламя и свет
+const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8d9298, roughness: 1, flatShading: true });
+const fire = new THREE.Group(); scene.add(fire);
+const logMat = new THREE.MeshStandardMaterial({ color: 0x5a3b28, roughness: 1, flatShading: true });
+const emberMat = new THREE.MeshStandardMaterial({ color: 0x3a1a0c, emissive: 0xff5a1a, emissiveIntensity: 1, flatShading: true });
+for (let i = 0; i < 4; i++) { const l = new THREE.Mesh(new THREE.CylinderGeometry(.09, .11, .9, 6), i % 2 ? logMat : emberMat); l.rotation.z = Math.PI / 2 - .35; l.rotation.y = i * Math.PI / 2; l.position.y = .18; l.castShadow = true; fire.add(l); }
+for (let i = 0; i < 8; i++) { const s = new THREE.Mesh(new THREE.DodecahedronGeometry(.14, 0), stoneMat); const a = i / 8 * Math.PI * 2; s.position.set(Math.cos(a) * .55, .08, Math.sin(a) * .55); fire.add(s); }
+const flameMat = new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: .9 }); const flames = [];
+for (let i = 0; i < 3; i++) { const f = new THREE.Mesh(new THREE.ConeGeometry(.22 - i * .05, .7 - i * .12, 5), flameMat); f.position.set((i - 1) * .1, .45, (i % 2) * .08); fire.add(f); flames.push(f); }
+let fuel = 1, fuelMin = 0, choke = 0;
+
+// рабочий 1.9 блока для масштаба; рядом с туманницей бросает работу и пятится
+const worker = new THREE.Group(); scene.add(worker); const WORKER = { x: -1.6, z: -.6, ry: .6 }; let fear = 0;
+{
+  const fm = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: .9, flatShading: true });
+  const part = (geo, c, x, y, z, rx = 0, rz = 0) => { const m = new THREE.Mesh(geo, fm(c)); m.position.set(x, y, z); m.rotation.set(rx, 0, rz); m.castShadow = true; worker.add(m); };
+  for (const s of [-1, 1]) { part(new THREE.CylinderGeometry(.09, .08, .82, 6), 0x4a3b2c, s * .11, .45, 0); part(new THREE.BoxGeometry(.15, .1, .26), 0x2e241b, s * .11, .05, .04); part(new THREE.CylinderGeometry(.065, .055, .62, 6), 0x8a5a36, s * .29, 1.25, .02, 0, s * .12); part(new THREE.IcosahedronGeometry(.06, 0), 0xd9a882, s * .33, .92, .03); }
+  part(new THREE.CylinderGeometry(.2, .25, .7, 7), 0x8a5a36, 0, 1.2, 0); part(new THREE.CylinderGeometry(.26, .27, .08, 7), 0x3a2a1e, 0, .9, 0); part(new THREE.CylinderGeometry(.08, .09, .1, 6), 0xd9a882, 0, 1.6, 0);
+  part(new THREE.IcosahedronGeometry(.15, 1), 0xd9a882, 0, 1.73, .01); part(new THREE.CylinderGeometry(.1, .17, .14, 7), 0x6b4a2e, 0, 1.88, 0);
+}
+
+// ---------- путь врага: из тумана по лучу к костру ----------
+const PA = -.35, PATH = new THREE.Vector3(Math.cos(PA), 0, Math.sin(PA)), LAT = new THREE.Vector3(-Math.sin(PA), 0, Math.cos(PA));
+const ORIGIN = new THREE.Vector3();
+const along = (d, side = 0) => PATH.clone().multiplyScalar(d).addScaledVector(LAT, side);
+
+// ---------- реквизит: стена из блоков и фонари на столбах ----------
+const props = new THREE.Group(); scene.add(props);
+let wall = null, lamps = [], debris = [];
+const blockMats = [0x7c6a55, 0x6b5b48, 0x8a8f94].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: .95, flatShading: true }));
+function makeWall(dist, width, height) {
+  const g = new THREE.Group(); g.position.copy(along(dist)); g.rotation.y = -PA - Math.PI / 2; props.add(g);
+  const blocks = [];
+  for (let u = 0; u < width; u++) for (let y = 0; y < height; y++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(.98, .98, .98), blockMats[(u + y) % 3]); m.position.set(u - (width - 1) / 2, y + .5, 0); m.castShadow = m.receiveShadow = true; g.add(m);
+    blocks.push({ m, u, y, alive: true });
+  }
+  g.updateMatrixWorld(true);
+  return {
+    g, blocks, width, height, center: along(dist),
+    heightAt(p) { const l = g.worldToLocal(p.clone()); if (Math.abs(l.z) > .75 || Math.abs(l.x) > width / 2 + .25) return 0; const u = Math.round(l.x + (width - 1) / 2); let h = 0; for (const b of blocks) if (b.alive && Math.abs(b.u - u) <= 0 && b.y + 1 > h) h = b.y + 1; return h; },
+    alive() { return blocks.filter(b => b.alive).length; },
+  };
+}
+function breakBlocks(at, radius, all) {
+  for (const b of wall.blocks) {
+    if (!b.alive) continue; const p = b.m.getWorldPosition(new THREE.Vector3());
+    if (!all && p.distanceTo(at) > radius) continue;
+    b.alive = false; wall.g.remove(b.m); b.m.position.copy(p); b.m.quaternion.copy(wall.g.quaternion); props.add(b.m);
+    const v = PATH.clone().multiplyScalar(-(1 + Math.random() * 1.5)).addScaledVector(LAT, (Math.random() - .5) * 2.5); v.y = 1.5 + Math.random() * 2.5;
+    debris.push({ m: b.m, v, w: new THREE.Vector3(Math.random() * 6 - 3, Math.random() * 6 - 3, Math.random() * 6 - 3), t: 0 });
+  }
+}
+const lampPostMat = new THREE.MeshStandardMaterial({ color: 0x4a3626, roughness: 1, flatShading: true });
+function makeLamp(pos) {
+  const g = new THREE.Group(); g.position.copy(pos); props.add(g);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(.06, .08, 2.3, 6), lampPostMat); post.position.y = 1.15; post.castShadow = true; g.add(post);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(.5, .06, .06), lampPostMat); arm.position.set(.22, 2.25, 0); g.add(arm);
+  const glass = new THREE.MeshStandardMaterial({ color: 0xffe2a0, emissive: 0xffb24a, emissiveIntensity: 1.4, flatShading: true });
+  const lamp = new THREE.Mesh(new THREE.OctahedronGeometry(.17, 0), glass); lamp.position.set(.42, 2.02, 0); lamp.scale.y = 1.3; g.add(lamp);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(.16, .12, 4), new THREE.MeshStandardMaterial({ color: 0x2e3338, flatShading: true })); cap.position.set(.42, 2.28, 0); g.add(cap);
+  const light = new THREE.PointLight(0xffb45a, 0, 9, 1.6); light.position.set(.42, 1.95, 0); light.castShadow = false; g.add(light);
+  g.updateMatrixWorld(true);
+  return { g, glass, light, dim: 1, top: lamp.getWorldPosition(new THREE.Vector3()), base: g.position.clone() };
+}
+function buildProps() {
+  for (const c of [...props.children]) { props.remove(c); c.traverse(o => o.geometry && o.geometry.dispose()); }
+  wall = null; lamps = []; debris = [];
+  const staged = state.mode === 'drain' || state.mode === 'scene', id = state.creature;
+  if (!staged) return;
+  if (id === 'brute') wall = makeWall(4.6, 3, 2);
+  if (id === 'stilt') wall = makeWall(4.2, 5, 3);
+  if (id === 'shade') lamps.push(makeLamp(along(4.6)));
+  if (id === 'moths') lamps.push(makeLamp(along(3.6, .9)));
+}
+
+// ---------- частицы: искры жара и мягкие клубы тумана ----------
+const sparks = [], puffs = [];
+const sparkGeo = new THREE.OctahedronGeometry(.025, 0);
+function spawnSpark(from, to) { const m = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true })); m.position.copy(from); scene.add(m); sparks.push({ m, from: from.clone(), to, t: 0, arc: .2 + Math.random() * .25, side: (Math.random() - .5) * .3 }); }
+const fogTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.5, 'rgba(255,255,255,.45)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+function spawnPuff(at, size, vel, life = 1.6, op = .35, grow = 1.2, color) {
+  const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: fogTex, color: color ?? (state.time === 'night' ? 0x7d90a8 : 0xd6dee6), transparent: true, depthWrite: false, opacity: 0 }));
+  m.position.copy(at); m.scale.setScalar(size * 2); scene.add(m);
+  puffs.push({ m, t: 0, life, op, size, grow, v: vel || new THREE.Vector3((Math.random() - .5) * .3, .35 + Math.random() * .3, (Math.random() - .5) * .3) });
+}
+const rnd = (s) => (Math.random() - .5) * s;
+
+// ---------- враг и сценарии ----------
+let rig, hits = 0, shake = 0;
+const REACH = 1.45;                                  // ползун у огня: столько блоков от центра до морды
+const actor = { pos: new THREE.Vector3(), yaw: 0, phase: 'idle', timer: 0, oneShot: null, osT: 0, blows: 0 };
+const ls = () => RIG_LEVEL_SCALE[state.level];
+const flat = (p) => new THREE.Vector3(p.x, 0, p.z);
+const dist2 = (p) => flat(p).distanceTo(flat(actor.pos));
+
+function makeRig() {
+  if (rig) { scene.remove(rig.root); rig.root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  rig = conf().make(state.level); rig.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(rig.root);
+  if (rig instanceof StiltRig) rig.obstacle = (p) => wall ? wall.heightAt(p) : 0;
+  // громила встаёт так, чтобы кулаки в момент удара доставали до стены
+  if (rig instanceof BruteRig) { rig.pose.act = .66; rig.update(0, 0); rig.root.updateMatrixWorld(true); const f = rig.fists(); actor.reach = (f[0].z + f[1].z) / 2 + .35; rig.pose.act = 0; rig.update(0, 0); }
+}
+function setPhase(p) { actor.phase = p; actor.timer = 0; }
+function setMode(m) {
+  if (m === 'hit' || m === 'death') { startOneShot(m); return; }
+  state.mode = m; hits = 0; actor.oneShot = null; actor.fadeIn = false; rig.pose.fade = 0; rig.pose.fold = 0;
+  buildProps(); resetActor(); ui();
+}
+function resetActor() {
+  const P = rig.pose, c = conf();
+  P.latch = 0; P.glow = 0; P.recoil = 0; P.flash = 0; P.act = 0; P.vis = 1; P.over = 0; fuel = 1; fuelMin = 0; actor.blows = 0;
+  if (state.mode === 'idle') { actor.pos.set(c.idle[0], 0, c.idle[1]); actor.yaw = c.idle[2]; setPhase('idle'); }
+  if (state.mode === 'run') setPhase('circle');
+  if (state.mode === 'drain' || state.mode === 'scene') {
+    const d = state.creature === 'crawler' ? 6.5 : state.creature === 'stilt' ? 10 : 9;
+    actor.pos.copy(along(d)); actor.yaw = Math.atan2(-PATH.x, -PATH.z); setPhase(state.mode === 'scene' ? 'emerge' : 'go'); P.fade = state.mode === 'scene' ? 1 : 0;
+  }
+  if (rig instanceof StiltRig) rig.legs.forEach(l => { l.plant = null; l.swing = false; });
+}
+function startOneShot(kind) {
+  if (actor.oneShot === 'death') return;
+  actor.oneShot = kind; actor.osT = 0;
+  if (kind === 'hit') { hits++; if (state.mode === 'scene' && hits >= conf().hp) actor.oneShot = 'death'; }
+  ui();
+}
+function turnTo(want, k) { let d = want - actor.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); actor.yaw += d * Math.min(1, k); }
+// шаг к цели; возвращает скорость в блоках/с (0 — на месте)
+function moveTo(target, reach, vmax, dt) {
+  const d = flat(target).sub(flat(actor.pos)), dist = d.length();
+  if (dist > .05) turnTo(Math.atan2(d.x, d.z), dt * 3);
+  if (dist <= reach + .02) return 0;
+  const v = Math.min(vmax, (dist - reach) * 3 + .3);
+  actor.pos.addScaledVector(d.normalize(), Math.min(v * dt, dist - reach));
+  return v;
+}
+function done(after) { if (state.mode === 'drain' && actor.timer > after) { buildProps(); resetActor(); } }
+
+// атака по роли: каждое существо ведёт себя по-своему
+const BEH = {
+  crawler(dt, P) {
+    const c = conf();
+    if (actor.phase === 'go') { const v = moveTo(ORIGIN, REACH, c.run, dt); if (!v) setPhase('latch'); return v; }
+    // присосался: тянет жар
+    turnTo(Math.atan2(-actor.pos.x, -actor.pos.z), dt * 5);
+    P.latch = Math.min(1, P.latch + dt * 2.5);
+    if (fuel > 0) { fuel = Math.max(0, fuel - dt * .12); P.glow = Math.min(1, P.glow + dt * .4); if (Math.random() < dt * 14 * fuel) spawnSpark(new THREE.Vector3(rnd(.3), .35, rnd(.3)), () => rig.mouthWorld()); }
+    if (fuel <= 0) done(10); return 0;
+  },
+  brute(dt, P) {
+    const c = conf();
+    if (actor.phase === 'go') { const v = moveTo(wall.center, actor.reach || 2.6, c.run, dt); if (!v) setPhase('smash'); return v; }
+    if (actor.phase === 'smash') {
+      const T = 1.9, k0 = P.act; let k = actor.timer / T;
+      if (k >= 1) { actor.blows++; actor.timer = 0; k = 0; if (!wall.alive()) { P.act = 0; setPhase('go2'); return 0; } }
+      if (k0 < .66 && k >= .66) {                       // удар кулаками: блоки разлетаются, пыль, тряска
+        const f = rig.fists(), at = f[0].add(f[1]).multiplyScalar(.5);
+        breakBlocks(at, .8 + actor.blows * .5, actor.blows >= 2);
+        for (let i = 0; i < 10; i++) spawnPuff(at.clone().add(new THREE.Vector3(rnd(1.2), rnd(.6), rnd(1.2))), .35, new THREE.Vector3(rnd(1), .4 + Math.random() * .5, rnd(1)), 1.4, .45);
+        shake = .18;
+      }
+      P.act = k; return 0;
+    }
+    if (actor.phase === 'go2') { const v = moveTo(ORIGIN, 2.6 * ls(), c.run, dt); if (!v) setPhase('stand'); return v; }
+    turnTo(Math.atan2(-actor.pos.x, -actor.pos.z), dt * 3); done(4); return 0;
+  },
+  shade(dt, P) {
+    const c = conf(), detour = along(4.6, 2.9);
+    if (actor.phase === 'go') { const v = moveTo(detour, 0, c.run, dt); if (dist2(detour) < 1.0) setPhase('go2'); return v; }
+    if (actor.phase === 'go2') { const v = moveTo(ORIGIN, 1.2 * ls(), c.run, dt); if (!v) setPhase('smother'); return v; }
+    turnTo(Math.atan2(-actor.pos.x, -actor.pos.z), dt * 3);
+    P.act = Math.min(1, P.act + dt * .8);
+    if (P.act > .6 && fuel > 0) {                        // из рук к огню тянется чёрный дым, огонь задыхается
+      const pulse = .6 + .4 * Math.sin(actor.timer * 5);
+      for (const h of rig.hands()) if (Math.random() < dt * 30 * pulse) {
+        const to = new THREE.Vector3(rnd(.25), .35 + Math.random() * .2, rnd(.25)).sub(h), life = to.length() / 1.5 + .25;
+        spawnPuff(h, .13 * ls(), to.divideScalar(life - .25).add(new THREE.Vector3(rnd(.3), 0, rnd(.3))), life, .8, .9, state.time === 'night' ? 0x07090d : 0x15181e);
+      }
+      fuel = Math.max(0, fuel - dt * .1); choke = Math.min(1, choke + dt * 2);
+    } else choke = Math.max(0, choke - dt);
+    if (fuel <= 0) done(10); return 0;
+  },
+  moths(dt, P) {
+    const c = conf(), lamp = lamps[0];
+    rig.cling = lamp.top;
+    if (actor.phase === 'go') { const v = moveTo(lamp.base, .1, c.run, dt); if (dist2(lamp.base) < 1.8) P.act = Math.min(1, P.act + dt * 1.2); if (!v) setPhase('cling'); return v; }
+    P.act = Math.min(1, P.act + dt * 1.2);
+    lamp.dim = Math.max(.25, lamp.dim - dt * .12);
+    if (lamp.dim <= .25) done(4); return 0;
+  },
+  mistmother(dt, P) {
+    const c = conf();
+    if (actor.phase === 'go') { const v = moveTo(ORIGIN, 4.2 * ls(), c.run, dt); if (!v) setPhase('exhale'); return v; }
+    turnTo(Math.atan2(-actor.pos.x, -actor.pos.z), dt * 3);
+    const T = 3.4, k = (actor.timer / T) % 1; P.act = Math.max(.001, k);
+    if (k > .45 && k < .9) {                              // выдох: туман тянется к огню, огонь тускнеет, рабочий пятится
+      const from = [rig.trunkTip(), ...rig.pipeTips()];
+      from.forEach((f, j) => { if (Math.random() < dt * (j ? 6 : 16)) { const to = new THREE.Vector3(rnd(1), .45 + Math.random() * .4, rnd(1)).sub(f), life = to.length() / 1.4 + .6; spawnPuff(f, (j ? .12 : .18) * ls(), to.divideScalar(life - .6), life, .3, .35); } });
+      fuelMin = .4; fuel = Math.max(fuelMin, fuel - dt * .06); fear = Math.min(1, fear + dt * .5);
+    }
+    done(14); return 0;
+  },
+  stilt(dt, P) {
+    const c = conf();
+    if (actor.phase === 'go') {
+      const over = wall && (wall.heightAt(actor.pos) > 0 || wall.heightAt(actor.pos.clone().addScaledVector(PATH, -1.5)) > 0 || wall.heightAt(actor.pos.clone().addScaledVector(PATH, 1.5)) > 0);
+      P.over += ((over ? 1 : 0) - P.over) * Math.min(1, dt * 2);
+      const near = wall && Math.abs(flat(actor.pos).distanceTo(ORIGIN) - 4.2) < 3.2;
+      const v = moveTo(ORIGIN, 0, near ? 1.1 : c.run, dt); if (!v || dist2(ORIGIN) < .05) setPhase('sit'); return v;
+    }
+    P.over = Math.max(0, P.over - dt);
+    P.act = Math.min(1, P.act + dt * .55);
+    if (P.act > .7) { fuel = Math.max(0, fuel - dt * .2); P.glow = Math.min(1, fuel * 1.5) * P.act; } else P.glow = P.act * .5;
+    if (fuel <= 0) done(3); return 0;
+  },
+};
+
+function stepActor(dt) {
+  const P = rig.pose, c = conf(); actor.timer += dt;
+  let v = 0;
+  if (actor.oneShot !== 'death') {
+    switch (actor.phase) {
+      case 'idle': break;
+      case 'circle': { const R = c.circle, w = c.run / R, a = actor.timer * w, O = state.creature === 'crawler' ? ORIGIN : along(5, -2); actor.pos.set(O.x + Math.cos(a) * R, 0, O.z + Math.sin(a) * R); actor.yaw = Math.atan2(-Math.sin(a), Math.cos(a)); v = c.run; break; }
+      case 'emerge': P.fade = Math.max(0, 1 - actor.timer / 1.2); if (Math.random() < dt * 20) spawnPuff(actor.pos.clone().add(new THREE.Vector3(rnd(c.dust[0]), Math.random() * c.dust[1] * .5, rnd(c.dust[0]))), c.dust[2] * 2); if (actor.timer > 1.2) setPhase('go'); break;
+      default: v = BEH[state.creature](dt, P) || 0;
+    }
+  }
+  // тень видна только в ярком свете: у фонаря и у горящего костра
+  if (state.creature === 'shade') {
+    let b = state.time === 'night' ? 0 : 1;
+    for (const l of lamps) b = Math.max(b, 1 - (flat(l.base).distanceTo(flat(actor.pos)) - 1.6) / 1.2);
+    b = Math.max(b, (1 - (flat(actor.pos).length() - 2.2) / 1.5) * Math.min(1, fuel * 2));
+    P.vis += (THREE.MathUtils.clamp(b, .12, 1) - P.vis) * Math.min(1, dt * 3);
+  }
+  // разовые: удар и смерть
+  if (actor.oneShot === 'hit') {
+    actor.osT += dt; const k = actor.osT / .5; P.recoil = Math.max(0, Math.sin(Math.min(1, k) * Math.PI)); P.flash = Math.max(0, 1 - k * 2.2);
+    if (actor.osT === dt) { const at = rig.mouthWorld ? rig.mouthWorld() : rig.center(); for (let i = 0; i < 6; i++) spawnPuff(at.clone().add(new THREE.Vector3(rnd(.3), rnd(.3), rnd(.3))), c.dust[2] * .8); }
+    if (k >= 1) { actor.oneShot = null; P.recoil = 0; P.flash = 0; }
+  }
+  if (actor.oneShot === 'death') {
+    actor.osT += dt; const t = actor.osT, T = c.foldT;
+    P.latch = Math.max(0, (P.latch || 0) - dt * 3); P.recoil = Math.max(0, .6 - t * 2); P.flash = Math.max(0, 1 - t * 3);
+    if (state.creature === 'brute' || state.creature === 'mistmother') P.act = 0; else P.act = Math.max(0, P.act - dt * 1.5);
+    P.fold = Math.min(1, t / T);
+    if (t > T) { P.fade = Math.min(1, (t - T) / 1.0); if (Math.random() < dt * 35 * (1 - P.fade * .5)) spawnPuff(actor.pos.clone().add(new THREE.Vector3(rnd(c.dust[0]), .1 + Math.random() * c.dust[1] * .4, rnd(c.dust[0]))), c.dust[2] * (1 + Math.random())); }
+    if (t > T + 2.2) { actor.oneShot = null; P.fold = 0; hits = 0; if (state.mode === 'scene' || state.mode === 'drain') { buildProps(); resetActor(); } else { P.fade = 1; actor.fadeIn = true; } ui(); }
+  }
+  if (actor.fadeIn) { P.fade = Math.max(0, P.fade - dt * 1.2); if (P.fade === 0) actor.fadeIn = false; }
+  rig.root.position.copy(actor.pos); rig.root.rotation.y = actor.yaw;
+  rig.update(dt, v / rig.root.scale.x);
+}
+
+// ---------- интерфейс ----------
+const HITS = (n) => n === 2 ? 'второго удара' : n === 3 ? 'третьего удара' : 'четвёртого удара';
+const TEXT = {
+  crawler: { idle: 'Стоит у огня: дышит грудью, оглядывается, жвалы подёргиваются, хвост покачивается, изредка переставляет лапу.', run: 'Бежит со скоростью из игры (2.5 блока/с) походкой «треногой», как насекомое: три лапы опираются, три переносятся вперёд. Тело покачивается, брюшко виляет.', drain: 'Подбегает, приседает и обнимает костёр передними лапами, жуёт жвалами. Искры жара летят ему в пасть, брюхо разгорается, огонь тускнеет и гаснет.', hit: 'вздрагивает, вспыхивает, отскакивает назад, лапы дёргаются', death: 'поджимает лапы, падает и рассыпается в туман' },
+  brute: { idle: 'Тяжело дышит, плечи ходят вверх-вниз, руки висят до земли. Медленно поворачивает голову, иногда фыркает.', run: 'Идёт медленно и тяжело (1.3 блока/с): шаг под скорость, корпус переваливается, руки качаются навстречу ногам.', drain: 'Подходит к стене, заносит оба кулака над головой и бьёт сверху. Блоки разлетаются, после третьего удара стены нет, и он идёт дальше к огню.', hit: 'почти не замечает: дёргает головой, вспыхивает, чуть отшатывается', death: 'падает на колени, валится вперёд на кулаки и рассыпается' },
+  shade: { idle: 'Парит над землёй, подол колышется, голова медленно склоняется набок. В темноте почти не видна.', run: 'Скользит без шагов: наклоняется вперёд, руки и подол тянутся назад.', drain: 'Обходит фонарь по краю света, чтобы не проявиться. У костра поднимается, вытягивает руки к огню, и из ладоней к нему тянется чёрный дым: огонь задыхается, мечется и гаснет. Рядом с ярким огнём становится видна.', hit: 'отшатывается, вспыхивает и дрожит', death: 'оседает в подол, складывается и рассыпается' },
+  moths: { idle: 'Стайка кружит облаком, каждый мотылёк машет крыльями сам.', run: 'Летят вытянутым потоком, на поворотах кренятся.', drain: 'Летят на свет, садятся на фонарь со всех сторон и медленно раскрывают крылья. Фонарь тускнеет.', hit: 'разлетаются в стороны и снова собираются', death: 'складывают крылья и падают, кружась' },
+  mistmother: { idle: 'Мешок с туманом дышит, хобот покачивается, голова опущена.', run: 'Медленно идёт на четырёх ногах (1 блок/с), диагональные пары шагают вместе, мешок покачивается.', drain: 'Останавливается поодаль, раздувает мешок, поднимает хобот и выдыхает туман. Туман ползёт к огню, огонь тускнеет, рабочий бросает работу и пятится.', hit: 'мешок трясётся, она вспыхивает', death: 'ноги разъезжаются, мешок сдувается, она оседает и рассыпается' },
+  stilt: { idle: 'Тело покачивается высоко над землёй, голова оглядывается. Если ступня отстала, переставляет её.', run: 'Шагает диагональными парами, ступни стоят на земле и не скользят.', drain: 'Подходит к стене в три блока и переступает её высоко поднятыми ногами, тело проходит над стеной. Над костром раздвигает ноги и садится прямо на огонь.', hit: 'тело подпрыгивает, ноги дёргаются', death: 'ноги разъезжаются, тело падает на землю и рассыпается' },
+};
+function ui() {
+  const id = state.creature, c = conf(), T = TEXT[id];
+  document.querySelectorAll('#creatures button').forEach(b => b.classList.toggle('on', b.dataset.v === id));
+  document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.v === state.mode));
+  document.querySelectorAll('#levels button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.level));
+  document.querySelectorAll('#speeds button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.speed));
+  document.querySelectorAll('#times button').forEach(b => b.classList.toggle('on', b.dataset.v === state.time));
+  document.getElementById('actBtn').textContent = c.act;
+  const heads = { idle: '1. Покой', run: '2. Бег', drain: c.act, scene: 'Сценка' };
+  const body = state.mode === 'scene' ? `Выходит из тумана и делает своё (${c.act.slice(3).toLowerCase()}). Нажимай «Удар»: после ${HITS(c.hp)} умирает, затем выходит следующий.` : T[state.mode];
+  document.getElementById('info').innerHTML = `<b>${heads[state.mode]}</b><p>${body}</p><p class="w">4. Удар: ${T.hit}. 5. Смерть: ${T.death}.${state.mode === 'scene' ? ` Ударов: ${hits} из ${c.hp}.` : ''}</p>`;
+}
+document.querySelectorAll('#creatures button').forEach(b => b.onclick = () => { state.creature = b.dataset.v; fear = 0; makeRig(); setCam(conf().cam, ls()); setMode(state.mode); });
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => setMode(b.dataset.v));
+document.querySelectorAll('#levels button').forEach(b => b.onclick = () => { state.level = +b.dataset.v; makeRig(); setCam(conf().cam, ls()); setMode(state.mode); });
+document.querySelectorAll('#speeds button').forEach(b => b.onclick = () => { state.speed = +b.dataset.v; ui(); });
+document.querySelectorAll('#times button').forEach(b => b.onclick = () => { state.time = b.dataset.v; applyTime(); ui(); });
+
+function applyTime() {
+  const night = state.time === 'night', bg = night ? 0x141c28 : 0xaab8c4;
+  scene.background = new THREE.Color(bg); scene.fog = night ? new THREE.FogExp2(0x1c2635, .04) : new THREE.Fog(bg, 30, 80);
+  hemi.intensity = night ? 1.0 : 1.1; hemi.color.set(night ? 0x6f88a8 : 0xc4d0dc); hemi.groundColor.set(night ? 0x1b2026 : 0x4c5232);
+  sun.intensity = night ? .9 : 2.3; sun.color.set(night ? 0x8fa8d8 : 0xfff0dc); renderer.toneMappingExposure = night ? 1.2 : 1.05;
+}
+function resize() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize(); applyTime(); makeRig();
+if (q.get('cam')) setCam(q.get('cam').split(',').map(Number)); else setCam(conf().cam, ls());
+setMode(state.mode);
+
+// для снимков: ?t=секунды прокручивает время, ?shot=hit|death запускает разовое действие в момент shotAt
+const warp = +(q.get('t') || 0), shot = q.get('shot'), shotAt = +(q.get('shotAt') || 0);
+const DT = 1 / 60; let simT = 0;
+function sim(dt) {
+  if (shot && simT < shotAt && simT + dt >= shotAt) startOneShot(shot);
+  simT += dt;
+  stepActor(dt);
+  const night = state.time === 'night';
+  if (state.creature !== 'shade' || state.mode === 'idle' || state.mode === 'run') choke = 0;
+  flames.forEach((f, i) => { const s = Math.max(.02, fuel) * (1 - choke * .35 * Math.abs(Math.sin(simT * (11 + i * 3)))); f.scale.set(s, s * (1 + Math.sin(simT * 9 + i * 2) * .15), s); f.visible = fuel > .02; });
+  emberMat.emissiveIntensity = .3 + fuel * .9;
+  fireLight.intensity = (night ? 7 : 1.5) * (.08 + .92 * fuel) * (1 + Math.sin(simT * 13) * .06);
+  for (const l of lamps) { l.light.intensity = (night ? 16 : 3) * l.dim * (1 + Math.sin(simT * 11) * .04); l.glass.emissiveIntensity = .2 + 1.2 * l.dim; }
+  if (state.creature !== 'mistmother' || state.mode === 'idle' || state.mode === 'run') fear = Math.max(0, fear - dt * .5);
+  worker.position.set(WORKER.x - fear * .8, 0, WORKER.z - fear * .5); worker.rotation.y = WORKER.ry + fear * 2.4; worker.rotation.z = Math.sin(simT * 30) * .02 * fear;
+  for (let i = sparks.length - 1; i >= 0; i--) { const s = sparks[i]; s.t += dt * 1.8; const to = s.to(); const p = s.from.clone().lerp(to, s.t); p.y += Math.sin(s.t * Math.PI) * s.arc; p.x += Math.sin(s.t * Math.PI) * s.side; s.m.position.copy(p); s.m.material.opacity = 1 - s.t * .5; if (s.t >= 1) { scene.remove(s.m); sparks.splice(i, 1); } }
+  for (let i = puffs.length - 1; i >= 0; i--) { const p = puffs[i]; p.t += dt; p.m.position.addScaledVector(p.v, dt); p.m.scale.setScalar(p.size * 2 * (1 + p.t * p.grow)); p.m.material.opacity = p.op * Math.min(1, p.t * 5) * (1 - p.t / p.life); if (p.t > p.life) { scene.remove(p.m); p.m.material.dispose(); puffs.splice(i, 1); } }
+  for (let i = debris.length - 1; i >= 0; i--) { const d = debris[i]; d.t += dt; d.v.y -= 9.8 * dt; d.m.position.addScaledVector(d.v, dt); if (d.m.position.y < .45) { d.m.position.y = .45; d.v.multiplyScalar(.35); d.v.y = Math.abs(d.v.y) * .3; d.w.multiplyScalar(.5); } d.m.rotation.x += d.w.x * dt; d.m.rotation.z += d.w.z * dt; if (d.t > 2.5) d.m.scale.setScalar(Math.max(.01, 1 - (d.t - 2.5) * 1.5)); if (d.t > 3.2) { props.remove(d.m); debris.splice(i, 1); } }
+  shake = Math.max(0, shake - dt * .6);
+}
+while (simT < warp) sim(DT);
+const clock = new THREE.Clock(), still = q.get('still') === '1';
+function frame() {
+  if (!still) { let dt = Math.min(.05, clock.getDelta()) * state.speed; while (dt > 1e-4) { const s = Math.min(DT, dt); sim(s); dt -= s; } }
+  if (!still || !frame.done) { controls.update(); }
+  const off = new THREE.Vector3(rnd(shake), rnd(shake), rnd(shake)); camera.position.add(off);
+  renderer.render(scene, camera); camera.position.sub(off); frame.done = true; window.done = true;
+  if (!still) requestAnimationFrame(frame);
+}
+ui(); frame();
+</script>
+</body>
+</html>
+
+</body></html>

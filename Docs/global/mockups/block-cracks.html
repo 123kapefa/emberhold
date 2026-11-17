@@ -1,0 +1,442 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Трещины блока</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: одна сцена с блоком во всю ширину, под ней панель стилей и настроек. */
+  :root {
+    --bg: #e9ebe6;
+    --panel: #f7f8f4;
+    --ink: #22261f;
+    --muted: #5d6458;
+    --line: #c9cec2;
+    --accent: #b5652a;
+    --accent-ink: #ffffff;
+    --scene: #a9b6a0;
+    --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #171a16; --panel: #20241f; --ink: #e6e9e1; --muted: #9aa294; --line: #353b32;
+      --accent: #e08a47; --accent-ink: #1a1a1a; --scene: #2c3329; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #171a16; --panel: #20241f; --ink: #e6e9e1; --muted: #9aa294; --line: #353b32;
+    --accent: #e08a47; --accent-ink: #1a1a1a; --scene: #2c3329; color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--font-ui);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 16px;
+    box-sizing: border-box;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+  h1 { font-size: 20px; margin: 0; font-weight: 600; text-wrap: balance; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  .stage {
+    position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 62vh;
+    border-radius: 10px; overflow: hidden; background: var(--scene); border: 1px solid var(--line);
+  }
+  .stage canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+  .hud {
+    position: absolute; left: 12px; top: 10px; font-family: var(--font-mono); font-size: 12px;
+    color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.6); pointer-events: none;
+  }
+  .controls { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .controls { grid-template-columns: 1fr; } }
+  fieldset {
+    margin: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+    padding: 10px 12px 12px; min-width: 0; display: flex; flex-direction: column; gap: 8px;
+  }
+  legend { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 0 4px; }
+  .styles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .opt { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; padding: 8px; border-radius: 8px; border: 1px solid transparent; }
+  .opt:hover { border-color: var(--line); }
+  .opt input { margin-top: 2px; accent-color: var(--accent); }
+  .opt b { display: block; font-size: 14px; font-weight: 600; }
+  .opt span { display: block; font-size: 12px; color: var(--muted); line-height: 1.35; }
+  .opt:has(input:checked) { border-color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .row label { display: flex; gap: 6px; align-items: center; font-size: 14px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+  .row input { accent-color: var(--accent); }
+  button {
+    font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .note { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.45; max-width: 70ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Трещины блока: прототип</h1>
+    <p>Кликай по блоку: каждый клик — удар. На 5-м ударе блок раскалывается и через секунду появляется снова.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <div class="hud" id="hud">Удар 0 из 5</div>
+  </div>
+
+  <div class="controls">
+    <fieldset>
+      <legend>Стиль трещин</legend>
+      <div class="styles">
+        <label class="opt"><input type="radio" name="style" id="style-chips" value="chips" checked>
+          <div><b>А. Сколы</b><span>Тёмная щель с светлым краем, будто грань отколота; на углах выбоины.</span></div></label>
+        <label class="opt"><input type="radio" name="style" id="style-dust" value="dust">
+          <div><b>Б. Светлые трещины</b><span>Тонкие ветвистые трещины цвета каменной пыли, без чёрного.</span></div></label>
+        <label class="opt"><input type="radio" name="style" id="style-dent" value="dent">
+          <div><b>В. Вмятины</b><span>Удар продавливает поверхность в месте клика, от вмятины расходятся трещины.</span></div></label>
+        <label class="opt"><input type="radio" name="style" id="style-dark" value="dark">
+          <div><b>Г. Потемнение</b><span>Блок с каждым ударом темнеет и покрывается сеткой мелких трещин.</span></div></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Материал</legend>
+      <div class="row">
+        <label><input type="radio" name="mat" id="mat-stone" value="stone" checked> Камень</label>
+        <label><input type="radio" name="mat" id="mat-dirt" value="dirt"> Земля с травой</label>
+      </div>
+      <legend style="margin-top:6px">Форма</legend>
+      <div class="row">
+        <label><input type="radio" name="shape" id="shape-cube" value="cube" checked> Куб</label>
+        <label><input type="radio" name="shape" id="shape-slope" value="slope"> Склон</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Управление</legend>
+      <div class="row">
+        <button class="primary" id="hit">Ударить</button>
+        <button id="reset">Новый блок</button>
+      </div>
+      <p class="note">Тяни мышью по пустому месту, чтобы повернуть камеру. Трещины рисуются по самой поверхности, поэтому на склоне они лежат на скате, а не висят в воздухе.</p>
+    </fieldset>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  const MAX_HITS = 5;
+  const TEX = 256;
+  const stageEl = document.getElementById('stage');
+  const hud = document.getElementById('hud');
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  stageEl.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x9fb2c4);
+  scene.fog = new THREE.Fog(0x9fb2c4, 9, 18);
+  const camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 50);
+  const hemi = new THREE.HemisphereLight(0xdfe9f2, 0x5b5040, 0.75);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff1dc, 0.85);
+  sun.position.set(3, 6, 2);
+  scene.add(sun);
+
+  // ---------- Процедурные текстуры материалов ----------
+  function rng(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 100000) / 100000; }; }
+  function noiseCanvas(base, spread, seed, cells) {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d'); const r = rng(seed);
+    g.fillStyle = base; g.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 900; i++) {
+      const v = (r() - 0.5) * spread;
+      g.fillStyle = v > 0 ? `rgba(255,255,255,${v})` : `rgba(0,0,0,${-v})`;
+      const s = 2 + r() * 5; g.fillRect(r() * 128, r() * 128, s, s);
+    }
+    if (cells) {
+      g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 1.2;
+      for (let i = 0; i < 14; i++) { g.beginPath(); let x = r() * 128, y = r() * 128; g.moveTo(x, y);
+        for (let k = 0; k < 4; k++) { x += (r() - 0.5) * 40; y += (r() - 0.5) * 40; g.lineTo(x, y); } g.stroke(); }
+    }
+    const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; return t;
+  }
+  const textures = {
+    stone: noiseCanvas('#8d8f8a', 0.22, 3, true),
+    dirt: noiseCanvas('#7a5a3c', 0.25, 7, false),
+    grass: noiseCanvas('#6f8f3e', 0.25, 11, false),
+    ground: noiseCanvas('#5f7a36', 0.12, 19, false),
+  };
+
+  // ---------- Земля вокруг ----------
+  const groundMat = new THREE.MeshLambertMaterial({ map: textures.ground });
+  for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) {
+    if (x === 0 && z === 0) continue;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), groundMat);
+    m.position.set(x, -0.5, z); scene.add(m);
+  }
+  const under = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ map: textures.dirt }));
+  under.position.set(0, -1.5, 0); scene.add(under);
+
+  // ---------- Блок ----------
+  const state = { style: 'chips', mat: 'stone', shape: 'cube', hits: 0, broken: false };
+  let block = null, overlay = null, geometry = null;
+  const faces = []; // по грани: canvas, ctx, texture, cracks[]
+
+  function makeGeometry(shape) {
+    const g = new THREE.BoxGeometry(1, 1, 1, 12, 12, 12);
+    const p = g.attributes.position;
+    if (shape === 'slope') {
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = p.getY(i);
+        const t = (y + 0.5); // 0 внизу, 1 вверху
+        p.setY(i, -0.5 + t * (1 - (x + 0.5) * 0.55));
+      }
+    }
+    g.computeVertexNormals();
+    g.userData.rest = Float32Array.from(p.array);
+    return g;
+  }
+
+  function faceMaterials() {
+    const side = state.mat === 'stone' ? textures.stone : textures.dirt;
+    const top = state.mat === 'stone' ? textures.stone : textures.grass;
+    const mk = t => new THREE.MeshLambertMaterial({ map: t, color: 0xffffff });
+    // Порядок граней BoxGeometry: +x, -x, +y, -y, +z, -z.
+    return [mk(side), mk(side), mk(top), mk(side), mk(side), mk(side)];
+  }
+
+  function newFace(i) {
+    const c = document.createElement('canvas'); c.width = c.height = TEX;
+    const t = new THREE.CanvasTexture(c);
+    const m = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    return { canvas: c, ctx: c.getContext('2d'), texture: t, material: m, cracks: [], dents: [], seed: 101 + i * 37 };
+  }
+
+  function buildBlock() {
+    if (block) { scene.remove(block); scene.remove(overlay); geometry.dispose(); }
+    geometry = makeGeometry(state.shape);
+    block = new THREE.Mesh(geometry, faceMaterials());
+    faces.length = 0;
+    for (let i = 0; i < 6; i++) faces.push(newFace(i));
+    overlay = new THREE.Mesh(geometry, faces.map(f => f.material));
+    block.position.y = 0.5; overlay.position.y = 0.5;
+    scene.add(block); scene.add(overlay);
+    state.hits = 0; state.broken = false;
+    redrawAll(); updateHud();
+  }
+
+  // ---------- Трещины ----------
+  // Ломаная из точки (u, v) на грани: зигзагом в случайную сторону, с ответвлениями.
+  function crackFrom(u, v, r, length, branches) {
+    const pts = [[u, v]]; let a = r() * Math.PI * 2; let x = u, y = v;
+    const steps = 5 + Math.floor(r() * 4);
+    for (let i = 0; i < steps; i++) {
+      a += (r() - 0.5) * 1.1; const s = length / steps * (0.6 + r() * 0.8);
+      x += Math.cos(a) * s; y += Math.sin(a) * s; pts.push([x, y]);
+    }
+    const out = [{ pts, w: 1 }];
+    for (let b = 0; b < branches; b++) {
+      const at = pts[1 + Math.floor(r() * (pts.length - 2))];
+      const sub = crackFrom(at[0], at[1], r, length * 0.45, 0)[0];
+      sub.w = 0.55; out.push(sub);
+    }
+    return out;
+  }
+
+  function addHit(faceIndex, u, v) {
+    const r = rng(faces[faceIndex].seed + state.hits * 7919 + Math.floor(u * 1000));
+    const f = faces[faceIndex];
+    const lengthByStyle = { chips: 0.42, dust: 0.5, dent: 0.36, dark: 0.22 };
+    const len = lengthByStyle[state.style];
+    const count = state.style === 'dark' ? 4 : 2;
+    for (let i = 0; i < count; i++) {
+      const su = state.style === 'dark' ? r() : u, sv = state.style === 'dark' ? r() : v;
+      f.cracks.push(...crackFrom(su, sv, r, len * (0.7 + r() * 0.6), state.style === 'dust' ? 3 : 1));
+    }
+    f.dents.push({ u, v, size: 0.12 + r() * 0.06 });
+    // Соседние грани тоже трескаются от края.
+    for (let k = 0; k < 6; k++) {
+      if (k === faceIndex || k === 3) continue;
+      if (r() < 0.45) {
+        const g = faces[k]; const edge = r() < 0.5 ? [r(), r() < 0.5 ? 0.02 : 0.98] : [r() < 0.5 ? 0.02 : 0.98, r()];
+        g.cracks.push(...crackFrom(edge[0], edge[1], r, len * 0.6, 0));
+      }
+    }
+  }
+
+  function strokePoly(ctx, pts, dx, dy) {
+    ctx.beginPath();
+    pts.forEach(([u, v], i) => { const x = u * TEX + dx, y = (1 - v) * TEX + dy; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+  }
+
+  function drawFace(f) {
+    const ctx = f.ctx; ctx.clearRect(0, 0, TEX, TEX);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const stone = state.mat === 'stone';
+    const damage = state.hits / MAX_HITS;
+    if (state.style === 'chips') {
+      // Выбоины на углах и вдоль трещин: тёмный скол со светлой кромкой.
+      const r = rng(f.seed);
+      const chips = Math.floor(damage * 6);
+      for (let i = 0; i < chips; i++) {
+        const cx = (r() < 0.5 ? 0.05 : 0.95) * TEX, cy = (r() < 0.5 ? 0.05 : 0.95) * TEX, s = 14 + r() * 22;
+        ctx.fillStyle = stone ? 'rgba(52,50,46,0.55)' : 'rgba(45,30,18,0.5)';
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + (r() - 0.5) * s * 2, cy + s * (r() - 0.2)); ctx.lineTo(cx + s * (r() - 0.2), cy + (r() - 0.5) * s * 2); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = stone ? 'rgba(230,228,220,0.6)' : 'rgba(190,160,120,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+      for (const c of f.cracks) {
+        ctx.strokeStyle = stone ? 'rgba(235,232,224,0.7)' : 'rgba(200,170,130,0.55)'; ctx.lineWidth = 7 * c.w; strokePoly(ctx, c.pts, 2, 2);
+        ctx.strokeStyle = stone ? 'rgba(38,36,33,0.9)' : 'rgba(35,22,12,0.85)'; ctx.lineWidth = 4.5 * c.w; strokePoly(ctx, c.pts, 0, 0);
+      }
+    } else if (state.style === 'dust') {
+      for (const c of f.cracks) {
+        ctx.strokeStyle = stone ? 'rgba(240,238,230,0.25)' : 'rgba(225,200,160,0.22)'; ctx.lineWidth = 9 * c.w; strokePoly(ctx, c.pts, 0, 0);
+        ctx.strokeStyle = stone ? 'rgba(238,236,228,0.9)' : 'rgba(222,196,150,0.85)'; ctx.lineWidth = 3 * c.w; strokePoly(ctx, c.pts, 0, 0);
+      }
+    } else if (state.style === 'dent') {
+      for (const d of f.dents) {
+        const x = d.u * TEX, y = (1 - d.v) * TEX, rr = d.size * TEX;
+        const gr = ctx.createRadialGradient(x - rr * 0.25, y - rr * 0.25, rr * 0.1, x, y, rr);
+        gr.addColorStop(0, 'rgba(0,0,0,0.45)'); gr.addColorStop(0.7, 'rgba(0,0,0,0.2)'); gr.addColorStop(0.85, 'rgba(255,255,255,0.25)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.fill();
+      }
+      for (const c of f.cracks) {
+        ctx.strokeStyle = 'rgba(30,28,25,0.8)'; ctx.lineWidth = 3.6 * c.w; strokePoly(ctx, c.pts, 0, 0);
+      }
+    } else {
+      ctx.fillStyle = `rgba(20,18,15,${0.42 * damage})`; ctx.fillRect(0, 0, TEX, TEX);
+      const r = rng(f.seed + 5);
+      for (let i = 0; i < damage * 160; i++) { ctx.fillStyle = `rgba(0,0,0,${0.12 + r() * 0.15})`; const s = 2 + r() * 6; ctx.fillRect(r() * TEX, r() * TEX, s, s); }
+      for (const c of f.cracks) { ctx.strokeStyle = 'rgba(15,13,10,0.75)'; ctx.lineWidth = 2.6 * c.w; strokePoly(ctx, c.pts, 0, 0); }
+    }
+    f.texture.needsUpdate = true;
+  }
+  function redrawAll() { faces.forEach(drawFace); }
+
+  // Вмятина: точки поверхности у места удара уходят внутрь по нормали грани.
+  const faceNormals = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  function dent(point, faceIndex, size) {
+    const p = geometry.attributes.position; const n = faceNormals[faceIndex];
+    const local = block.worldToLocal(point.clone());
+    for (let i = 0; i < p.count; i++) {
+      const dx = p.getX(i) - local.x, dy = p.getY(i) - local.y, dz = p.getZ(i) - local.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d > size) continue;
+      const k = (1 - d / size); const depth = 0.07 * k * k;
+      p.setXYZ(i, p.getX(i) - n[0] * depth, p.getY(i) - n[1] * depth, p.getZ(i) - n[2] * depth);
+    }
+    p.needsUpdate = true; geometry.computeVertexNormals();
+  }
+
+  // ---------- Обломки ----------
+  const pieces = [];
+  const pieceGeo = new THREE.IcosahedronGeometry(0.5, 0);
+  function spawnPieces(origin, count, size, speed, color, life) {
+    for (let i = 0; i < count; i++) {
+      const m = new THREE.Mesh(pieceGeo, new THREE.MeshLambertMaterial({ color, flatShading: true }));
+      m.position.copy(origin).add(new THREE.Vector3((Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.5));
+      const s = size * (0.6 + Math.random() * 0.8); m.scale.set(s, s * (0.6 + Math.random() * 0.6), s);
+      m.userData = { v: new THREE.Vector3((Math.random() - 0.5) * speed, 2 + Math.random() * 2.5, (Math.random() - 0.5) * speed),
+        spin: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8), life, age: 0, s };
+      scene.add(m); pieces.push(m);
+    }
+  }
+  function stepPieces(dt) {
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const m = pieces[i], d = m.userData; d.age += dt;
+      if (d.age > d.life) { scene.remove(m); m.material.dispose(); pieces.splice(i, 1); continue; }
+      d.v.y -= 20 * dt; m.position.addScaledVector(d.v, dt);
+      m.rotation.x += d.spin.x * dt; m.rotation.y += d.spin.y * dt; m.rotation.z += d.spin.z * dt;
+      const floor = m.scale.y * 0.4;
+      if (m.position.y < floor) { m.position.y = floor; d.v.y *= -0.3; d.v.x *= 0.6; d.v.z *= 0.6; d.spin.multiplyScalar(0.6); }
+      const left = d.life - d.age; if (left < 0.35) m.scale.setScalar(d.s * left / 0.35);
+    }
+  }
+  const pieceColor = () => state.mat === 'stone' ? 0x8b8d88 : 0x7a5a3c;
+
+  // ---------- Удар ----------
+  function hitAt(point, faceIndex, uv) {
+    if (state.broken) return;
+    state.hits++;
+    spawnPieces(point, 4, 0.07, 2.2, pieceColor(), 1.2);
+    if (state.hits >= MAX_HITS) { shatter(); return; }
+    addHit(faceIndex, uv.x, uv.y);
+    if (state.style === 'dent') dent(point, faceIndex, 0.28);
+    redrawAll(); shake(); updateHud();
+  }
+  function shatter() {
+    state.broken = true; updateHud();
+    block.visible = false; overlay.visible = false;
+    spawnPieces(new THREE.Vector3(0, 0.5, 0), 9, 0.26, 3, pieceColor(), 2.2);
+    spawnPieces(new THREE.Vector3(0, 0.5, 0), 10, 0.08, 4, pieceColor(), 1.4);
+    setTimeout(() => { buildBlock(); }, 1400);
+  }
+  let shakeT = 0;
+  function shake() { shakeT = 0.18; }
+
+  // ---------- Камера и ввод ----------
+  let yaw = 0.7, pitch = 0.6, dist = 3.1;
+  function placeCamera() {
+    camera.position.set(Math.sin(yaw) * Math.cos(pitch) * dist, 0.5 + Math.sin(pitch) * dist, Math.cos(yaw) * Math.cos(pitch) * dist);
+    camera.lookAt(0, 0.45, 0);
+  }
+  const ray = new THREE.Raycaster(); const mouse = new THREE.Vector2();
+  let down = null, dragged = false;
+  renderer.domElement.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, yaw, pitch }; dragged = false; renderer.domElement.setPointerCapture(e.pointerId); });
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (!down) return; const dx = e.clientX - down.x, dy = e.clientY - down.y;
+    if (Math.abs(dx) + Math.abs(dy) > 5) dragged = true;
+    if (dragged) { yaw = down.yaw - dx * 0.008; pitch = Math.min(1.3, Math.max(0.1, down.pitch + dy * 0.006)); }
+  });
+  renderer.domElement.addEventListener('pointerup', e => {
+    if (down && !dragged) clickAt(e.clientX, e.clientY);
+    down = null;
+  });
+  function clickAt(cx, cy) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.set(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
+    ray.setFromCamera(mouse, camera);
+    const hit = block.visible ? ray.intersectObject(block)[0] : null;
+    if (hit) hitAt(hit.point, hit.face.materialIndex, hit.uv);
+  }
+  document.getElementById('hit').addEventListener('click', () => {
+    if (!block.visible) return;
+    // Удар сверху в случайную точку верхней грани.
+    const u = 0.25 + Math.random() * 0.5, v = 0.25 + Math.random() * 0.5;
+    ray.set(new THREE.Vector3(u - 0.5, 3, 0.5 - v), new THREE.Vector3(0, -1, 0));
+    const hit = ray.intersectObject(block)[0];
+    if (hit) hitAt(hit.point, hit.face.materialIndex, hit.uv);
+  });
+  document.getElementById('reset').addEventListener('click', buildBlock);
+  function bindRadio(name, key) {
+    document.querySelectorAll(`input[name="${name}"]`).forEach(el => el.addEventListener('change', () => { state[key] = el.value; buildBlock(); }));
+  }
+  bindRadio('style', 'style'); bindRadio('mat', 'mat'); bindRadio('shape', 'shape');
+  function updateHud() { hud.textContent = state.broken ? 'Блок разбит' : `Удар ${state.hits} из ${MAX_HITS}`; }
+
+  function resize() {
+    const w = stageEl.clientWidth, h = stageEl.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stageEl);
+
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    stepPieces(dt);
+    if (shakeT > 0 && !reduce) {
+      shakeT -= dt; const k = Math.max(0, shakeT) / 0.18;
+      const o = Math.sin(now * 0.09) * 0.025 * k; block.position.x = o; overlay.position.x = o;
+    } else if (block) { block.position.x = 0; overlay.position.x = 0; }
+    placeCamera(); renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  buildBlock(); resize(); placeCamera();
+  // Пример: блок сразу с двумя ударами, чтобы стиль был виден без кликов.
+  setTimeout(() => { for (let i = 0; i < 2; i++) document.getElementById('hit').click(); }, 50);
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>

@@ -1,0 +1,930 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Карта Emberhold</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one night-world sheet, tabs along the top like signal flags, each tab = one big drawing + short caption + links. Single dark look on purpose: the game is fire against fog. */
+:root {
+  color-scheme: dark;
+  --night: #121821;      /* page ground */
+  --slate: #1b2430;      /* panels */
+  --fog: #8fa3b8;        /* cold fog, secondary text */
+  --fog-deep: #4d6178;
+  --ash: #e8e2d6;        /* main text */
+  --ember: #f08a3c;      /* accent: fire */
+  --ember-soft: #f5c06a;
+  --line: #2c3848;
+  --muted: #8fa3b8; --low: #3cc4a8; --high: #c08ae0; --east: #e0a33a;
+  --f-display: "Alegreya Sans SC", "Trebuchet MS", sans-serif;
+  --f-body: "Alegreya Sans", "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+body { background: var(--night); color: var(--ash); font-family: var(--f-body); font-size: 16px; line-height: 1.5; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
+header { display: grid; gap: 4px; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(30px, 5vw, 44px); letter-spacing: .02em; margin: 0; line-height: 1.05; }
+h1 span { color: var(--ember); }
+.lede { color: var(--fog); margin: 0; max-width: 62ch; }
+nav { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+nav button { font: 500 15px/1 var(--f-display); letter-spacing: .06em; color: var(--fog); background: transparent; border: 1px solid var(--line); border-radius: 3px; padding: 9px 13px; cursor: pointer; }
+nav button:hover { color: var(--ash); border-color: var(--fog-deep); }
+nav button[aria-selected="true"] { color: var(--night); background: var(--ember); border-color: var(--ember); }
+nav button.soon { opacity: .45; cursor: default; }
+nav button:focus-visible { outline: 2px solid var(--ember-soft); outline-offset: 2px; }
+section.tab { display: grid; gap: 16px; }
+section.tab[hidden] { display: none; }
+.head { display: grid; gap: 6px; }
+h2 { font-family: var(--f-display); font-size: 26px; margin: 0; letter-spacing: .03em; }
+.head p { margin: 0; color: var(--fog); max-width: 70ch; }
+.fig { background: var(--slate); border: 1px solid var(--line); border-radius: 4px; overflow-x: auto; }
+.fig svg { display: block; width: 100%; height: auto; min-width: 640px; }
+.fig.narrow svg { min-width: 0; max-width: 560px; margin: 0 auto; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .split { grid-template-columns: minmax(0,1fr); } }
+.phases { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.phases li { display: grid; grid-template-columns: 14px minmax(0,1fr); gap: 10px; align-items: start; }
+.phases i { width: 14px; height: 14px; border-radius: 2px; margin-top: 4px; }
+.phases b { font-family: var(--f-display); letter-spacing: .04em; }
+.phases .t { font-family: var(--f-mono); font-size: 12px; color: var(--fog); margin-left: 6px; }
+.phases p { margin: 2px 0 0; color: var(--fog); }
+.more { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; color: var(--fog); border-top: 1px solid var(--line); padding-top: 12px; }
+.more strong { color: var(--ash); font-weight: 500; }
+.more a { color: var(--ember-soft); text-decoration: none; font-family: var(--f-mono); font-size: 13px; }
+.more a:hover { text-decoration: underline; }
+.stage { font-family: var(--f-mono); font-size: 12px; padding: 2px 7px; border-radius: 2px; border: 1px solid var(--fog-deep); color: var(--fog); }
+.stage.now { border-color: var(--ember); color: var(--ember-soft); }
+svg text { font-family: var(--f-body); }
+.lbl { fill: var(--ash); font-size: 15px; }
+.sub { fill: var(--fog); font-size: 13px; }
+.num { fill: var(--ash); font-family: var(--f-mono) !important; font-size: 12px; }
+.cap { fill: var(--ember-soft); font-family: var(--f-display) !important; font-size: 16px; letter-spacing: .05em; }
+@media (prefers-reduced-motion: no-preference) { .flick { animation: flick 2.4s ease-in-out infinite; transform-origin: center bottom; transform-box: fill-box; } }
+@keyframes flick { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(.9); } }
+
+#mir .omap { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 16px; align-items: start; }
+@media (max-width: 960px) { #mir .omap { grid-template-columns: minmax(0,1fr); } }
+#mir .panel { background: var(--slate); border: 1px solid var(--line); border-radius: 4px; }
+#mir .mapbox { overflow: auto; }
+#mir .mapbox canvas { display: block; width: 100%; min-width: 600px; height: auto; border-radius: 4px; cursor: crosshair; }
+#mir .side { display: grid; gap: 14px; padding: 14px 16px; }
+#mir .side h3 { font-family: var(--f-display); font-size: 17px; margin: 0; letter-spacing: .04em; }
+#mir .toggles { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+#mir .toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+#mir .toggles input { accent-color: var(--ember); }
+#mir .legend { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+#mir .legend li { display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: center; color: var(--fog); }
+#mir .legend canvas { width: 26px; height: 26px; background: #e8e2d6; border-radius: 3px; }
+#mir .ramp { display: grid; gap: 4px; }
+#mir .ramp span#rampbar { display: block; height: 10px; border-radius: 2px; }
+#mir .ramp-ticks { display: flex; justify-content: space-between; font-size: 12px; color: var(--fog); font-family: var(--f-mono); }
+#mir .onote { font-size: 13px; color: var(--fog); margin: 0; }
+#mir #readout { font-family: var(--f-mono); font-size: 12px; min-height: 3em; color: var(--ash); }
+#mir .osec { display: grid; gap: 12px; }
+#mir .oh { font-family: var(--f-display); font-size: 21px; margin: 0; letter-spacing: .03em; }
+#mir .routes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+#mir .route { padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+#mir .route h3 { font-family: var(--f-display); font-size: 18px; margin: 0; display: flex; gap: 10px; align-items: center; letter-spacing: .03em; }
+#mir .route p { margin: 0; color: var(--fog); }
+#mir .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+#mir .profbox { overflow-x: auto; }
+#mir .profbox canvas { display: block; width: 100%; min-width: 600px; height: auto; }
+#mir .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+@media (max-width: 420px) { #mir .cards { grid-template-columns: minmax(0,1fr); } }
+#mir .card { padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+#mir .card h3 { font-family: var(--f-display); font-size: 19px; margin: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; letter-spacing: .03em; }
+#mir .card h3 .hn { font-family: var(--f-mono); font-size: 12px; color: var(--fog); font-weight: 400; }
+#mir .card dl { margin: 0; display: grid; grid-template-columns: 84px minmax(0,1fr); gap: 3px 12px; font-size: 14px; }
+#mir .card dt { color: var(--fog); font-size: 13px; }
+#mir .card dd { margin: 0; min-width: 0; }
+#mir .pill { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 2px; padding: 1px 7px; color: var(--fog); }
+#mir .pill.b { color: var(--ember-soft); border-color: var(--ember); }
+#mir .flow { padding: 14px 16px; display: grid; gap: 8px; }
+#mir .flow ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 82ch; color: var(--fog); }
+
+#biomy .bl { display: grid; gap: 14px; }
+#biomy .bcard { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; padding: 14px; align-items: start; }
+@media (max-width: 640px) { #biomy .bcard { grid-template-columns: minmax(0, 1fr); } }
+#biomy .bcard canvas { width: 100%; max-width: 260px; aspect-ratio: 1; border-radius: 3px; display: block; background: #0d1218; }
+#biomy .bcard h3 { font-family: var(--f-display); font-size: 20px; margin: 0 0 6px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; letter-spacing: .03em; }
+#biomy .bcard h3 .hn { font-family: var(--f-mono); font-size: 12px; color: var(--fog); font-weight: 400; }
+#biomy .pill { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--ember); color: var(--ember-soft); border-radius: 2px; padding: 1px 7px; }
+#biomy .bcard p { margin: 0 0 10px; color: var(--fog); }
+#biomy .bcard dl { margin: 0; display: grid; grid-template-columns: 110px minmax(0,1fr); gap: 4px 12px; font-size: 15px; }
+#biomy .bcard dt { color: var(--fog); font-size: 14px; }
+#biomy .bcard dd { margin: 0; min-width: 0; }
+#biomy .bcard dd b { color: var(--ember-soft); font-weight: 500; }
+#biomy .draft { color: var(--fog); font-size: 13px; }
+
+#vragi img { display: block; width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--line); }
+#vragi .lv { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+#vragi .lv li { display: grid; grid-template-columns: 14px minmax(0,1fr); gap: 10px; }
+#vragi .lv i { width: 14px; height: 14px; border-radius: 50%; margin-top: 5px; }
+#vragi .lv p { margin: 2px 0 0; color: var(--fog); }
+#vragi h3.oh { font-family: var(--f-display); font-size: 21px; margin: 6px 0 0; letter-spacing: .03em; }
+.tablewrap { overflow-x: auto; }
+table.cmp { border-collapse: collapse; width: 100%; font-size: 15px; }
+.cmp th, .cmp td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.cmp thead th { font-family: var(--f-display); letter-spacing: .05em; color: var(--ember-soft); font-weight: 500; }
+.cmp tbody th { color: var(--fog); font-weight: 500; white-space: nowrap; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Карта <span>Emberhold</span></h1>
+    <p class="lede">Игра в картинках. Подробности и все числа живут в дизайн-документе (<code>docs/dizajn/</code>, оглавление в README.md), здесь только устройство игры, чтобы видеть целое.</p>
+  </header>
+
+  <nav role="tablist" aria-label="Разделы">
+    <button role="tab" id="t-sutki" aria-controls="sutki" aria-selected="true">Сутки</button>
+    <button role="tab" id="t-svet" aria-controls="svet" aria-selected="false">Свет и туман</button>
+    <button role="tab" id="t-resursy" aria-controls="resursy" aria-selected="false">Ресурсы</button>
+    <button role="tab" id="t-mir" aria-controls="mir" aria-selected="false">Мир</button>
+    <button role="tab" id="t-vragi" aria-controls="vragi" aria-selected="false">Враги</button>
+    <button role="tab" id="t-biomy" aria-controls="biomy" aria-selected="false">Биомы</button>
+    <button role="tab" id="t-rezhimy" aria-controls="rezhimy" aria-selected="false">Режимы</button>
+    <button class="soon" disabled title="В следующей версии">Поселенцы</button>
+    
+    <button class="soon" disabled title="В следующей версии">Строительство</button>
+    <button class="soon" disabled title="В следующей версии">Этапы</button>
+  </nav>
+
+  <!-- ============ СУТКИ ============ -->
+  <section class="tab" id="sutki" role="tabpanel" aria-labelledby="t-sutki">
+    <div class="head">
+      <h2>Сутки — 12 минут</h2>
+      <p>Каждые сутки — один круг: днём расширяемся, ночью держим огонь. Ночь — это волна: существа приходят только в темноте, а с рассветом растворяются.</p>
+    </div>
+    <div class="split">
+      <div class="fig narrow"><svg id="clock" viewBox="0 0 420 450" role="img" aria-label="Циферблат суток: день 6 минут, сумерки 1, ночь 4, рассвет 1"></svg></div>
+      <ul class="phases">
+        <li><i style="background:#e9c46a"></i><div><b>День</b><span class="t">0–6 мин</span><p>Копать, рубить, строить по чертежам, ставить новые костры, чтобы дотянуть свет до леса.</p></div></li>
+        <li><i style="background:#d0703a"></i><div><b>Сумерки</b><span class="t">6–7 мин</span><p>Подготовка: дрова к костру, люди ближе к огню, стены закрыть.</p></div></li>
+        <li><i style="background:#3b5274"></i><div><b>Ночь</b><span class="t">7–11 мин</span><p>Туман поднимается, ползуны идут гасить огонь. Костёр жжёт дрова: ночь 1 — 8 поленьев, каждая следующая +25%, ночь 5 — 16.</p></div></li>
+        <li><i style="background:#9a8cc0"></i><div><b>Рассвет</b><span class="t">11–12 мин</span><p>Существа растворяются, ночь засчитана. Чиним потери.</p></div></li>
+        <li><i style="background:#c0392b"></i><div><b>Проигрыш</b><p>Погас огонь с очагом (сначала это стартовый костёр, очаг можно переносить) — по центру экрана отсчёт 10 секунд. Не разожгли — забег окончен, на экране ночи и убитые.</p></div></li>
+      </ul>
+    </div>
+    <div class="more">
+      <span><strong>В документе:</strong> гл. 2 «Ключевые решения» → длительность суток, проигрыш ночи, счёт забега; гл. 3 «Сутки и основной цикл»</span>
+      <span><a href="https://github.com/123kapefa/emberhold/issues/7">#7</a> <a href="https://github.com/123kapefa/emberhold/issues/53">#53</a> <a href="https://github.com/123kapefa/emberhold/issues/128">#128 плейтест</a></span>
+      <span class="stage now">ядро: сделано</span>
+    </div>
+  </section>
+
+  <!-- ============ СВЕТ И ТУМАН ============ -->
+  <section class="tab" id="svet" role="tabpanel" aria-labelledby="t-svet" hidden>
+    <div class="head">
+      <h2>Свет — это территория</h2>
+      <p>Строить и копать можно только в свете. Туман стелется по низу: ниже 16 блоков он есть, ниже 8 — густой. Чем выше стоишь, тем ты в большей безопасности.</p>
+    </div>
+    <div class="fig"><svg viewBox="0 0 880 380" role="img" aria-label="Разрез долины: костёр на уступе с кругом света, туман по низу, ползуны идут из густого тумана к огню, терраса выше тумана">
+      <defs>
+        <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#f5c06a" stop-opacity=".55"/><stop offset=".7" stop-color="#f08a3c" stop-opacity=".18"/><stop offset="1" stop-color="#f08a3c" stop-opacity="0"/></radialGradient>
+        <linearGradient id="fogG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fa3b8" stop-opacity=".05"/><stop offset=".45" stop-color="#8fa3b8" stop-opacity=".35"/><stop offset="1" stop-color="#b8c8d8" stop-opacity=".75"/></linearGradient>
+        <mask id="noLight"><rect width="880" height="380" fill="#fff"/><circle cx="400" cy="226" r="150" fill="#000"/></mask>
+        <pattern id="blk" width="14" height="14" patternUnits="userSpaceOnUse"><rect width="14" height="14" fill="#4a3b2c"/><path d="M0 0H14V14" fill="none" stroke="#3a2e22" stroke-width="1"/></pattern>
+      </defs>
+      <!-- height scale: y = 330 - h*7 -->
+      <g class="num" fill="#8fa3b8">
+        <text x="10" y="334">0</text><text x="10" y="278">8</text><text x="10" y="222">16</text><text x="10" y="166">24</text><text x="10" y="110">32</text>
+      </g>
+      <g stroke="#2c3848" stroke-dasharray="2 4"><line x1="34" y1="274" x2="870" y2="274"/><line x1="34" y1="218" x2="870" y2="218"/></g>
+      <!-- light dome -->
+      <circle cx="400" cy="226" r="150" fill="url(#glow)"/>
+      <circle cx="400" cy="226" r="150" fill="none" stroke="#f08a3c" stroke-opacity=".5" stroke-dasharray="6 6"/>
+      <!-- ground: swamp left, ledge mid, terrace right -->
+      <path d="M34 312 L150 312 L170 298 L230 298 L260 270 L290 242 L520 242 L545 214 L600 214 L620 172 L640 162 L800 162 L830 120 L870 104 L870 340 L34 340 Z" fill="url(#blk)" stroke="#6b5640" stroke-width="1.5"/>
+      <path d="M290 242 L520 242" stroke="#5f8a4a" stroke-width="4"/>
+      <path d="M640 162 L800 162" stroke="#5f8a4a" stroke-width="4"/>
+      <!-- fog with hole of light -->
+      <g mask="url(#noLight)">
+        <rect x="34" y="218" width="836" height="122" fill="url(#fogG)"/>
+        <rect x="34" y="274" width="836" height="66" fill="#c3d2e0" opacity=".28"/>
+      </g>
+      <!-- campfire -->
+      <g transform="translate(400 242)">
+        <rect x="-16" y="-5" width="32" height="5" rx="2" fill="#6b4a2c"/>
+        <path class="flick" d="M-12 -4 L-2 -34 L4 -14 L9 -26 L13 -4 Z" fill="#f08a3c"/>
+        <path class="flick" d="M-5 -4 L0 -20 L5 -4 Z" fill="#f5e08a"/>
+      </g>
+      <!-- built stuff inside light -->
+      <g fill="#7a6a58" stroke="#a08a70">
+        <rect x="320" y="214" width="28" height="28"/><rect x="334" y="186" width="14" height="28"/>
+        <rect x="456" y="214" width="42" height="28"/><rect x="470" y="200" width="14" height="14"/>
+      </g>
+      <!-- ghost blueprint outside light -->
+      <g fill="none" stroke="#8fa3b8" stroke-dasharray="3 3"><rect x="222" y="270" width="28" height="28"/></g>
+      <text x="236" y="194" class="sub" text-anchor="middle">вне света</text>
+      <text x="236" y="210" class="sub" text-anchor="middle">строить нельзя</text>
+      <!-- terrace with wall above fog -->
+      <g fill="#7f7a74" stroke="#a7a19a"><rect x="690" y="134" width="14" height="28"/><rect x="704" y="148" width="14" height="14"/><rect x="718" y="134" width="14" height="28"/><rect x="732" y="148" width="14" height="14"/><rect x="746" y="134" width="14" height="28"/></g>
+      <!-- crawlers from dense fog -->
+      <g fill="#2a3442" stroke="#9fb3c8" stroke-width="1">
+        <ellipse cx="96" cy="305" rx="11" ry="6"/><ellipse cx="128" cy="306" rx="9" ry="5"/><ellipse cx="190" cy="292" rx="10" ry="5"/>
+      </g>
+      <g fill="#cfe3f5"><circle cx="102" cy="303" r="1.6"/><circle cx="133" cy="304" r="1.4"/><circle cx="196" cy="290" r="1.5"/></g>
+      <path d="M212 286 C 250 260, 285 248, 318 246" fill="none" stroke="#c0392b" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+      <defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#c0392b"/></marker><marker id="arrF" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#8fa3b8"/></marker></defs>
+      <!-- fog rises at night -->
+      <path d="M860 300 L860 236" stroke="#8fa3b8" stroke-width="2" marker-end="url(#arrF)"/>
+      <!-- labels -->
+      <text x="400" y="62" class="cap" text-anchor="middle">КРУГ СВЕТА КОСТРА</text>
+      <text x="400" y="80" class="sub" text-anchor="middle">внутри можно строить и копать, туман сюда не входит</text>
+      <text x="400" y="98" class="sub" text-anchor="middle">дрова кончились — огонь гаснет, туман заходит внутрь</text>
+      <text x="60" y="240" class="lbl">туман, ниже 16</text>
+      <text x="60" y="296" class="lbl">густой, ниже 8</text>
+      <text x="60" y="360" class="sub">ползуны рождаются в тумане и идут гасить огонь</text>
+      <text x="720" y="118" class="lbl" text-anchor="middle">выше тумана</text>
+      <text x="720" y="100" class="sub" text-anchor="middle">высота — защита</text>
+      <text x="852" y="226" class="sub" text-anchor="end">ночью туман поднимается</text>
+    </svg></div>
+    <h3 class="oh">Лестница огней и очаг</h3>
+    <p>Чем выше ступень, тем дороже огонь, дальше светит и реже просит топлива. Проигрыш только по огню с очагом; очаг днём переносят в жаровню или выше, старые огни можно бросить. Маяк района навсегда убирает туман из всего района. <a href="https://claude.ai/artifact/6AFDBaNeDVCKFNRdVGYNWs">Подробно в картинках</a>.</p>
+    <div class="tablewrap"><table class="cmp">
+      <thead><tr><th>Огонь</th><th>Радиус, бл.</th><th>Топливо</th><th>Запас</th><th>Откуда</th></tr></thead>
+      <tbody><tr><th>Костёр</th><td>12</td><td>поленья</td><td>~1 ночь</td><td><span class="stage now">в игре</span></td></tr><tr><th>Жаровня</th><td>16</td><td>уголь</td><td>~2 ночи</td><td>верстак, Механики 2</td></tr><tr><th>Фонарь на столбе</th><td>20</td><td>масло</td><td>~4 ночи</td><td>кузница, чертёж с Мельницы</td></tr><tr><th>Сторожевая башня</th><td>32</td><td>масло</td><td>~7 ночей</td><td>маяк Мёртвого города</td></tr><tr><th>Старая жаровня, маяк</th><td>свой круг / район</td><td>не нужно</td><td>навсегда</td><td>найти и разжечь</td></tr></tbody>
+    </table></div>
+    <div class="more">
+      <span><strong>В документе:</strong> гл. 4 «Свет, туман и разведка» → «Лестница огней и очаг»; гл. 9 «Кампания и карта» → «Туман стелется по низу»</span>
+      <span><a href="https://github.com/123kapefa/emberhold/issues/6">#6</a> <a href="https://github.com/123kapefa/emberhold/issues/8">#8</a> <a href="https://github.com/123kapefa/emberhold/issues/55">#55 новые костры</a> <a href="https://github.com/123kapefa/emberhold/issues/98">#98 копать в свете</a></span>
+      <span class="stage now">ядро: сделано · очаг и жаровня: Механики 2</span>
+    </div>
+  </section>
+
+  <!-- ============ РЕСУРСЫ ============ -->
+  <section class="tab" id="resursy" role="tabpanel" aria-labelledby="t-resursy" hidden>
+    <div class="head">
+      <h2>Ресурсы — откуда и куда</h2>
+      <p>Главная дилемма с первой минуты: полено можно сжечь или построить из него. Добытчики оставляют добытое у места работы, носят только свободные поселенцы.</p>
+    </div>
+    <div class="fig"><svg viewBox="0 0 900 590" role="img" aria-label="Схема ресурсов: деревья дают поленья, поленья идут в костёр или в деревянный блок; каменные блоки дают камень на стены; руда из наростов и жил идёт в плавильню; земля пропадает; скала и коренная порода не копаются; позже уголь, железо, песок, масло">
+      <defs>
+        <marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#8fa3b8"/></marker>
+        <symbol id="log" viewBox="0 0 40 16"><rect x="2" y="2" width="34" height="12" rx="3" fill="#8a5a32"/><ellipse cx="36" cy="8" rx="4" ry="6" fill="#d9b07a"/><ellipse cx="36" cy="8" rx="1.6" ry="2.6" fill="none" stroke="#8a5a32"/></symbol>
+        <symbol id="stone" viewBox="0 0 30 22"><path d="M2 18 L6 8 L14 5 L20 10 L18 19 Z" fill="#8c8a86"/><path d="M14 19 L18 11 L26 9 L29 17 L24 21 Z" fill="#a5a29c"/><path d="M6 8 L14 5 L20 10" fill="none" stroke="#c4c0b8"/></symbol>
+        <symbol id="cube" viewBox="0 0 40 40"><path d="M20 3 L37 12 L20 21 L3 12 Z" fill="var(--top)"/><path d="M3 12 L20 21 L20 38 L3 29 Z" fill="var(--l)"/><path d="M37 12 L20 21 L20 38 L37 29 Z" fill="var(--r)"/></symbol>
+        <symbol id="fire" viewBox="0 0 30 34"><rect x="3" y="28" width="24" height="5" rx="2" fill="#6b4a2c"/><path d="M5 29 L13 2 L17 16 L21 8 L25 29 Z" fill="#f08a3c"/><path d="M11 29 L15 14 L19 29 Z" fill="#f5e08a"/></symbol>
+      </defs>
+      <!-- column titles -->
+      <text x="70" y="30" class="cap">В МИРЕ</text><text x="70" y="46" class="sub">ударов · поленьев</text><text x="330" y="30" class="cap">ДОБЫЧА</text><text x="560" y="30" class="cap">СКЛАД</text><text x="740" y="30" class="cap">НА ЧТО</text>
+
+      <!-- trees -->
+      <g transform="translate(40 50)">
+        <rect x="16" y="34" width="5" height="30" fill="#ece6da"/><rect x="16" y="44" width="5" height="2" fill="#333"/><rect x="16" y="54" width="5" height="2" fill="#333"/><circle cx="18" cy="30" r="16" fill="#7fae5a"/>
+        <text x="46" y="36" class="lbl">берёза</text><text x="46" y="54" class="num">3 · 3</text>
+      </g>
+      <g transform="translate(40 128)">
+        <rect x="16" y="44" width="5" height="22" fill="#6b4a2c"/><path d="M18 2 L34 48 L2 48 Z" fill="#3f7a52"/>
+        <text x="46" y="36" class="lbl">сосна · холмы</text><text x="46" y="54" class="num">6 · 6</text>
+      </g>
+      <g transform="translate(40 206)">
+        <rect x="14" y="40" width="9" height="26" fill="#5a3b22"/><path d="M18 0 L38 26 L30 26 L40 44 L-4 44 L6 26 L-2 26 Z" fill="#2f5e44"/>
+        <text x="46" y="36" class="lbl">кедр · горы</text><text x="46" y="54" class="num">12 · 12</text>
+      </g>
+      <!-- logs pile -->
+      <g transform="translate(300 120)">
+        <use href="#log" x="0" y="20" width="44" height="18"/><use href="#log" x="40" y="20" width="44" height="18"/><use href="#log" x="20" y="4" width="44" height="18"/>
+        <text x="0" y="62" class="lbl">поленья</text><text x="0" y="80" class="sub">кучкой у пня,</text><text x="0" y="96" class="sub">лесоруб идёт дальше</text>
+      </g>
+      <path d="M215 100 C 260 100, 270 140, 296 142" fill="none" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <path d="M215 178 C 250 178, 270 150, 296 148" fill="none" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <path d="M215 256 C 260 256, 270 160, 296 154" fill="none" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <!-- pallet -->
+      <g transform="translate(540 112)">
+        <rect x="0" y="34" width="110" height="10" fill="#9c7a52"/><rect x="0" y="44" width="10" height="8" fill="#7a5c3a"/><rect x="50" y="44" width="10" height="8" fill="#7a5c3a"/><rect x="100" y="44" width="10" height="8" fill="#7a5c3a"/>
+        <rect x="18" y="4" width="76" height="22" rx="3" fill="#121821" stroke="#f08a3c"/><text x="56" y="20" class="num" text-anchor="middle" style="fill:#f5c06a">бревно 2-20</text>
+        <text x="0" y="74" class="lbl">поддон 2×2×2</text><text x="0" y="92" class="sub">один тип ресурса</text>
+      </g>
+      <path d="M392 146 L534 146" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="462" y="138" class="sub" text-anchor="middle">носят свободные</text>
+      <!-- dilemma: fire or block -->
+      <g transform="translate(730 62)"><use href="#fire" width="40" height="46"/><text x="50" y="22" class="lbl">в костёр</text><text x="50" y="40" class="sub">топливо, носят до 2</text></g>
+      <g transform="translate(730 150)" style="--top:#b98a56;--l:#8a6238;--r:#6e4c2a"><use href="#cube" width="40" height="40"/><text x="50" y="18" class="lbl">деревянный блок</text><text x="50" y="36" class="sub">1 полено, горит</text></g>
+      <path d="M656 140 C 690 140, 700 86, 724 84" fill="none" stroke="#f08a3c" stroke-width="2" marker-end="url(#a2)"/>
+      <path d="M656 150 C 690 150, 700 168, 724 170" fill="none" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="668" y="106" class="cap" style="font-size:13px" text-anchor="middle">сжечь</text>
+      <text x="700" y="212" class="cap" style="font-size:13px" text-anchor="middle">или построить</text>
+
+      <line x1="30" y1="300" x2="870" y2="300" stroke="#2c3848"/>
+      <!-- stone row -->
+      <g transform="translate(40 318)" style="--top:#a5a29c;--l:#7c7974;--r:#66635e"><use href="#cube" width="40" height="40"/><text x="50" y="18" class="lbl">камень</text><text x="50" y="36" class="num">блок → 1 камень</text></g>
+      <g transform="translate(300 322)"><use href="#stone" width="30" height="22"/><use href="#stone" x="22" y="6" width="30" height="22"/><use href="#stone" x="10" y="14" width="30" height="22"/><text x="62" y="26" class="sub">горкой,</text><text x="62" y="42" class="sub">в корзине</text></g>
+      <path d="M215 338 L292 338" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <path d="M440 338 L534 338" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="560" y="342" class="sub">тот же поддон, свой тип</text>
+      <g transform="translate(730 318)" style="--top:#a5a29c;--l:#7c7974;--r:#66635e"><use href="#cube" width="40" height="40"/><text x="50" y="18" class="lbl">каменная стена</text><text x="50" y="36" class="sub">прочно, не горит</text></g>
+      <path d="M690 338 L724 338" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+
+      <!-- ore row -->
+      <g transform="translate(40 384)">
+        <g style="--top:#a5a29c;--l:#7c7974;--r:#66635e"><use href="#cube" width="40" height="40"/></g>
+        <path d="M10 18 l4 -3 l3 3 l-3 3 Z M24 26 l5 -2 l2 4 l-5 2 Z M27 12 l3 -2 l3 2 l-3 2 Z" fill="#c8743c"/>
+        <text x="50" y="14" class="lbl">руда</text><text x="50" y="32" class="sub">жила: блок → 1 руда</text><text x="50" y="50" class="sub">нарост: без копки, немного</text>
+      </g>
+      <g transform="translate(300 388)"><use href="#stone" width="30" height="22"/><use href="#stone" x="22" y="6" width="30" height="22"/><use href="#stone" x="10" y="14" width="30" height="22"/>
+        <circle cx="12" cy="14" r="2.4" fill="#c8743c"/><circle cx="34" cy="18" r="2.4" fill="#c8743c"/><circle cx="24" cy="28" r="2.4" fill="#c8743c"/>
+        <text x="62" y="26" class="sub">горкой,</text><text x="62" y="42" class="sub">в корзине</text></g>
+      <path d="M232 404 L292 404" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <path d="M440 404 L534 404" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="560" y="402" class="sub">поддон, свой тип</text><text x="560" y="418" class="sub">на каждую руду</text>
+      <g transform="translate(730 382)">
+        <path d="M4 40 L8 8 L32 8 L36 40 Z" fill="#6f6a64"/><rect x="12" y="24" width="16" height="12" rx="2" fill="#f08a3c"/><rect x="16" y="0" width="8" height="10" fill="#55534f"/>
+        <text x="50" y="18" class="lbl">в плавильню</text><text x="50" y="36" class="sub">руда + уголь → слиток</text>
+      </g>
+      <path d="M690 404 L724 404" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a2)"/>
+      <!-- earth & unbreakable -->
+      <g transform="translate(40 448)" style="--top:#5f8a4a;--l:#6b5038;--r:#5a4230"><use href="#cube" width="40" height="40"/><text x="50" y="18" class="lbl">земля</text><text x="50" y="36" class="sub">кучкой → насыпи и валы (Механики 2)</text></g>
+      <g transform="translate(300 448)" style="--top:#55534f;--l:#3e3c39;--r:#33312e"><use href="#cube" width="40" height="40"/><text x="50" y="18" class="lbl">скала, коренная порода</text><text x="50" y="36" class="sub">не копаются: стены гор и дно мира</text></g>
+
+      <line x1="30" y1="506" x2="870" y2="506" stroke="#2c3848"/>
+      <!-- later -->
+      <text x="40" y="532" class="cap" style="fill:#8fa3b8">ПОЗЖЕ, С МАЯКАМИ</text>
+      <g class="sub" opacity=".85">
+        <text x="40" y="560">уголь · жилы в камне или углежогная яма → топливо, плавка</text>
+        <text x="40" y="580">какая руда где лежит → таблица ниже</text>
+        <text x="470" y="560">песок · пойма → плавильня → стекло: линзы, зеркала</text>
+        <text x="470" y="580">масло · руины, Мёртвый город → топливо башен и маяка</text>
+      </g>
+    </svg></div>
+
+    <div class="head">
+      <h2 style="font-size:21px">Что где лежит</h2>
+      <p>Выделена основная руда района, «понемногу» — запасной источник, чтобы любой путь к маяку давал все металлы. Камень есть везде, где можно копать.</p>
+    </div>
+    <div class="tablewrap"><table class="cmp">
+      <thead><tr><th>Биом</th><th>Лес</th><th>Камень и руда</th><th>Ещё</th></tr></thead>
+      <tbody><tr><th>Берёзовая долина</th><td>берёза</td><td>камень</td><td>трава (кусты)</td></tr><tr><th>Речная пойма</th><td>—</td><td>камень, <b style='color:#b8c0c8'>олово</b></td><td>песок, трава</td></tr><tr><th>Сосновые холмы</th><td>сосна</td><td>камень, уголь, <b style='color:#c8743c'>медь</b></td><td>—</td></tr><tr><th>Брод у заставы</th><td>—</td><td>камень, олово понемногу</td><td>—</td></tr><tr><th>Каменоломня</th><td>—</td><td>камень, уголь, медь понемногу</td><td>—</td></tr><tr><th>Горы</th><td>кедр</td><td>камень, уголь, <b style='color:#9aa6b2'>железо</b>, серебро понемногу</td><td>—</td></tr><tr><th>Топи</th><td>—</td><td>железо понемногу (болотная руда)</td><td>—</td></tr><tr><th>Мёртвый город</th><td>—</td><td>камень, <b style='color:#e4e8ee'>серебро</b></td><td>масло, руины</td></tr><tr><th>Кедровое плато</th><td>кедр</td><td>камень</td><td>—</td></tr><tr><th>Скрытая долина</th><td>—</td><td>камень</td><td>редкий чертёж зеркала</td></tr></tbody>
+    </table></div>
+    <div class="head">
+      <h2 style="font-size:21px">Металлы, станки и армия</h2>
+      <p>Каждый металл лежит в двух районах, так что любой путь к маяку даёт все. Руда бывает двух видов: наросты снаружи (разбить без копки, немного, быстрый старт) и жилы в камне (копать, много, глубже богаче). Класс воина задаёт снаряжение, опыта и званий нет.</p>
+    </div>
+    <div class="fig"><svg viewBox="0 0 900 470" role="img" aria-label="Ступени: район даёт сырьё, станок перерабатывает, армия получает снаряжение. Берёзовая долина: верстак и углежогная яма, копейщик и лучник. Сосновые холмы: медь, плавильня и кузница, мечник. Речная пойма: олово и песок, бронза и стекло. Горы: железо, горн, сталь. Мёртвый город: серебро, мастерская света, маги.">
+      <defs><marker id="a3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#8fa3b8"/></marker></defs>
+      <text x="40" y="34" class="cap">РАЙОН</text><text x="240" y="34" class="cap">СЫРЬЁ</text><text x="440" y="34" class="cap">СТАНОК</text><text x="640" y="34" class="cap">ЧТО ДАЁТ · АРМИЯ</text>
+      <g transform="translate(0 62)"><rect x="30" y="-4" width="840" height="56" rx="3" fill="#121821" opacity="0.55"/><text x="40" y="20" class="lbl">Берёзовая долина</text><text x="40" y="38" class="sub">старт, обучение</text><circle cx="246" cy="10" r="6" fill="#8a5a32"/><text x="258" y="14" class="lbl" style="font-size:14px">дерево</text><circle cx="246" cy="28" r="6" fill="#a5a29c"/><text x="258" y="32" class="lbl" style="font-size:14px">камень</text><circle cx="246" cy="46" r="6" fill="#7fae5a"/><text x="258" y="50" class="lbl" style="font-size:14px">трава</text><path d="M392 20 L428 20" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a3)"/><text x="440" y="20" class="lbl">верстак</text><text x="440" y="38" class="lbl">углежогная яма</text><path d="M592 20 L628 20" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a3)"/><text x="640" y="20" class="sub" style="fill:var(--ash)">копьё, лук, стёганка, факелы</text><text x="640" y="38" class="sub" style="fill:var(--ember-soft)">копейщик, лучник</text></g><g transform="translate(0 126)"><rect x="30" y="-4" width="840" height="56" rx="3" fill="#121821" opacity="0"/><text x="40" y="20" class="lbl">Сосновые холмы</text><text x="40" y="38" class="sub">понемногу: Каменоломня</text><circle cx="246" cy="18" r="6" fill="#c8743c"/><text x="258" y="22" class="lbl" style="font-size:14px">медь</text><path d="M392 20 L428 20" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a3)"/><text x="440" y="20" class="lbl">плавильня</text><text x="440" y="38" class="lbl">кузница</text><path d="M592 20 L628 20" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a3)"/><text x="640" y="20" class="sub" style="fill:var(--ash)">медное оружие и броня</text><text x="640" y="38" class="sub" style="fill:var(--ember-soft)">+ мечник</text></g><g transform="translate(0 190)"><rect x="30" y="-4" width="840" height="56" rx="3" fill="#121821" opacity="0.55"/><text x="40" y="20" class="lbl">Речная пойма</text><text x="40" y="38" class="sub">понемногу: Брод у заставы</text><circle cx="246" cy="10" r="6" fill="#b8c0c8"/><text x="258" y="14" class="lbl" style="font-size:14px">олово</text><circle cx="246" cy="28" r="6" fill="#e0d29a"/><text x="258" y="32" class="lbl" style="font-size:14px">песок</text><path d="M392 20 L428 20" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a3)"/><text x="440" y="20" class="lbl">плавильня</text><path d="M592 20 L628 20" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a3)"/><text x="640" y="20" class="sub" style="fill:var(--ash)">бронза (медь + олово), стекло</text><text x="640" y="38" class="sub" style="fill:var(--ember-soft)">олово — только на свет</text></g><g transform="translate(0 254)"><rect x="30" y="-4" width="840" height="56" rx="3" fill="#121821" opacity="0"/><text x="40" y="20" class="lbl">Горы</text><text x="40" y="38" class="sub">понемногу: Топи</text><circle cx="246" cy="18" r="6" fill="#7d8792"/><text x="258" y="22" class="lbl" style="font-size:14px">железо</text><path d="M392 20 L428 20" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a3)"/><text x="440" y="20" class="lbl">горн</text><path d="M592 20 L628 20" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a3)"/><text x="640" y="20" class="sub" style="fill:var(--ash)">железо, сталь (железо + уголь)</text><text x="640" y="38" class="sub" style="fill:var(--ember-soft)">лучшее оружие и броня</text></g><g transform="translate(0 318)"><rect x="30" y="-4" width="840" height="56" rx="3" fill="#121821" opacity="0.55"/><text x="40" y="20" class="lbl">Мёртвый город</text><text x="40" y="38" class="sub">понемногу: Горы</text><circle cx="246" cy="18" r="6" fill="#e4e8ee"/><text x="258" y="22" class="lbl" style="font-size:14px">серебро</text><path d="M392 20 L428 20" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a3)"/><text x="440" y="20" class="lbl">мастерская света</text><path d="M592 20 L628 20" stroke="#8fa3b8" stroke-width="1.5" marker-end="url(#a3)"/><text x="640" y="20" class="sub" style="fill:var(--ash)">зеркала, серебряный колчан, посохи</text><text x="640" y="38" class="sub" style="fill:var(--ember-soft)">+ целитель, боевой маг</text></g>
+      <line x1="30" y1="390" x2="870" y2="390" stroke="#2c3848"/>
+      <text x="40" y="416" class="cap" style="font-size:14px;fill:#8fa3b8">БРОНЯ</text>
+      <text x="120" y="416" class="sub">вес по классу: мантия (маги) · лёгкая (лучник) · средняя (копейщик) · тяжёлая (мечник)</text>
+      <text x="120" y="438" class="sub">сила по материалу: дерево и трава → медь → бронза → железо → сталь</text>
+      <text x="120" y="460" class="sub">стрелы и заклинания бесконечные · дерутся все только в свету · ресурсы не портятся</text>
+    </svg></div>
+    <div class="more">
+      <span><strong>В документе:</strong> гл. 6 «Ресурсы, металлы и станки»; гл. 7 «Поселенцы и воины» → «Кто носит», «Склад», «Воины: классы и снаряжение»</span>
+      <span><a href="https://github.com/123kapefa/emberhold/issues/54">#54</a> <a href="https://github.com/123kapefa/emberhold/issues/97">#97</a> <a href="https://github.com/123kapefa/emberhold/issues/112">#112 поддоны</a> <a href="https://github.com/123kapefa/emberhold/issues/88">#88 трава</a> <a href="https://github.com/123kapefa/emberhold/issues/131">#131 верстак</a> <a href="https://github.com/123kapefa/emberhold/issues/132">#132 воины</a> <a href="https://github.com/123kapefa/emberhold/issues/133">#133 руда</a> <a href="https://github.com/123kapefa/emberhold/issues/134">#134 станки</a> <a href="https://github.com/123kapefa/emberhold/issues/135">#135 маги</a></span>
+      <span class="stage now">ядро: дерево и камень</span><span class="stage">металлы и станки: Механики 2 и Кампания</span>
+    </div>
+  </section>
+
+  <!-- ============ МИР ============ -->
+  <section class="tab" id="mir" role="tabpanel" aria-labelledby="t-mir" hidden>
+    <div class="head">
+      <h2>Мир — долина 512 × 512</h2>
+      <p>Мир по сетке 800 × 800 блоков, а играют только внутри долины неровной формы. Локации увеличены и местами выходят за прежний квадрат 512 × 512. За границей долины горы без блоков опускаются в море тумана: приказы туда не принимаются, рабочие не ходят, свет туман не отодвигает, камера мягко упирается. Горы на этом наброске ниже решённых (хребет до 68, Большой пик ~77, высота мира 80).</p>
+    </div>
+  <section class="omap">
+    <div class="panel mapbox"><canvas id="hmap" width="1280" height="1280" aria-label="Карта высот долины с локациями"></canvas></div>
+    <aside class="panel side">
+      <div class="toggles" role="group" aria-label="Слои карты">
+        <label><input type="checkbox" id="lyr-routes" checked> Пути</label>
+        <label><input type="checkbox" id="lyr-points" checked> Точки</label>
+        <label><input type="checkbox" id="lyr-names" checked> Названия</label>
+        <label><input type="checkbox" id="lyr-fog" checked> Туман</label>
+      </div>
+      <p class="onote" id="readout">Наведите курсор на карту: покажу место и высоту.</p>
+      <div class="ramp" aria-hidden="true"><span id="rampbar"></span><div class="ramp-ticks"><span>0</span><span>12</span><span>24</span><span>36</span><span>48</span></div></div>
+      <p class="onote">Светлая линия — граница долины: внутри играют, снаружи горы без блоков и вечный туман. Красный пунктир — прежний квадрат 512 × 512 для сравнения. Цвет — высота в блоках. Тонкие линии через 4 блока, жирные через 12.</p>
+      <h3>Обозначения</h3>
+      <ul class="legend" id="legend"></ul>
+    </aside>
+  </section>
+
+  <section class="osec">
+    <h3 class="oh">Развилки и пути к маяку</h3>
+    <div class="routes">
+      <article class="panel route">
+        <h3><span class="dot" style="background:var(--low)"></span>Нижний путь</h3>
+        <p>Мельница, Брод, Топи, серпантин на плато. Самый короткий, но почти весь в густом тумане. У Брода разрушен мост: вброд только днём.</p>
+      </article>
+      <article class="panel route">
+        <h3><span class="dot" style="background:var(--high)"></span>Верхний путь</h3>
+        <p>Мельница, Холмы, Мёртвый город, Карниз на плато. Выше тумана и с двумя маяками по дороге. Карниз узкий: громилы могут его обрушить, тогда его надо достраивать.</p>
+      </article>
+      <article class="panel route">
+        <h3><span class="dot" style="background:var(--east)"></span>Восточный путь</h3>
+        <p>Брод, Горы, Восточный перевал на плато. Самый длинный, и на нём два завала. Зато Горы перестают быть тупиком, и в обход Брода в них ведёт тоннель из Каменоломни.</p>
+      </article>
+      <article class="panel route">
+        <h3><span class="dot" style="background:var(--ember)"></span>Тупики и секреты</h3>
+        <p>Речная пойма и Каменоломня — тупики, туда ходят за ресурсом. Скрытую долину над Поймой видно только с ракеты, и вход в неё надо прокопать.</p>
+      </article>
+    </div>
+    <div class="panel profbox"><canvas id="hprof" width="1024" height="260" aria-label="Профиль высот трёх путей"></canvas></div>
+    <p class="onote">Профиль высот трёх путей от перевала до маяка. Серая полоса — высота, где стоит туман: ниже 16 блоков он есть, ниже 8 густой. Нижний путь почти весь в тумане, верхний и восточный большую часть пути идут над ним.</p>
+  </section>
+
+  <section class="osec">
+    <h3 class="oh">Локации</h3>
+    <p class="onote">Каждая локация подробно, со своим куском карты, — на вкладке «Биомы».</p>
+  </section>
+
+  <section class="osec">
+    <h3 class="oh">Особые места</h3>
+    <div class="routes">
+      <article class="panel route"><h3>Туман по низу</h3><p>Туман стоит ниже 16 блоков и густеет ниже 8. Чем выше строишь, тем легче удержать свет. Ночью туман может подниматься выше, а в особые ночи ещё сильнее.</p></article>
+      <article class="panel route"><h3>Завалы</h3><p>Два завала: на дороге от Брода к Горам и на Восточном перевале. Проход открывается, когда рабочие раскопают камни. Камень идёт в дело.</p></article>
+      <article class="panel route"><h3>Тоннель</h3><p>Из Каменоломни в Горы сквозь хребет, около 40 блоков. Его копает игрок, и это долго, зато потом не нужно расчищать завал у Брода.</p></article>
+      <article class="panel route"><h3>Разрушенный мост</h3><p>У Брода. Днём реку переходят вброд, ночью нет. Чертёж моста лежит в руинах заставы рядом.</p></article>
+      <article class="panel route"><h3>Смотровые скалы</h3><p>Пять высоких точек: у Перевала, в Холмах, над Топями, на пике Гор и на Кедровом плато. Сигнальная ракета отсюда освещает гораздо дальше.</p></article>
+      <article class="panel route"><h3>Скрытая долина</h3><p>Над Поймой за хребтом. Видна только с ракеты со скалы в Холмах. Внутри руины с редким чертежом.</p></article>
+    </div>
+  </section>
+
+  <section class="panel flow">
+    <h3 class="oh">Как идёт прохождение</h3>
+    <ol>
+      <li>Перевал и Берёзовая долина — обучение и первые ночи. Берёз хватает на две ночи, дальше свет тянут вниз к Старой мельнице.</li>
+      <li>Мельница — первая развилка: на запад в Пойму, на север в Холмы, на восток к Броду. Порядок свободный, но без плавильни из Холмов песок Поймы бесполезен.</li>
+      <li>От Брода ещё одна развилка: на юг Каменоломня, на юго-восток к Горам через завал, на северо-восток нижний путь в Топи. Ночью через Брод без моста не пройти.</li>
+      <li>Маяков пять, главному нужно четыре уголька. Один район можно пропустить, но тогда ресурс оттуда придётся добывать без защиты маяка.</li>
+      <li>Финал: на Кедровое плато можно выйти тремя путями: через Топи, по Карнизу из города или через Восточный перевал. С плато последний склон ведёт к Скале маяка.</li>
+    </ol>
+  </section>
+    <div class="more">
+      <span><strong>В документе:</strong> гл. 9 «Кампания и карта»</span>
+      <span><a href="https://github.com/123kapefa/emberhold/issues/59">#59 собрать карту</a> <a href="https://github.com/123kapefa/emberhold/issues/63">#63 маяки</a> <a href="https://github.com/123kapefa/emberhold/issues/102">#102 край мира</a></span>
+      <span class="stage">этап: Кампания</span>
+    </div>
+  </section>
+
+  <!-- ============ ВРАГИ ============ -->
+  <section class="tab" id="vragi" role="tabpanel" aria-labelledby="t-vragi" hidden>
+    <div class="head">
+      <h2>Враги — существа из тумана</h2>
+      <p>Приходят только ночью и целят в свет: гасят огонь, ломают стены, обходят фонари. Базовые приходят везде, в каждой локации есть ещё свои местные. Сила зависит от тумана: чем гуще туман там, где существо появилось, тем оно опаснее.</p>
+      <p>Рождаются в истоках тумана (логова, низины, ущелья), за ночь активны 1–2 истока. Идут к ближайшему огню самым дешёвым путём по коридорам рельефа; насыпь и ров игрока для них — рельеф, ломают только постройки, каждый своей атакой. В районе с маяком никого. Угроза растёт от района, а не от ночей: в районе есть потолок. <a href="https://claude.ai/artifact/7iDkzqmFWjaVMwo4WJrBcZ" style="color:var(--ember-soft)">Подробно в картинках</a>.</p>
+    </div>
+    <img src="img/vragi-bazovye.jpg" alt="Шесть базовых существ рядом с рабочим и костром: ползун, громила, тень, мотыльки тумана, туманница, ходуля" loading="lazy">
+    <div class="tablewrap"><table class="cmp">
+      <thead><tr><th>Базовые</th><th>Рост, бл.</th><th>Чем опасно</th><th>Где</th><th>Статус</th></tr></thead>
+      <tbody><tr><th>Ползун</th><td>1</td><td>гасит огонь, вытягивая жар</td><td>везде</td><td><span class="stage now">в игре</span></td></tr><tr><th>Громила</th><td>3,5</td><td>ломает стены и постройки</td><td>Холмы, Каменоломня, Горы, плато</td><td><span class="stage">модель</span></td></tr><tr><th>Тень</th><td>2,8</td><td>проходит сквозь слабый свет, видна только в ярком</td><td>Мёртвый город, плато, Топи</td><td><span class="stage">модель</span></td></tr><tr><th>Мотыльки тумана</th><td>стайка</td><td>облепляют фонарь, огонь тускнеет; стены не держат</td><td>везде, чаще у воды</td><td><span class="stage">модель</span></td></tr><tr><th>Туманница</th><td>3</td><td>не нападает: подтягивает туман к огню, усиливает остальных</td><td>везде, с середины кампании</td><td><span class="stage">модель</span></td></tr><tr><th>Ходуля</th><td>5</td><td>перешагивает стены до 3 блоков, садится на костёр</td><td>Холмы, Горы, плато</td><td><span class="stage">модель</span></td></tr></tbody>
+    </table></div>
+    <h3 class="oh">Уровни: туман забирает существо</h3>
+    <div class="split">
+      <img src="img/vragi-urovni.jpg" alt="Громила трёх уровней: обычный тёмный, матёрый в инее и ледяной броне, древний полупрозрачный с короной кристаллов и кольцом инея" loading="lazy">
+      <ul class="lv">
+        <li><i style="background:#2c3848"></i><div><b>Обычный</b><p>Слабый туман у края света. Тёмный чистый силуэт.</p></div></li>
+        <li><i style="background:#5b7fb0"></i><div><b>Матёрый · ×1,18</b><p>Густой туман ниже 8 блоков. Иней, ледяная броня, светящиеся трещины. Крепче, бьёт сильнее, чуть быстрее.</p></div></li>
+        <li><i style="background:#a9d4f5"></i><div><b>Древний · ×1,36</b><p>Только из логов, у маяков и в кровавую луну. Полупрозрачный, ледяное ядро, корона кристаллов. Вокруг него свет слабеет.</p></div></li>
+        <li><i style="background:#f08a3c"></i><div><b>Номер ночи</b><p>Меняет только число существ и частоту, а не уровень.</p></div></li>
+        <li><i style="background:#c0392b"></i><div><b>Особые ночи</b><p>Полнолуние: все на уровень выше. Светлая ночь: никого. Кровавая луна: древние из логов и редкие существа.</p></div></li>
+      </ul>
+    </div>
+    <h3 class="oh">Местные существа <span class="stage">черновик для отбора</span></h3>
+    <div class="split">
+      <img src="img/vragi-mestnye.jpg" alt="Шестнадцать местных существ по локациям" loading="lazy">
+      <div class="tablewrap"><table class="cmp">
+        <thead><tr><th>Существо</th><th>Где</th><th>Чем опасно</th></tr></thead>
+        <tbody><tr><th>Тинник</th><td>Речная пойма</td><td>плюёт тиной в огонь издалека</td></tr><tr><th>Галки тумана</th><td>Старая мельница, Брод</td><td>таскают поленья из запаса и с костров</td></tr><tr><th>Корневик</th><td>Сосновые холмы</td><td>роет под стенами, подрывает блоки снизу</td></tr><tr><th>Смоляк</th><td>Сосновые холмы</td><td>склеивает проход; горит, если поджечь</td></tr><tr><th>Утопец</th><td>Брод, Пойма</td><td>хватает рабочих в воде и у берега</td></tr><tr><th>Камнеед</th><td>Каменоломня, Горы</td><td>грызёт камень: стены, туннели, опоры</td></tr><tr><th>Голем</th><td>Горы</td><td>великан, один за ночь, ведёт громил</td></tr><tr><th>Лавинник</th><td>Горы, Карниз</td><td>бьёт уступы и опоры, блоки сыплются</td></tr><tr><th>Фонарщик</th><td>Мёртвый город</td><td>ложным огоньком сманивает рабочих</td></tr><tr><th>Пустые латы</th><td>Мёртвый город, плато</td><td>охраняют руины, встают снова в тумане</td></tr><tr><th>Слизни</th><td>Топи</td><td>слизь гасит огонь; большой делится</td></tr><tr><th>Болотный огонёк</th><td>Топи</td><td>притворяется светом, рабочие вязнут</td></tr><tr><th>Кедровый страж</th><td>Кедровое плато</td><td>днём дерево, ночью оживает внутри поселения</td></tr><tr><th>Туманная сова</th><td>Кедровое плато, Горы</td><td>находит слабое место и зовёт остальных</td></tr><tr><th>Хранитель маяка</th><td>Скала маяка</td><td>финальный босс, ведёт древних</td></tr><tr><th>Белый олень</th><td>Скрытая долина</td><td>только в кровавую луну, награда — чертёж</td></tr></tbody>
+      </table></div>
+    </div>
+    <div class="more">
+      <span><strong>В документе:</strong> гл. 8 «Существа из тумана»; гл. 10 «Биомы» — кто где приходит</span>
+      <span><a href="https://claude.ai/artifact/AKeiLxRoTigJtiFUFNhqqH">Бестиарий: модели</a> <a href="https://github.com/123kapefa/emberhold/issues/103">#103 линейка</a> <a href="https://github.com/123kapefa/emberhold/issues/116">#116 анимации</a> <a href="https://github.com/123kapefa/emberhold/issues/117">#117 модели в Unity</a></span>
+      <span class="stage now">в игре: ползун</span>
+    </div>
+  </section>
+
+  <!-- ============ БИОМЫ ============ -->
+  <section class="tab" id="biomy" role="tabpanel" aria-labelledby="t-biomy" hidden>
+    <div class="head">
+      <h2>Биомы — что где</h2>
+      <p>Каждая локация долины: местность, ресурсы, кто приходит ночью, руины и точки, что даёт маяк. Карта у каждой — вырезка из карты высот на вкладке «Мир». Местные существа пока черновик бестиария, базовые решены.</p>
+    </div>
+    <div class="bl" id="biomes"></div>
+    <div class="more">
+      <span><strong>В документе:</strong> гл. 10 «Биомы»; гл. 6 «Ресурсы, металлы и станки» → «Что где лежит»; гл. 8 «Существа из тумана»</span>
+      <span><a href="https://github.com/123kapefa/emberhold/issues/59">#59 собрать карту</a> <a href="https://github.com/123kapefa/emberhold/issues/133">#133 руда</a></span>
+      <span class="stage">этап: Кампания</span>
+    </div>
+  </section>
+
+  <!-- ============ РЕЖИМЫ ============ -->
+  <section class="tab" id="rezhimy" role="tabpanel" aria-labelledby="t-rezhimy" hidden>
+    <div class="head">
+      <h2>Режимы — кампания и выживалка</h2>
+      <p>Механики одни и те же. Разница в карте, цели и цене проигрыша. Сначала делаем кампанию, выживалка собирается потом из готовых систем. Нынешний прототип ближе к выживалке: одна долина по зерну, проигрыш начинает забег заново.</p>
+    </div>
+    <div class="split">
+      <div class="fig"><svg viewBox="0 0 460 300" role="img" aria-label="Кампания: путь от костра через маяки к главному маяку" style="min-width:0">
+        <text x="20" y="32" class="cap">КАМПАНИЯ</text>
+        <text x="20" y="52" class="sub">дойти и зажечь главный маяк</text>
+        <path d="M40 262 C 110 262, 90 196, 160 200 S 230 250, 270 190 S 330 120, 300 100 S 380 60, 420 70" fill="none" stroke="#f08a3c" stroke-width="3" stroke-dasharray="2 7" stroke-linecap="round"/>
+        <g transform="translate(40 262)"><rect x="-10" y="0" width="20" height="4" fill="#6b4a2c"/><path d="M-8 1 L-1 -18 L3 -8 L6 -14 L9 1 Z" fill="#f08a3c"/></g>
+        <g id="bk"></g>
+        <g transform="translate(420 70)"><circle r="22" fill="#f5c06a" opacity=".25"/><path d="M-7 18 L-4 -10 L4 -10 L7 18 Z" fill="#e8e2d6"/><rect x="-7" y="-16" width="14" height="7" fill="#2c3848"/><path d="M0 -30 C 6 -24, 6 -20, 0 -16 C -6 -20, -6 -24, 0 -30 Z" fill="#f08a3c"/></g>
+        <text x="40" y="288" class="sub" text-anchor="middle">перевал</text>
+        <text x="420" y="112" class="sub" text-anchor="middle">4 уголька из 5</text>
+      </svg></div>
+      <div class="fig"><svg viewBox="0 0 460 300" role="img" aria-label="Выживалка: ночи по кругу, каждая сильнее, счёт пережитых ночей" style="min-width:0">
+        <text x="20" y="32" class="cap">ВЫЖИВАЛКА</text>
+        <text x="20" y="52" class="sub">продержаться как можно больше ночей</text>
+        <g id="spiral"></g>
+        <g transform="translate(230 166)"><rect x="-10" y="6" width="20" height="4" fill="#6b4a2c"/><path class="flick" d="M-8 7 L-1 -14 L3 -4 L6 -10 L9 7 Z" fill="#f08a3c"/></g>
+        <g transform="translate(360 240)"><rect x="0" y="0" width="84" height="44" rx="3" fill="#121821" stroke="#2c3848"/><text x="10" y="18" class="num">ночей 7</text><text x="10" y="35" class="num">убито 42</text></g>
+      </svg></div>
+    </div>
+    <div class="tablewrap"><table class="cmp">
+      <thead><tr><th></th><th>Кампания</th><th>Выживалка</th></tr></thead>
+      <tbody>
+        <tr><th>Карта</th><td>Одна продуманная долина 512 × 512: основа из генератора, доработана кистью, сохранена в файл</td><td>Новая долина каждый раз, по зерну (seed)</td></tr>
+        <tr><th>Цель</th><td>Зажечь малые маяки и в финале главный маяк</td><td>Пережить как можно больше ночей</td></tr>
+        <tr><th>Проигрыш ночи</th><td>Ночь начинается заново с рассвета</td><td>Забег окончен</td></tr>
+        <tr><th>Рост угрозы</th><td>Каждая ночь сильнее; дальше от старта и ниже место — туман гуще, существа опаснее</td><td>Каждая ночь сильнее, без конца</td></tr>
+        <tr><th>Награды</th><td>Маяк навсегда убирает туман в районе, открывает ресурс, даёт уголёк; чертежи в руинах; новые поселенцы</td><td>Только счёт</td></tr>
+        <tr><th>История</th><td>Через мир: руины, записки, маяк на горизонте</td><td>Нет</td></tr>
+        <tr><th>Счёт</th><td>Ночи и убитые существа</td><td>Ночи и убитые существа, главное число — ночи</td></tr>
+        <tr><th>Когда</th><td>Делаем первой</td><td>Позже, из готовых систем кампании</td></tr>
+      </tbody>
+    </table></div>
+    <div class="more">
+      <span><strong>В документе:</strong> гл. 2 «Ключевые решения» → режимы, карты мира, проигрыш ночи; гл. 11 «Режимы»</span>
+      <span class="stage">прототип: одна долина с фиксированным зерном</span>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  // clock
+  var svg = document.getElementById('clock'), NS = 'http://www.w3.org/2000/svg';
+  var cx = 210, cy = 210, R = 150, W = 46;
+  function pt(min, r) { var a = min / 12 * 2 * Math.PI; return [cx + r * Math.sin(a), cy - r * Math.cos(a)]; }
+  function el(n, at) { var e = document.createElementNS(NS, n); for (var k in at) e.setAttribute(k, at[k]); svg.appendChild(e); return e; }
+  var ph = [[0, 6, '#e9c46a', 'день'], [6, 7, '#d0703a', 'сумерки'], [7, 11, '#3b5274', 'ночь'], [11, 12, '#9a8cc0', 'рассвет']];
+  ph.forEach(function (p) {
+    var a = pt(p[0], R), b = pt(p[1], R), big = (p[1] - p[0]) > 6 ? 1 : 0;
+    el('path', { d: 'M' + a + ' A' + R + ' ' + R + ' 0 ' + big + ' 1 ' + b, fill: 'none', stroke: p[2], 'stroke-width': W });
+    var m = pt((p[0] + p[1]) / 2, R + (p[1] - p[0] < 2 ? 46 : 0));
+    var t = el('text', { x: m[0], y: m[1] + 5, 'text-anchor': 'middle', class: 'lbl' });
+    t.textContent = p[3];
+    if (p[1] - p[0] >= 2) t.setAttribute('style', 'fill:' + (p[3] === 'ночь' ? '#e8e2d6' : '#121821') + ';font-weight:700');
+  });
+  for (var i = 0; i < 12; i++) {
+    var a = pt(i, R - W / 2 - 4), b = pt(i, R - W / 2 - 12);
+    el('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: '#4d6178', 'stroke-width': 2 });
+    var n = pt(i, R - W / 2 - 24); var t = el('text', { x: n[0], y: n[1] + 4, 'text-anchor': 'middle', class: 'num' }); t.textContent = i;
+  }
+  // moon specials in night arc
+  // fire in center
+  var g = document.createElementNS(NS, 'g'); g.setAttribute('transform', 'translate(' + (cx - 22) + ' ' + (cy - 30) + ')');
+  g.innerHTML = '<rect x="2" y="44" width="40" height="7" rx="3" fill="#6b4a2c"/><path class="flick" d="M5 46 L19 2 L25 24 L32 12 L39 46 Z" fill="#f08a3c"/><path class="flick" d="M15 46 L22 22 L29 46 Z" fill="#f5e08a"/>';
+  svg.appendChild(g);
+  var t1 = el('text', { x: cx, y: cy + 46, 'text-anchor': 'middle', class: 'sub' }); t1.textContent = 'минуты';
+  var t2 = el('text', { x: cx, y: 440, 'text-anchor': 'middle', class: 'sub' }); t2.textContent = 'особые ночи: полнолуние · светлая · кровавая луна';
+
+  // tabs
+  var tabs = [].slice.call(document.querySelectorAll('nav [role=tab]'));
+  function show(id) {
+    tabs.forEach(function (b) {
+      var on = b.getAttribute('aria-controls') === id;
+      b.setAttribute('aria-selected', on); document.getElementById(b.getAttribute('aria-controls')).hidden = !on;
+    });
+    try { localStorage.setItem('eh-tab', id); } catch (e) {}
+  }
+  tabs.forEach(function (b) { b.addEventListener('click', function () { show(b.getAttribute('aria-controls')); }); });
+  var start = (location.hash || '').slice(1);
+  if (!document.getElementById(start)) { try { start = localStorage.getItem('eh-tab'); } catch (e) { start = null; } }
+  if (start && document.getElementById(start)) show(start);
+})();
+</script>
+<script>
+(function () {
+  var NS = 'http://www.w3.org/2000/svg';
+  function mk(parent, n, at, txt) { var e = document.createElementNS(NS, n); for (var k in at) e.setAttribute(k, at[k]); if (txt != null) e.textContent = txt; parent.appendChild(e); return e; }
+  // --- modes ---
+  var bk = document.getElementById('bk');
+  [[105, 230], [180, 205], [262, 202], [312, 112], [365, 78]].forEach(function (p, i) {
+    var g = mk(bk, 'g', { transform: 'translate(' + p[0] + ' ' + p[1] + ')' });
+    mk(g, 'path', { d: 'M-4 8 L-2.5 -5 L2.5 -5 L4 8 Z', fill: i === 2 ? '#4d6178' : '#e8e2d6' }); mk(g, 'rect', { x: -4, y: -9, width: 8, height: 4, fill: '#2c3848' });
+    if (i !== 2) mk(g, 'path', { d: 'M0 -17 C 4 -13, 4 -11, 0 -9 C -4 -11, -4 -13, 0 -17 Z', fill: '#f08a3c' });
+  });
+  mk(bk, 'text', { x: 262, y: 228, class: 'sub', 'text-anchor': 'middle', style: 'font-size:11px' }, 'один можно пропустить');
+  var sp = document.getElementById('spiral'), cx = 230, cy = 166;
+  for (var i = 0; i < 9; i++) {
+    var a = i / 9 * 2 * Math.PI - Math.PI / 2, r = 80, x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+    var g = mk(sp, 'g', { transform: 'translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ')' });
+    mk(g, 'circle', { r: 9 + i * .8, fill: '#2a3a52', stroke: '#8fa3b8', 'stroke-opacity': .15 + i * .09 });
+    mk(g, 'path', { d: 'M3 -5 A6 6 0 1 0 3 5 A4.5 4.5 0 1 1 3 -5 Z', fill: '#cfd8e2', transform: 'scale(' + (0.8 + i * .06) + ')' });
+    mk(g, 'text', { y: 22 + i, 'text-anchor': 'middle', class: 'num', style: 'font-size:10px' }, i + 1);
+  }
+  mk(sp, 'text', { x: 20, y: 290, class: 'sub' }, 'каждая ночь сильнее, проигрыш заканчивает забег');
+})();
+</script>
+<script>
+(function () {
+  const W = 512, H = 512, MAXH = 48, S = 1.6, O = 144, GW = W + 2 * O, RING = 34;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const sstep = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+  function hash(x, y) { let n = (x * 374761393 + y * 668265263) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967295; }
+  function vnoise(x, y) { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    return lerp(lerp(hash(xi, yi), hash(xi + 1, yi), u), lerp(hash(xi, yi + 1), hash(xi + 1, yi + 1), u), v); }
+  function fbm(x, y, o = 4) { let s = 0, a = .5, f = 1, n = 0; for (let i = 0; i < o; i++) { s += a * vnoise(x * f + i * 17.3, y * f - i * 9.1); n += a; a *= .5; f *= 2.03; } return s / n; }
+  function ridged(x, y) { let s = 0, a = .5, f = 1, n = 0; for (let i = 0; i < 5; i++) { const r = 1 - Math.abs(vnoise(x * f + i * 31.7, y * f + i * 5.3) * 2 - 1); s += a * r * r; n += a; a *= .5; f *= 2.1; } return s / n; }
+  function smin(a, b, k) { const h = clamp(.5 + .5 * (b - a) / k, 0, 1); return lerp(b, a, h) - k * h * (1 - h); }
+  function terrace(h, step, soft) { const t = h / step, fl = Math.floor(t); return (fl + sstep(1 - soft, 1, t - fl)) * step; }
+  function warp(x, z, a) { return [x + (fbm(x * .02, z * .02 + 40, 3) - .5) * 2 * a, z + (fbm(x * .02 + 70, z * .02, 3) - .5) * 2 * a]; }
+  // гладкая кривая через точки (Catmull-Rom), чтобы путь петлял
+  function spline(pts, n = 8) { const out = []; for (let i = 0; i < pts.length - 1; i++) { const p0 = pts[Math.max(i - 1, 0)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(i + 2, pts.length - 1)];
+      for (let k = 0; k < n; k++) { const t = k / n, t2 = t * t, t3 = t2 * t; out.push([0, 1].map(j => .5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3))); } }
+    out.push(pts[pts.length - 1]); return out; }
+  function prep(pts) { const L = [0]; for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return { pts, L, tot: L[L.length - 1] }; }
+  function polyDist(x, z, P) { let best = 1e9, tt = 0; const p = P.pts; for (let i = 1; i < p.length; i++) { const a = p[i - 1], b = p[i], dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1;
+      const t = clamp(((x - a[0]) * dx + (z - a[1]) * dz) / l2, 0, 1), d = Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz); if (d < best) { best = d; tt = (P.L[i - 1] + t * (P.L[i] - P.L[i - 1])) / P.tot; } } return [best, tt]; }
+
+  // ---------- локации ----------
+  const N = {
+    pass:   { name: 'Перевал', x: 38, z: 472, rx: 13, rz: 13, f: () => 24 },
+    birch:  { name: 'Берёзовая долина', x: 80, z: 392, rx: 88, rz: 58, f: (x, z) => 14 + (fbm(x * .05, z * .05) - .5) * 4 },
+    mill:   { name: 'Старая мельница', x: 172, z: 318, rx: 26, rz: 22, f: (x, z) => 11 + (fbm(x * .06, z * .06) - .5) * 2 },
+    plain:  { name: 'Речная пойма', x: 48, z: 186, rx: 100, rz: 58, f: (x, z) => 7.5 + (fbm(x * .05 + 3, z * .05) - .5) * 3 },
+    hills:  { name: 'Сосновые холмы', x: 214, z: 188, rx: 56, rz: 46, f: (x, z) => terrace(15 + 15 * clamp((230 - z) / 85, 0, 1) + (fbm(x * .05, z * .05) - .5) * 9, 3, .4) },
+    ford:   { name: 'Брод у заставы', x: 292, z: 330, rx: 26, rz: 22, f: (x, z) => 9 + (fbm(x * .06, z * .06) - .5) * 2 },
+    quarry: { name: 'Каменоломня', x: 300, z: 440, rx: 52, rz: 38, f: (x, z) => { let h = 15 + (fbm(x * .06, z * .06) - .5) * 4;
+      for (const [px, pz, rx, rz, dep] of [[288, 430, 18, 12, 7], [324, 452, 14, 10, 5], [268, 458, 10, 8, 4], [334, 422, 9, 7, 3]]) { const [qx, qz] = warp(x, z, 5); h -= dep * (1 - sstep(.3, 1, Math.hypot((qx - px) / rx, (qz - pz) / rz))); }
+      return terrace(h, 2, .12); } },
+    mount:  { name: 'Горы', x: 454, z: 448, rx: 86, rz: 82, f: (x, z) => 18 + 24 * Math.exp(-((x - 452) ** 2 / (2 * 24 ** 2) + (z - 436) ** 2 / (2 * 20 ** 2))) + ridged(x * .05, z * .05) * 8 },
+    city:   { name: 'Мёртвый город', x: 338, z: 140, rx: 56, rz: 58, f: (x, z) => terrace(20 + 3 * clamp((190 - z) / 50, 0, 1) + (fbm(x * .04 + 9, z * .04) - .5) * 4, 2, .3) },
+    swamp:  { name: 'Топи', x: 404, z: 262, rx: 50, rz: 36, f: (x, z) => 5 + (fbm(x * .07, z * .07) - .5) * 1.6 },
+    cedar:  { name: 'Кедровое плато', x: 462, z: 150, rx: 34, rz: 30, f: (x, z) => 25 + (fbm(x * .05, z * .05) - .5) * 5 },
+    rock:   { name: 'Скала маяка', x: 466, z: 36, rx: 28, rz: 44, f: (x, z) => 36 + (fbm(x * .06, z * .06) - .5) * 2 },
+    secret: { name: 'Скрытая долина', x: 128, z: 70, rx: 44, rz: 44, f: (x, z) => 19 + (fbm(x * .06, z * .06) - .5) * 4 },
+  };
+  for (const k in N) { const n = N[k]; n.id = k; n.lobes = [[0, 0, n.rx, n.rz]];
+    for (let j = 0; j < 4; j++) { const a = hash(k.length * 13 + j, n.x) * 6.283, r = .35 + .4 * hash(j, n.z);
+      n.lobes.push([Math.cos(a) * n.rx * r, Math.sin(a) * n.rz * r, n.rx * (.35 + .35 * hash(n.x, j + 7)), n.rz * (.35 + .35 * hash(j + 3, n.x + n.z))]); } }
+  // путь с неровной линией: между опорными точками вставляем точки со сдвигом вбок
+  function jitter(pts, seed) { const out = [pts[0]]; for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
+      const k = Math.max(1, Math.round(l / 14)); for (let j = 1; j <= k; j++) { const t = j / (k + 1), o = (hash(seed + i * 7, j) - .5) * Math.min(18, l * .45); out.push([a[0] + dx * t - dz / l * o, a[1] + dz * t + dx / l * o]); } out.push(b); } return out; }
+  const E = [
+    ['pass', 'birch', [[64, 452], [86, 438]], 7, 13],
+    ['birch', 'mill', [[146, 380], [148, 348]], 12, 9],
+    ['mill', 'plain', [[142, 300], [130, 268], [108, 248]], 8, 9],
+    ['mill', 'hills', [[196, 288], [190, 252], [208, 228]], 7, 7],
+    ['mill', 'ford', [[206, 336], [246, 318], [268, 334]], 9, 9],
+    ['ford', 'quarry', [[278, 366], [300, 398]], 6, 7],
+    ['ford', 'mount', [[328, 352], [356, 388], [384, 396]], 7, 8],
+    ['ford', 'swamp', [[326, 312], [346, 286], [372, 282]], 10, 12],
+    ['hills', 'city', [[256, 168], [282, 150], [306, 162]], 6, 7],
+    ['city', 'swamp', [[356, 196], [376, 214], [388, 236]], 5, 6],
+    ['swamp', 'cedar', [[436, 236], [424, 206], [450, 186]], 5, 6],
+    ['cedar', 'rock', [[476, 120], [458, 96], [470, 76]], 4, 4],
+    ['city', 'cedar', [[372, 140], [398, 120], [430, 128]], 2.5, 3, 5, 'Карниз'],
+    ['mount', 'cedar', [[472, 372], [490, 312], [484, 244], [478, 196]], 5, 5, 9, 'Восточный перевал'],
+  ].map(([a, b, mid, w0, w1, bump = 0, ename], ei) => { const A = N[a], B = N[b]; const P = prep(spline(jitter([[A.x, A.z], ...mid, [B.x, B.z]], ei * 31 + 5), 5));
+    const xs = P.pts.map(p => p[0]), zs = P.pts.map(p => p[1]), m = 60;
+    return { a, b, P, w0, w1, bump, name: ename || 'Дорога: ' + A.name + ' → ' + B.name, h0: A.f(A.x, A.z), h1: B.f(B.x, B.z), bb: [Math.min(...xs) - m, Math.min(...zs) - m, Math.max(...xs) + m, Math.max(...zs) + m] }; });
+  const ROUTES = [
+    { key: 'low', name: 'нижний', ids: ['pass', 'birch', 'mill', 'ford', 'swamp', 'cedar', 'rock'], col: '#0e7c6b', tok: '--low' },
+    { key: 'high', name: 'верхний', ids: ['pass', 'birch', 'mill', 'hills', 'city', 'cedar', 'rock'], col: '#8a4fa8', tok: '--high' },
+    { key: 'east', name: 'восточный', ids: ['pass', 'birch', 'mill', 'ford', 'mount', 'cedar', 'rock'], col: '#b0700c', tok: '--east' },
+  ];
+  const onRoute = (r, e) => { const i = r.ids.indexOf(e.a), j = r.ids.indexOf(e.b); return i >= 0 && j >= 0 && Math.abs(i - j) === 1; };
+  const ptAt = (P, t) => { const L = t * P.tot; for (let i = 1; i < P.pts.length; i++) if (P.L[i] >= L) { const u = (L - P.L[i - 1]) / ((P.L[i] - P.L[i - 1]) || 1); return [lerp(P.pts[i - 1][0], P.pts[i][0], u), lerp(P.pts[i - 1][1], P.pts[i][1], u)]; } return P.pts[P.pts.length - 1]; };
+  const edge = (a, b) => E.find(e => e.a === a && e.b === b);
+  const RUBBLE = [ptAt(edge('ford', 'mount').P, .45), ptAt(edge('mount', 'cedar').P, .55)];
+  const BRIDGE = [318, 348];
+  const TUNNEL = [[344, 444], [362, 436], [384, 432]];
+  // вода: ручей с перевала до Топей, река с гор к Броду, озеро в Пойме
+  const stream = prep(spline([[40, 466], [70, 448], [100, 418], [140, 392], [150, 352], [170, 326], [206, 340], [246, 322], [290, 336], [330, 310], [350, 288], [380, 276], [400, 262]], 6));
+  const river = prep(spline(jitter([[440, 408], [408, 398], [376, 392], [352, 380], [322, 350], [296, 334]], 77), 5));
+  const lake = [64, 206, 30, 18];
+
+  // ---------- высоты ----------
+  const hm = new Float32Array(GW * GW), water = new Float32Array(GW * GW), who = new Array(GW * GW), ND = new Float32Array(GW * GW);
+  const gi = (x, z) => (z + O) * GW + (x + O);
+  for (let z = -O; z < H + O; z++) for (let x = -O; x < W + O; x++) {
+    let h = 30 + 13 * ridged(x * .016, z * .016) + (fbm(x * .06, z * .06) - .5) * 5;
+    let name = 'Горный хребет', nd = 1e9;
+    const ux = (fbm(x * .02, z * .02 + 40, 3) - .5) * 2, uz = (fbm(x * .02 + 70, z * .02, 3) - .5) * 2;
+    const vx2 = (vnoise(x * .07 + 3, z * .07) - .5) * 2, vz2 = (vnoise(x * .07, z * .07 + 9) - .5) * 2;
+    for (const k in N) { const n = N[k]; if (Math.abs(x - n.x) > n.rx * 1.6 + 60 || Math.abs(z - n.z) > n.rz * 1.6 + 60) continue;
+      const wa = Math.min(n.rx, n.rz) * .55, wx = x + ux * wa + vx2 * 6, wz = z + uz * wa + vz2 * 6;
+      let d = 1e9; for (const [ox, oz, lx_, lz_] of n.lobes) d = smin(d, (Math.hypot((wx - n.x - ox) / lx_, (wz - n.z - oz) / lz_) - 1) * Math.min(lx_, lz_), 6);
+      if (d > 60) continue;
+      const s = .75 + .7 * fbm(x * .05 + 5, z * .05, 3);
+      h = smin(h, n.f(x, z) + Math.max(d, 0) * s, 5);
+      if (d < nd) { nd = d; name = n.name; } }
+    for (const e of E) { if (x < e.bb[0] || x > e.bb[2] || z < e.bb[1] || z > e.bb[3]) continue; const [d, t] = polyDist(x + ux * 9 + vx2 * 4, z + uz * 9 + vz2 * 4, e.P); const w = lerp(e.w0, e.w1, t) * (.45 + 1.1 * fbm(x * .035 + 11, z * .035, 3)), dd = d - w;
+      if (dd > 50) continue;
+      h = smin(h, lerp(e.h0, e.h1, sstep(0, 1, t)) + e.bump * Math.sin(Math.PI * t) + (fbm(x * .06, z * .06, 3) - .5) * 1.5 + Math.max(dd, 0) * (.8 + .5 * fbm(x * .07, z * .07, 3)), 4);
+      if (dd < nd) { nd = dd; name = e.name; } }
+    const i = gi(x, z);
+    for (const [rx_, rz_] of RUBBLE) { const d = Math.hypot(x - rx_, z - rz_); if (d < 7) { h += (1 - sstep(2, 7, d)) * (4 + 2 * vnoise(x * .5, z * .5)); if (d < 5) name = 'Завал'; } }
+    const [ds] = polyDist(x, z, stream); if (ds < 4) { h -= (1 - sstep(.5, 4, ds)) * .9; if (x > 54) water[i] = Math.max(water[i], 1 - sstep(.3, 1.4, ds)); }
+    const [dr, tr] = polyDist(x, z, river); if (dr < 8) { const wr = lerp(.6, 2.2, sstep(0, .25, tr)); h = Math.min(h, lerp(5 + (1 - sstep(0, .25, tr)) * 6, h, sstep(.5, 4 + wr * 2, dr))); water[i] = Math.max(water[i], 1 - sstep(wr * .3, wr, dr)); }
+    const dl = Math.hypot((x - lake[0]) / lake[2], (z - lake[1]) / lake[3]) - 1 + (fbm(x * .08, z * .08) - .5) * .5;
+    if (dl < .4) h = Math.min(h, lerp(3.5, 7.5, sstep(-.4, .4, dl)));
+    water[i] = Math.max(water[i], 1 - sstep(-.08, .08, dl));
+    const sw = Math.hypot((x - N.swamp.x) / (N.swamp.rx * .85), (z - N.swamp.z) / (N.swamp.rz * .85));
+    if (sw < 1) water[i] = Math.max(water[i], (1 - sstep(.38, .46, fbm(x * .09, z * .09 + 4))) * (1 - sstep(.8, 1, sw)));
+    hm[i] = clamp(h, 0, 46); who[i] = name; ND[i] = nd;
+  }
+
+  // ---------- рельеф в картинку ----------
+  const stops = [[0, [88, 128, 96]], [5, [104, 146, 98]], [10, [140, 170, 108]], [16, [182, 190, 128]], [22, [205, 190, 140]], [28, [190, 160, 122]], [34, [160, 140, 120]], [40, [150, 146, 142]], [44, [222, 220, 216]], [48, [246, 245, 242]]];
+  const ramp = h => { for (let i = 1; i < stops.length; i++) if (h <= stops[i][0]) { const [h0, c0] = stops[i - 1], [h1, c1] = stops[i], t = (h - h0) / (h1 - h0); return c0.map((c, k) => lerp(c, c1[k], t)); } return stops[stops.length - 1][1]; };
+  document.getElementById('rampbar').style.background = 'linear-gradient(90deg,' + stops.map(([h, c]) => `rgb(${c.join(',')}) ${h / 48 * 100}%`).join(',') + ')';
+  // ---------- за краем: декоративные горы уходят в море тумана (#102) ----------
+  // маска «в игре»: долина и кольцо скал вокруг неё (ND < RING) плюс горы, со всех сторон окружённые долиной
+  const M = O, BW = GW, SEA = 18;
+  const HB = hm, WB = water, OUT = new Uint8Array(BW * BW), DOUT = new Float32Array(BW * BW).fill(1e9);
+  const q = [];
+  for (let j = 0; j < BW * BW; j++) { const bx = j % BW, bz = (j / BW) | 0;
+    if ((bx === 0 || bz === 0 || bx === BW - 1 || bz === BW - 1) && ND[j] >= RING) { OUT[j] = 1; q.push(j); } }
+  for (let k = 0; k < q.length; k++) { const j = q[k], bx = j % BW, bz = (j / BW) | 0;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = bx + dx, nz = bz + dz; if (nx < 0 || nz < 0 || nx >= BW || nz >= BW) continue;
+      const n = nz * BW + nx; if (!OUT[n] && ND[n] >= RING) { OUT[n] = 1; q.push(n); } } }
+  // расстояние за край маски (обход в ширину от границы)
+  const q2 = []; for (let j = 0; j < BW * BW; j++) if (!OUT[j]) { DOUT[j] = 0; q2.push(j); }
+  for (let k = 0; k < q2.length; k++) { const j = q2[k], bx = j % BW, bz = (j / BW) | 0;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = bx + dx, nz = bz + dz; if (nx < 0 || nz < 0 || nx >= BW || nz >= BW) continue;
+      const n = nz * BW + nx; if (DOUT[n] > DOUT[j] + 1) { DOUT[n] = DOUT[j] + 1; q2.push(n); } } }
+  for (let j = 0; j < BW * BW; j++) { if (!OUT[j]) continue; const x = j % BW - O, z = ((j / BW) | 0) - O, d = DOUT[j] * .8;
+    const reach = 22 + 80 * sstep(.3, .7, fbm(x * .013 + 20, z * .013 - 7, 3)), dw = d + (fbm(x * .035, z * .035 + 5, 3) - .5) * 30;
+    hm[j] = clamp(lerp(hm[j], 2, sstep(reach * .3, reach, dw)), 0, 46); water[j] = 0; who[j] = 'За краем долины'; }
+  const at = (A, x, z) => A[clamp(z, 0, BW - 1) * BW + clamp(x, 0, BW - 1)];
+  const bil = (A, x, z) => { const xi = Math.floor(x), zi = Math.floor(z), u = x - xi, v = z - zi; return lerp(lerp(at(A, xi, zi), at(A, xi + 1, zi), u), lerp(at(A, xi, zi + 1), at(A, xi + 1, zi + 1), u), v); };
+  const cv = document.getElementById('hmap'), ctx = cv.getContext('2d');
+  cv.width = cv.height = BW * S;
+  const img = ctx.createImageData(BW * S, BW * S);
+  const lx = -.6, lz = -.6, ly = .53;
+  for (let pz = 0; pz < BW * S; pz++) for (let px = 0; px < BW * S; px++) {
+    const x = px / S, z = pz / S, h = bil(HB, x, z), out = at(OUT, Math.round(x), Math.round(z));
+    let c;
+    if (bil(WB, x, z) > .5) c = [78, 132, 168];
+    else {
+      const gx = bil(HB, x + .5, z) - bil(HB, x - .5, z), gz = bil(HB, x, z + .5) - bil(HB, x, z - .5);
+      c = ramp(h);
+      const nx = -gx * 1.6, nz = -gz * 1.6, nl = Math.hypot(nx, 1, nz), dot = (nx * lx + ly + nz * lz) / nl;
+      const sh = clamp(.45 + .55 * dot / ly, .68, 1.18), steep = clamp((Math.hypot(gx, gz) - 1.2) / 2, 0, 1);
+      c = c.map((v, k) => lerp(v, [138, 130, 122][k], steep * .5) * sh);
+      const f = h / 4, fr = Math.min(f - Math.floor(f), Math.ceil(f) - f), w = (Math.abs(gx) + Math.abs(gz)) / 4 / S + .02;
+      const line = 1 - sstep(w * .4, w * 1.4, fr), f12 = h / 12, major = Math.min(f12 - Math.floor(f12), Math.ceil(f12) - f12) * 3 < .5;
+      c = c.map(v => v * (1 - line * (out ? .08 : major ? .32 : .15)));
+    }
+    if (out) { const a = clamp((SEA - h) / 9, 0, 1) * (.85 + .3 * fbm(px * .015, pz * .015, 3)), fogc = [200, 210, 224];
+      c = c.map((v, k) => lerp(v * .82, fogc[k], clamp(a, 0, 1))); }
+    if (at(OUT, Math.round(x + .6), Math.round(z)) !== out || at(OUT, Math.round(x), Math.round(z + .6)) !== out) c = [244, 238, 226];
+    const i = (pz * BW * S + px) * 4; img.data[i] = c[0]; img.data[i + 1] = c[1]; img.data[i + 2] = c[2]; img.data[i + 3] = 255;
+  }
+
+  // ---------- туман по низу: чем ниже, тем гуще ----------
+  const FOG_TOP = 16;
+  const fogImg = ctx.createImageData(BW * S, BW * S);
+  for (let pz = 0; pz < BW * S; pz++) for (let px = 0; px < BW * S; px++) { if (at(OUT, Math.round(px / S), Math.round(pz / S))) continue; const h = bil(HB, px / S, pz / S), a = clamp((FOG_TOP - h) / 12, 0, 1);
+    const n = .75 + .5 * fbm(px * .02, pz * .02, 3), i = (pz * BW * S + px) * 4; fogImg.data[i] = 214; fogImg.data[i + 1] = 222; fogImg.data[i + 2] = 236; fogImg.data[i + 3] = 150 * a * n; }
+  const fogCv = document.createElement('canvas'); fogCv.width = BW * S; fogCv.height = BW * S; fogCv.getContext('2d').putImageData(fogImg, 0, 0);
+
+  // ---------- значки ----------
+  const ICON = {
+    rubble: (c, s) => { c.fillStyle = '#7d7671'; [[-.45, .3, .38], [.1, .35, .42], [.5, .4, .28], [-.15, -.05, .34], [.3, 0, .26]].forEach(([x, y, r]) => { c.beginPath(); c.arc(x * s, y * s, r * s, 0, 7); c.fill(); }); c.strokeStyle = '#23292c'; c.lineWidth = s * .12; c.beginPath(); c.moveTo(-s * .6, -s * .6); c.lineTo(s * .6, s * .6); c.moveTo(s * .6, -s * .6); c.lineTo(-s * .6, s * .6); c.stroke(); },
+    bridge: (c, s) => { c.fillStyle = '#23292c'; c.fillRect(-s * .8, -s * .15, s * .55, s * .22); c.fillRect(s * .3, -s * .15, s * .5, s * .22); c.fillRect(-s * .7, 0, s * .16, s * .6); c.fillRect(s * .55, 0, s * .16, s * .6); c.fillStyle = '#d4651d'; c.fillRect(-s * .18, -s * .2, s * .1, s * .3); c.fillRect(s * .08, -s * .02, s * .1, s * .3); },
+    lookout: (c, s) => { c.fillStyle = '#23292c'; c.beginPath(); c.moveTo(-s * .7, s * .6); c.lineTo(0, -s * .5); c.lineTo(s * .7, s * .6); c.closePath(); c.fill(); c.fillStyle = '#fff'; c.beginPath(); c.ellipse(0, s * .2, s * .32, s * .17, 0, 0, 7); c.fill(); c.fillStyle = '#23292c'; c.beginPath(); c.arc(0, s * .2, s * .1, 0, 7); c.fill(); c.strokeStyle = '#d4651d'; c.lineWidth = s * .12; c.beginPath(); c.moveTo(0, -s * .5); c.lineTo(0, -s * 1.1); c.lineTo(s * .45, -s * .95); c.stroke(); },
+    tunnel: (c, s) => { c.fillStyle = '#7d7671'; c.beginPath(); c.arc(0, s * .45, s * .7, Math.PI, 0); c.fill(); c.fillStyle = '#111'; c.beginPath(); c.arc(0, s * .5, s * .4, Math.PI, 0); c.fill(); },
+    secret: (c, s) => { c.fillStyle = '#d4651d'; c.beginPath(); for (let k = 0; k < 8; k++) { const r = k % 2 ? s * .32 : s * .85, a = k * Math.PI / 4 - Math.PI / 2; c.lineTo(Math.cos(a) * r, Math.sin(a) * r); } c.closePath(); c.fill(); c.strokeStyle = '#23292c'; c.lineWidth = s * .1; c.stroke(); },
+    beacon: (c, s) => { c.fillStyle = '#d4651d'; c.beginPath(); c.moveTo(0, -s * 1.15); c.quadraticCurveTo(s * .45, -s * .75, 0, -s * .45); c.quadraticCurveTo(-s * .45, -s * .75, 0, -s * 1.15); c.fill();
+      c.fillStyle = '#23292c'; c.fillRect(-s * .4, -s * .45, s * .8, s * .2); c.beginPath(); c.moveTo(-s * .3, -s * .25); c.lineTo(s * .3, -s * .25); c.lineTo(s * .45, s * .6); c.lineTo(-s * .45, s * .6); c.closePath(); c.fill(); },
+    brazier: (c, s) => { c.fillStyle = '#d4651d'; c.beginPath(); c.moveTo(0, -s * .8); c.quadraticCurveTo(s * .4, -s * .4, 0, -s * .1); c.quadraticCurveTo(-s * .4, -s * .4, 0, -s * .8); c.fill();
+      c.fillStyle = '#23292c'; c.beginPath(); c.moveTo(-s * .6, -s * .05); c.lineTo(s * .6, -s * .05); c.quadraticCurveTo(s * .5, s * .35, 0, s * .35); c.quadraticCurveTo(-s * .5, s * .35, -s * .6, -s * .05); c.fill(); c.fillRect(-s * .12, s * .3, s * .24, s * .3); },
+    ruin: (c, s) => { c.fillStyle = '#23292c'; c.fillRect(-s * .6, -s * .1, s * .3, s * .7); c.fillRect(-s * .2, -s * .6, s * .3, s * 1.2); c.fillRect(s * .1, -s * .3, s * .15, s * .3); c.fillRect(s * .2, s * .1, s * .4, s * .5); },
+    lair: (c, s) => { c.fillStyle = '#6f7f93'; c.beginPath(); c.arc(0, s * .5, s * .7, Math.PI, 0); c.fill(); c.fillStyle = '#23292c'; c.beginPath(); c.arc(0, s * .55, s * .38, Math.PI, 0); c.fill();
+      c.fillStyle = '#f08a3c'; c.fillRect(-s * .18, s * .3, s * .1, s * .1); c.fillRect(s * .08, s * .3, s * .1, s * .1); },
+    camp: (c, s) => { c.fillStyle = '#d4651d'; c.beginPath(); c.moveTo(0, -s * .9); c.quadraticCurveTo(s * .55, -s * .3, 0, s * .2); c.quadraticCurveTo(-s * .55, -s * .3, 0, -s * .9); c.fill(); c.fillStyle = '#23292c'; c.fillRect(-s * .6, s * .2, s * 1.2, s * .25); },
+    lighthouse: (c, s) => { c.fillStyle = 'rgba(245,180,107,.55)'; c.beginPath(); c.arc(0, -s * 1.1, s * .8, 0, 7); c.fill(); ICON.beacon(c, s * 1.3); },
+  };
+  const LEG = [['beacon', 'Маяк района: цель главы, туман в районе уходит навсегда, даёт уголёк'], ['brazier', 'Старая жаровня: вечный огонь, опора для цепочки костров'], ['ruin', 'Руины: чертежи, записки, новые поселенцы'], ['lair', 'Логово: отсюда ночью идут существа'], ['camp', 'Стартовый костёр'], ['lighthouse', 'Главный маяк'], ['rubble', 'Завал: проход закрыт, нужно раскопать'], ['bridge', 'Разрушенный мост: вброд только днём'], ['tunnel', 'Тоннель, который прокапывает игрок'], ['lookout', 'Смотровая скала: ракета отсюда светит дальше'], ['secret', 'Секрет: видно только с сигнальной ракеты']];
+  const lg = document.getElementById('legend');
+  for (const [k, t] of LEG) { const li = document.createElement('li'), c = document.createElement('canvas'); c.width = c.height = 52; const g = c.getContext('2d'); g.translate(26, 30); ICON[k](g, 18); li.append(c, t); lg.append(li); }
+  const P = [
+    ['camp', 40, 470], ['brazier', 140, 386], ['ruin', 92, 396], ['lair', 70, 420],
+    ['ruin', 176, 310], ['brazier', 160, 332],
+    ['beacon', 58, 236], ['brazier', 114, 252], ['ruin', 112, 196], ['lair', 42, 178],
+    ['beacon', 238, 160], ['brazier', 196, 236], ['brazier', 222, 206], ['ruin', 188, 170], ['lair', 258, 206],
+    ['ruin', 298, 324], ['brazier', 280, 342],
+    ['ruin', 280, 428], ['brazier', 310, 420], ['lair', 336, 462],
+    ['beacon', 452, 432], ['brazier', 404, 402], ['brazier', 424, 444], ['ruin', 392, 426], ['lair', 474, 396],
+    ['beacon', 362, 150], ['ruin', 318, 158], ['ruin', 340, 178], ['ruin', 356, 168], ['brazier', 322, 186], ['lair', 382, 146],
+    ['beacon', 424, 272], ['brazier', 382, 254], ['ruin', 394, 278], ['lair', 436, 248],
+    ['brazier', 452, 162], ['ruin', 474, 140], ['lair', 486, 166],
+    ['lighthouse', 468, 56],
+    ['rubble', ...RUBBLE[0]], ['rubble', ...RUBBLE[1]], ['bridge', ...BRIDGE], ['tunnel', ...TUNNEL[0]], ['tunnel', ...TUNNEL[2]],
+    ['lookout', 60, 446], ['lookout', 182, 146], ['lookout', 380, 198], ['lookout', 466, 452], ['lookout', 446, 122],
+    ['secret', 130, 96], ['ruin', 112, 86], ['brazier', 140, 80],
+  ];
+  const LBL = { pass: [-30, 26], birch: [-36, 40], mill: [-46, 30], plain: [-40, 58], hills: [-34, -50], ford: [-14, -26], quarry: [-36, 50], mount: [-28, 62], city: [-32, -42], swamp: [-6, 50], cedar: [-74, -10], rock: [-80, 4], secret: [-40, -26] };
+
+  const lyr = id => document.getElementById(id).checked;
+  function draw() {
+    ctx.putImageData(img, 0, 0);
+    if (lyr('lyr-fog')) ctx.drawImage(fogCv, 0, 0);
+    ctx.save(); ctx.scale(S, S); ctx.translate(M, M); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.save(); ctx.strokeStyle = 'rgba(160,40,30,.55)'; ctx.lineWidth = .8; ctx.setLineDash([3, 3]); ctx.strokeRect(0, 0, W, H); ctx.restore();
+    if (lyr('lyr-routes')) {
+      for (const e of E) { const rs = ROUTES.filter(r => onRoute(r, e));
+        ctx.strokeStyle = rs.length > 1 ? '#d4651d' : rs.length ? rs[0].col : 'rgba(212,101,29,.8)';
+        ctx.lineWidth = rs.length ? 1.6 : 1.1; ctx.setLineDash(rs.length ? [] : [.1, 3]);
+        ctx.beginPath(); e.P.pts.forEach(([x, z], i) => i ? ctx.lineTo(x, z) : ctx.moveTo(x, z)); ctx.stroke(); }
+      ctx.strokeStyle = 'rgba(30,30,30,.85)'; ctx.lineWidth = 1.2; ctx.setLineDash([2, 2]);
+      ctx.beginPath(); TUNNEL.forEach(([x, z], i) => i ? ctx.lineTo(x, z) : ctx.moveTo(x, z)); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (lyr('lyr-points')) for (const [k, x, z] of P) { ctx.save(); ctx.translate(x, z); ctx.shadowColor = 'rgba(255,255,255,.9)'; ctx.shadowBlur = 2; ICON[k](ctx, k === 'lighthouse' ? 7 : 5.5); ctx.restore(); }
+    if (lyr('lyr-names')) { ctx.font = '700 9px "Alegreya Sans SC", "Trebuchet MS", sans-serif';
+      for (const k in N) { const n = N[k], [ox, oz] = LBL[k]; ctx.lineWidth = 2.6; ctx.strokeStyle = 'rgba(20,24,27,.72)'; ctx.fillStyle = '#fff'; ctx.strokeText(n.name, n.x + ox, n.z + oz); ctx.fillText(n.name, n.x + ox, n.z + oz); } }
+    ctx.restore();
+    if (document.querySelector('#biomes canvas')) drawCrops();
+  }
+  draw();
+  ['lyr-routes', 'lyr-points', 'lyr-names', 'lyr-fog'].forEach(id => document.getElementById(id).addEventListener('change', draw));
+  if (document.fonts) document.fonts.ready.then(draw);
+  const out = document.getElementById('readout');
+  cv.addEventListener('mousemove', e => { const r = cv.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / r.width * BW) - M, z = Math.floor((e.clientY - r.top) / r.height * BW) - M;
+    if (x < -O || z < -O || x >= W + O || z >= H + O) return; const i = gi(x, z); if (OUT[i]) { out.textContent = 'За краем долины: горы без блоков, вечный туман. Приказы сюда не принимаются, камера дальше не идёт.'; return; }
+    out.textContent = `${who[i]} · блок ${x}, ${z} · ${water[i] > .5 ? 'вода, дно на ' : 'высота '}${Math.round(hm[i])}${hm[i] < FOG_TOP ? ' · ' + (hm[i] < 8 ? 'густой туман' : 'туман') : ''}`; });
+  cv.addEventListener('mouseleave', () => { out.textContent = 'Наведите курсор на карту: покажу место и высоту.'; });
+
+  // ---------- профиль двух путей ----------
+  function routeProfile(ids) { const pts = []; for (let i = 1; i < ids.length; i++) { const e = E.find(e => e.a === ids[i - 1] && e.b === ids[i]); pts.push(...(i > 1 ? e.P.pts.slice(1) : e.P.pts)); }
+    let d = 0; const marks = []; const out = pts.map((p, i) => { if (i) d += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]); for (const k of ids) if (Math.hypot(p[0] - N[k].x, p[1] - N[k].z) < .5) marks.push([d, k]); return [d, bil(hm, p[0] + O, p[1] + O)]; });
+    return { out, len: d, marks }; }
+  ROUTES.forEach(r => r.prof = routeProfile(r.ids)); const maxD = Math.max(...ROUTES.map(r => r.prof.len));
+  const pc = document.getElementById('hprof'), p = pc.getContext('2d');
+  function drawProfile() {
+    const cs = getComputedStyle(document.documentElement), tok = n => cs.getPropertyValue(n).trim();
+    const L = 46, R = 16, T = 18, B = 30, PW = pc.width - L - R, PH = pc.height - T - B, X = d => L + d / maxD * PW, Y = h => T + PH - h / MAXH * PH;
+    p.clearRect(0, 0, pc.width, pc.height); p.font = '12px "Alegreya Sans", system-ui, sans-serif'; p.textBaseline = 'middle';
+    for (let h = 0; h <= MAXH; h += 12) { p.strokeStyle = tok('--line'); p.lineWidth = 1; p.beginPath(); p.moveTo(L, Y(h)); p.lineTo(L + PW, Y(h)); p.stroke(); p.fillStyle = tok('--muted'); p.textAlign = 'right'; p.fillText(h, L - 8, Y(h)); }
+    p.fillStyle = 'rgba(140,160,190,.18)'; p.fillRect(L, Y(FOG_TOP), PW, Y(0) - Y(FOG_TOP)); p.fillStyle = 'rgba(140,160,190,.18)'; p.fillRect(L, Y(8), PW, Y(0) - Y(8));
+    p.fillStyle = tok('--muted'); p.textAlign = 'right'; p.fillText('туман ниже ' + FOG_TOP, L + PW - 6, Y(FOG_TOP) - 8);
+    for (const [R_, col] of ROUTES.map(r => [r.prof, tok(r.tok)])) {
+      p.beginPath(); R_.out.forEach(([d, h], i) => i ? p.lineTo(X(d), Y(h)) : p.moveTo(X(d), Y(h))); p.strokeStyle = col; p.lineWidth = 2.2; p.stroke();
+      p.fillStyle = col; p.textAlign = 'center';
+      R_.marks.forEach(([d, k]) => { const h = R_.out.find(q => q[0] >= d)[1]; p.beginPath(); p.arc(X(d), Y(h), 3.5, 0, 7); p.fill(); });
+    }
+    p.fillStyle = tok('--muted'); p.textAlign = 'center';
+    const lbl = { mill: 'Мельница', ford: 'Брод', hills: 'Холмы', city: 'Город', swamp: 'Топи', mount: 'Горы', cedar: 'Плато', rock: 'Маяк', birch: 'Берёзы', pass: 'Перевал' };
+    const done = new Set();
+    ROUTES.forEach((r, ri) => r.prof.marks.forEach(([d, k]) => { if (done.has(k)) return; done.add(k); const h = r.prof.out.find(q => q[0] >= d)[1]; p.fillText(lbl[k], clamp(X(d), L + 24, L + PW - 24), Y(h) + (ri === 0 ? 16 : -16)); }));
+    p.fillText('расстояние вдоль пути, блоков', L + PW / 2, pc.height - 10);
+    p.textAlign = 'left'; let tx = L + 8; ROUTES.forEach(r => { p.fillStyle = tok(r.tok); const t = r.name + ' ' + Math.round(r.prof.len); p.fillText(t, tx, T + 6); tx += p.measureText(t).width + 18; });
+  }
+  drawProfile();
+  try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawProfile); } catch (e) {}
+  new MutationObserver(drawProfile).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (document.fonts) document.fonts.ready.then(drawProfile);
+
+  // ---------- карточки ----------
+  const C = [
+    ['pass', null, 'Старт. Узкое ущелье между скалами, отсюда начинается ручей.', 'Камень', 'Почти нет', 'Стартовый костёр'],
+    ['birch', null, 'Широкая котловина, обучение и первые ночи.', 'Берёза, камень', 'Ползуны', 'Жаровня на спуске, руины хутора, мелкое логово ползунов'],
+    ['mill', null, 'Первая развилка на три стороны. Ручей крутит старое колесо.', 'Берёза', 'Ползуны', 'Руины мельницы с чертежом фонаря, жаровня'],
+    ['plain', 'Песок → стекло', 'Боковая долина без выхода, низко и ровно, озеро и тростник.', 'Песок, берёза, сосна', 'Ползуны из зарослей у воды', 'Маяк на мысу у озера, жаровня на входе, руины рыбацкой деревни, логово'],
+    ['hills', 'Плавильня, уголь', 'Террасы ступенями вверх, начало верхнего пути.', 'Сосна, уголь в обрывах, камень', 'Ползуны, первые громилы', 'Маяк на вершине, две жаровни по склону, руины заставы, логово'],
+    ['ford', null, 'Вторая развилка. Река с гор, мост через неё разрушен: вброд можно только днём, ночью нужен свой мост.', 'Камень', 'Ползуны и громилы', 'Руины заставы с чертежом моста, жаровня у брода, разрушенный мост'],
+    ['quarry', null, 'Широкий тупик с несколькими карьерами. Из дальнего карьера можно прокопать тоннель сквозь хребет в Горы.', 'Много камня, уголь', 'Громилы', 'Руины каменотёсов, жаровня у входа, логово громил в штольне, начало тоннеля'],
+    ['mount', 'Железо → металл', 'Высокая долина с пиком. Дорогу от Брода перекрывает завал, а на север уходит Восточный перевал к Кедровому плато, тоже с завалом.', 'Вековой кедр, железная руда, уголь', 'Громилы', 'Маяк под пиком, две жаровни, руины рудника, логово, смотровая скала на пике'],
+    ['city', 'Масло, сторожевые башни', 'Плато на уступах выше тумана. Отсюда крутой спуск в Топи и узкий Карниз прямо на Кедровое плато.', 'Масло в руинах, камень разобранных домов', 'Тени', 'Маяк на площади, много руин с чертежами, жаровня, склеп теней, смотровая скала над Топями'],
+    ['swamp', 'Самый густой туман уходит', 'Самое низкое место, болото и густой туман. Нижний путь идёт через него, верхний и восточный обходят.', 'Мало, смола', 'Все виды существ', 'Маяк на острове, жаровня, затопленная деревня, логово'],
+    ['cedar', null, 'Плато перед финалом. Сюда сходятся все три пути: серпантин из Топей, Карниз из города и Восточный перевал.', 'Вековой кедр', 'Тени и громилы', 'Жаровня, руины храма огня, логово, смотровая скала'],
+    ['secret', null, 'Закрытая долина за хребтом над Поймой, дороги туда нет. Видно только с сигнальной ракеты со смотровой скалы в Холмах, вход надо прокопать.', 'Кедр, камень', 'Нет', 'Руины с редким чертежом (зеркало для направленного света), жаровня'],
+    ['rock', null, 'Главный маяк на скале. Нужно 4 уголька из 5.', '—', 'Все и сразу', 'Главный маяк'],
+  ];
+  const cards = document.getElementById('cards');
+  if (cards) C.forEach(([k, beacon, what, res, threat, pts], i) => { const n = N[k], a = document.createElement('article'); a.className = 'panel card';
+    let lo = 99, hi = 0; for (let z = Math.max(-O, n.z - n.rz * .7 | 0); z < Math.min(H + O, n.z + n.rz * .7); z += 2) for (let x = Math.max(-O, n.x - n.rx * .7 | 0); x < Math.min(W + O, n.x + n.rx * .7); x += 2) { const i = gi(x, z); if (who[i] === n.name && water[i] < .5) { lo = Math.min(lo, hm[i]); hi = Math.max(hi, hm[i]); } }
+    a.innerHTML = `<h3>${n.name} <span class="hn">${Math.round(lo)}–${Math.round(hi)} бл.</span>${beacon ? `<span class="pill b">маяк</span>` : ''}</h3>
+      <dl><dt>Что это</dt><dd>${what}</dd><dt>Ресурсы</dt><dd>${res}</dd><dt>Угрозы</dt><dd>${threat}</dd><dt>Точки</dt><dd>${pts}</dd>${beacon ? `<dt>Маяк даёт</dt><dd>${beacon}${k === 'rock' ? '' : ', уголёк'}</dd>` : ''}</dl>`;
+    cards.append(a); });
+
+  // ---------- биомы ----------
+  const BIO = [["pass", "Перевал", "Старт. Узкое ущелье между скалами, отсюда начинается ручей.", "—", "камень", "—", "почти нет", "—", "стартовый костёр, смотровая скала", null], ["birch", "Берёзовая долина", "Широкая котловина: обучение и первые ночи. Берёз хватает на две ночи, дальше свет тянут к Мельнице.", "берёза", "камень", "трава (кусты)", "ползуны", "нет: обучение", "жаровня на спуске, руины хутора, мелкое логово ползунов", null], ["mill", "Старая мельница", "Первая развилка на три стороны: Пойма, Холмы, Брод. Ручей крутит старое колесо.", "берёза", "камень", "—", "ползуны", "галки тумана (таскают поленья)", "руины мельницы с чертежом фонаря, жаровня", null], ["plain", "Речная пойма", "Тупик: низко и ровно, озеро, река и тростник.", "—", "камень, **олово**", "песок, трава", "ползуны из зарослей у воды", "тинник (плюёт тиной в огонь издалека)", "маяк на мысу у озера, жаровня на входе, руины рыбацкой деревни, логово", "песок → стекло"], ["hills", "Сосновые холмы", "Террасы ступенями вверх, начало верхнего пути.", "сосна", "камень, уголь, **медь**", "—", "ползуны, первые громилы", "корневик (роет под стенами), смоляк (склеивает проход)", "маяк на вершине, две жаровни по склону, руины заставы, логово, смотровая скала (видно Скрытую долину)", "плавильня, уголь"], ["ford", "Брод у заставы", "Вторая развилка. Мост через реку разрушен: вброд только днём, ночью нужен свой мост.", "—", "камень, олово понемногу", "—", "ползуны, громилы", "утопец (хватает рабочих в воде)", "руины заставы с чертежом моста, жаровня у брода, разрушенный мост", null], ["quarry", "Каменоломня", "Широкий тупик с карьерами. Из дальнего карьера можно прокопать тоннель в Горы.", "—", "камень, уголь, медь понемногу", "—", "громилы", "камнеед (грызёт стены и опоры)", "руины каменотёсов, жаровня у входа, логово громил в штольне, начало тоннеля", null], ["mount", "Горы", "Высокая долина с пиком. Вход от Брода закрыт завалом, на север уходит Восточный перевал, тоже с завалом.", "вековой кедр", "камень, уголь, **железо**, серебро понемногу", "—", "громилы", "голем (один за ночь), лавинник (бьёт опоры)", "маяк под пиком, две жаровни, руины рудника, логово, смотровая скала на пике", "железо, металл"], ["city", "Мёртвый город", "Плато на уступах выше тумана. Крутой спуск в Топи и узкий Карниз на Кедровое плато.", "—", "камень разобранных домов, **серебро**", "масло в руинах", "тени", "фонарщик (сманивает рабочих), пустые латы (охраняют руины)", "маяк на площади, много руин с чертежами, жаровня, склеп теней, смотровая скала над Топями", "масло, сторожевые башни"], ["swamp", "Топи", "Самое низкое место, болото и самый густой туман. Через Топи идёт нижний путь.", "—", "железо понемногу (болотная руда)", "смола", "все виды", "слизни (гасят огонь, делятся), болотный огонёк (заманивает)", "маяк на острове, жаровня, затопленная деревня, логово", "уходит самый густой туман"], ["cedar", "Кедровое плато", "Плато перед финалом: сюда сходятся все три пути.", "вековой кедр", "камень", "—", "тени, громилы", "кедровый страж (оживает внутри поселения), туманная сова", "жаровня, руины храма огня, логово, смотровая скала", null], ["rock", "Скала маяка", "Главный маяк на скале, финал. Нужно 4 уголька из 5.", "—", "—", "—", "все сразу, древние из всех логов", "хранитель маяка (финальный босс)", "главный маяк", null], ["secret", "Скрытая долина", "Закрытая долина за хребтом над Поймой. Видна только с ракеты со скалы в Холмах, вход надо прокопать.", "кедр", "камень", "редкий чертёж зеркала", "нет", "белый олень (только в кровавую луну)", "руины с редким чертежом (зеркало для направленного света), жаровня", null]];
+  const bl = document.getElementById('biomes'), md = t => t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  BIO.forEach(([k, name, what, forest, ore, extra, base, local, pts, beacon]) => { const n = N[k], a = document.createElement('article'); a.className = 'panel bcard';
+    let lo = 99, hi = 0; for (let z = Math.max(-O, n.z - n.rz * .7 | 0); z < Math.min(H + O, n.z + n.rz * .7); z += 2) for (let x = Math.max(-O, n.x - n.rx * .7 | 0); x < Math.min(W + O, n.x + n.rx * .7); x += 2) { const i = gi(x, z); if (who[i] === n.name && water[i] < .5) { lo = Math.min(lo, hm[i]); hi = Math.max(hi, hm[i]); } }
+    const hr = lo < 99 ? `${Math.round(lo)}–${Math.round(hi)} бл.` : '';
+    a.innerHTML = `<canvas width="360" height="360" data-k="${k}" aria-label="Карта местности: ${name}"></canvas><div>
+      <h3>${name} <span class="hn">${hr}</span>${beacon ? '<span class="pill">маяк</span>' : ''}</h3><p>${what}</p>
+      <dl><dt>Лес</dt><dd>${forest}</dd><dt>Камень и руда</dt><dd>${md(ore)}</dd><dt>Ещё</dt><dd>${extra}</dd>
+      <dt>Враги</dt><dd>${base}</dd><dt>Местные</dt><dd>${local}${local !== '—' && !local.startsWith('нет') ? ' <span class="draft">· черновик</span>' : ''}</dd>
+      <dt>Руины и точки</dt><dd>${pts}</dd>${beacon ? `<dt>Маяк даёт</dt><dd>${beacon}, уголёк</dd>` : ''}</dl></div>`;
+    bl.append(a); });
+  function drawCrops() { document.querySelectorAll('#biomes canvas').forEach(c => { const n = N[c.dataset.k], r = Math.max(Math.max(n.rx, n.rz) * 1.15 + 12, 62), g = c.getContext('2d');
+    g.fillStyle = '#0d1218'; g.fillRect(0, 0, c.width, c.height); g.drawImage(cv, (n.x - r + M) * S, (n.z - r + M) * S, 2 * r * S, 2 * r * S, 0, 0, c.width, c.height); }); }
+  drawCrops();
+})();
+</script>
+
+</body></html>
