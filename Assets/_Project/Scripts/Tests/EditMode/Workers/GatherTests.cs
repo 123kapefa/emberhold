@@ -108,8 +108,8 @@ namespace Emberhold.Tests.EditMode.Workers
             Assert.That(pallet.ItemId, Is.EqualTo("grass"));
             Assert.That(pallet.Count, Is.EqualTo(3), "Вся трава на поддоне");
             Assert.That(carriedGrass, Is.True, "Несёт траву сам");
-            Assert.That(roles, Does.Contain(WorkerRole.Gatherer));
-            Assert.That(roles, Does.Not.Contain(WorkerRole.Woodcutter));
+            Assert.That(roles, Has.Member(WorkerRole.Gatherer));
+            Assert.That(roles, Has.No.Member(WorkerRole.Woodcutter));
             Assert.That(WorkerCarryBuilder.CarryFor("grass", WorkerRole.Gatherer), Is.EqualTo(WorkerCarry.Sheaf), "Сноп на плече");
             Run(1f, () => false, worker);
             Assert.That(worker.Role, Is.EqualTo(WorkerRole.Free), "Отнёс — снова свободный");
