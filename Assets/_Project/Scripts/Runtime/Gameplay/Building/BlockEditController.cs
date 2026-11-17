@@ -4,6 +4,7 @@ using Emberhold.Gameplay.Lighting;
 using Emberhold.Gameplay.Trees;
 using Emberhold.Gameplay.Workers;
 using Emberhold.World;
+using Emberhold.World.Bushes;
 using Emberhold.World.Editing;
 using Emberhold.World.Items;
 using Emberhold.World.Trees;
@@ -21,7 +22,7 @@ namespace Emberhold.Gameplay.Building
         Build,
         /// <summary>Чертёж: блок ставят рабочие, принеся ресурс.</summary>
         Blueprint,
-        /// <summary>Приказ копать: блок выкапывают рабочие. По дереву — приказ рубить.</summary>
+        /// <summary>Приказ копать: блок выкапывают рабочие. По дереву — приказ рубить, по кусту — собрать траву (#88).</summary>
         DigOrder,
         /// <summary>Поддон 2×2 для ресурсов: ставится сразу и бесплатно, повторный клик убирает.</summary>
         Pallet,
@@ -36,6 +37,8 @@ namespace Emberhold.Gameplay.Building
         /// блок ниже того, с которого начали): выкапывают выше, наращивают ниже; режим — в панели. Клик по зоне открывает панель.
         /// </summary>
         DigZone,
+        /// <summary>Зона сбора (H, #88): круг, в котором рабочие собирают траву с кустов; деревья не трогает. Клик по зоне открывает панель.</summary>
+        GatherZone,
     }
 
     /// <summary>
@@ -44,7 +47,8 @@ namespace Emberhold.Gameplay.Building
     /// а когда ХП кончились, блок исчезает целиком;
     /// 2 — «Убрать» сразу; 3 — «Строить» сразу: блок встаёт за гранью под курсором, рядом виден его предпросмотр.
     /// 4 — «Чертёж» и 5 — «Поручить копать»: то же самое делают рабочие (<see cref="WorkerCrew"/>);
-    /// клик инструментом 5 по дереву поручает его срубить; повторный клик по тому же месту снимает чертёж или приказ.
+    /// клик инструментом 5 по дереву поручает его срубить, по зелёному кусту — собрать траву (#88); повторный клик по тому же
+    /// месту снимает чертёж или приказ.
     /// 6 — «Поддон»: ставит поддон 2×2 на землю под курсором (блок под курсором — его ближний угол) или убирает стоящий там.
     /// 7 — «Костёр»: чертёж костра на блоке под курсором (клетка над ним должна быть в свету); строят его рабочие.
     /// 8 — «Зона рубки»: клик по земле в свету ставит круг, в котором рабочие рубят деревья и корчуют пни, клик по зоне
@@ -52,6 +56,7 @@ namespace Emberhold.Gameplay.Building
     /// 9 — «Зона копки»: зажать ЛКМ на блоке в свету и протянуть — прямоугольник, который рабочие выравнивают до
     /// уровня (на блок ниже начального); клик по зоне выбирает её (панель: режим, длина, ширина, верх, уровень, низ, приоритет, люди);
     /// [ и ] — уровень выбранной зоны.
+    /// H — «Зона сбора» (#88): как зона рубки, но рабочие собирают траву с кустов в круге, деревья не трогают.
     /// Esc или 0 — без инструмента: блоки не подсвечиваются, ЛКМ только бьёт ползунов (<see cref="CrawlerStrike"/>).
     /// Щелчок по ползуну или рядом с ним бьёт его в любом инструменте, блок за ним не меняется.
     /// При стройке и чертеже G — следующая форма, T — материал, щелчок ПКМ — поворот, [ и ] — высота полублока.
@@ -95,6 +100,7 @@ namespace Emberhold.Gameplay.Building
         private InputAction toolCampfire;
         private InputAction toolChopZone;
         private InputAction toolDigZone;
+        private InputAction toolGatherZone;
         private InputAction startZone;
         private Vector3Int digZoneDragTo;
         private InputAction toolNone;
@@ -130,6 +136,8 @@ namespace Emberhold.Gameplay.Building
         private const string DarkBuildMessage = "Темно, здесь не построить";
         private const string UnbreakableMessage = "Не копается";
         private const string StumpMessage = "Мешает пень: сначала выкорчуй его (инструмент 5)";
+        private const string BushMessage = "Мешает куст: выкопай землю под ним";
+        private const string BareBushMessage = "Куст голый: трава ещё не отросла";
         private const string PalletBlockedMessage = "Поддону нужна ровная свободная площадка 2 на 2 в свете костра";
 
         private BlockGhost ghost;
@@ -147,6 +155,9 @@ namespace Emberhold.Gameplay.Building
 
         /// <summary>Пень под курсором при инструменте 5, если он ближе блока и дерева.</summary>
         public TreeStump HoveredStump { get; private set; }
+
+        /// <summary>Куст под курсором при инструменте 5 или H (#88), если он ближе блока, дерева и пня.</summary>
+        public Bush HoveredBush { get; private set; }
 
         /// <summary>Что ставит инструмент «Строить».</summary>
         public BuildSelection Selection { get; } = new();
@@ -217,6 +228,7 @@ namespace Emberhold.Gameplay.Building
             toolCampfire = map.FindAction("ToolCampfire");
             toolChopZone = map.FindAction("ToolChopZone");
             toolDigZone = map.FindAction("ToolDigZone");
+            toolGatherZone = map.FindAction("ToolGatherZone");
             startZone = map.FindAction("StartZone");
             toolNone = map.FindAction("ToolNone");
             raisePriority = map.FindAction("RaisePriority");
@@ -273,25 +285,29 @@ namespace Emberhold.Gameplay.Building
                 Tool = BlockTool.ChopZone;
             if (workers != null && toolDigZone != null && toolDigZone.WasPressedThisFrame())
                 Tool = BlockTool.DigZone;
+            if (workers != null && workers.HasForest && toolGatherZone != null && toolGatherZone.WasPressedThisFrame())
+                Tool = BlockTool.GatherZone;
             if (toolNone != null && toolNone.WasPressedThisFrame())
                 Tool = BlockTool.None;
             if (Tool != BlockTool.DigZone)
                 DigZoneDragFrom = null;
             if (PlacesBlocks)
                 ReadBuildInput();
-            if (Tool is BlockTool.ChopZone or BlockTool.DigZone)
+            if (IsZoneTool)
                 ReadZoneInput();
             // Enter, пока открыта панель черновика зоны, — «Начать».
-            if (Tool is BlockTool.ChopZone or BlockTool.DigZone && startZone != null && startZone.WasPressedThisFrame()
+            if (IsZoneTool && startZone != null && startZone.WasPressedThisFrame()
                 && workers != null && workers.SelectedZone is { IsDraft: true } draft)
                 workers.StartZone(draft);
 
             HoveredTree = PickTree(point.ReadValue<Vector2>());
             HoveredStump = HoveredTree == null ? PickStump(point.ReadValue<Vector2>()) : null;
-            Hovered = Tool != BlockTool.None && HoveredTree == null && HoveredStump == null ? Pick(point.ReadValue<Vector2>()) : null;
+            HoveredBush = HoveredTree == null && HoveredStump == null ? PickBush(point.ReadValue<Vector2>()) : null;
+            Hovered = Tool != BlockTool.None && HoveredTree == null && HoveredStump == null && HoveredBush == null
+                ? Pick(point.ReadValue<Vector2>()) : null;
             UpdatePlan();
             // Ручки выбранной зоны забирают клик и протяжку раньше мира.
-            if (Tool is BlockTool.ChopZone or BlockTool.DigZone && workers != null && DigZoneDragFrom == null
+            if (IsZoneTool && workers != null && DigZoneDragFrom == null
                 && workers.UpdateZoneHandles(targetCamera, point.ReadValue<Vector2>(), use.WasPressedThisFrame() && !IsCameraDragging(), use.IsPressed()))
             {
                 // Ручку тянут: ни постановки блоков, ни новой зоны.
@@ -315,6 +331,17 @@ namespace Emberhold.Gameplay.Building
                 if (!UseOnStump(stump))
                     ShowBlockedMessage(DarkDigMessage);
             }
+            else if (HoveredBush is { } bush && use.WasPressedThisFrame() && !IsCameraDragging() && !IsStrikingCrawler())
+            {
+                if (!UseOnBush(bush))
+                    ShowBlockedMessage(Tool == BlockTool.DigOrder && !bush.IsGrown && CanEdit(bush.Cell) ? BareBushMessage : DarkDigMessage);
+            }
+            else if (Hovered is { } gatherHit && Tool == BlockTool.GatherZone && use.WasPressedThisFrame() && !IsCameraDragging()
+                     && !IsStrikingCrawler())
+            {
+                if (ApplyGatherZone(gatherHit) == null)
+                    ShowBlockedMessage(DarkDigMessage);
+            }
             else if (Hovered is { } zoneHit && Tool == BlockTool.ChopZone && use.WasPressedThisFrame() && !IsCameraDragging()
                      && !IsStrikingCrawler())
             {
@@ -332,7 +359,7 @@ namespace Emberhold.Gameplay.Building
                 if (IsUnbreakable(hit))
                     ShowBlockedMessage(UnbreakableMessage);
                 else if (IsHeldByStump(hit))
-                    ShowBlockedMessage(StumpMessage);
+                    ShowBlockedMessage(HeldMessage(hit));
                 else if (!CanApply(hit))
                     ShowBlockedMessage(DarkMessage);
                 Apply(hit);
@@ -374,6 +401,9 @@ namespace Emberhold.Gameplay.Building
                 && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p))
                 plan = p;
         }
+
+        /// <summary>Инструмент ставит зону: рубки, копки или сбора.</summary>
+        private bool IsZoneTool => Tool is BlockTool.ChopZone or BlockTool.DigZone or BlockTool.GatherZone;
 
         /// <summary>Инструмент ставит блок по плану постановки: сразу или чертежом.</summary>
         private bool PlacesBlocks => Tool is BlockTool.Build or BlockTool.Blueprint;
@@ -459,14 +489,32 @@ namespace Emberhold.Gameplay.Building
                 return tree.Cell;
             if (HoveredStump is { } stump)
                 return stump.Cell;
+            if (HoveredBush is { } bush)
+                return bush.Cell;
             return Hovered is { } hit ? TargetCell(hit) : (Vector3Int?)null;
         }
 
         /// <summary>Приказ ставит и снимает текущий инструмент.</summary>
         private bool IsOwnOrder(WorkOrder order) =>
             order != null && (Tool == BlockTool.Blueprint && order.Kind == WorkKind.Build
-                              || Tool == BlockTool.DigOrder && order.Kind is WorkKind.Dig or WorkKind.Chop
+                              || Tool == BlockTool.DigOrder && order.Kind is WorkKind.Dig or WorkKind.Chop or WorkKind.Gather
                               || Tool == BlockTool.Campfire && order.Kind == WorkKind.Campfire);
+
+        /// <summary>
+        /// Инструмент H по земле (#88): выбрать зону сбора, в которую попадает клетка над блоком, или поставить там новую —
+        /// только в свету. Возвращает выбранную зону; null — ничего не вышло (темно или нет леса).
+        /// </summary>
+        public GatherZone ApplyGatherZone(BlockHit hit) => ApplyGatherZone(hit.Block + Vector3Int.up);
+
+        /// <summary>Инструмент H по клетке над землёй (в том числе по клетке куста): выбрать зону сбора или поставить новую.</summary>
+        private GatherZone ApplyGatherZone(Vector3Int cell)
+        {
+            if (workers == null)
+                return null;
+            if (workers.Zones.At(cell, WorkKind.Gather) == null && !CanEdit(cell))
+                return null;
+            return workers.PlaceOrSelectGatherZone(cell);
+        }
 
         /// <summary>
         /// Инструмент 8 по земле: выбрать зону рубки, в которую попадает клетка над блоком, или поставить там новую — только
@@ -555,21 +603,25 @@ namespace Emberhold.Gameplay.Building
         public bool UseOnStump(TreeStump stump) =>
             Tool == BlockTool.ChopZone ? stump != null && ApplyChopZone(stump.Cell) != null : ApplyToStump(stump);
 
+        /// <summary>ЛКМ по кусту: зона сбора (H) ставится или выбирается в его клетке, инструмент 5 — как <see cref="ApplyToBush"/>.</summary>
+        public bool UseOnBush(Bush bush) =>
+            Tool == BlockTool.GatherZone ? bush != null && ApplyGatherZone(bush.Cell) != null : ApplyToBush(bush);
+
         /// <summary>
-        /// [ и ] при инструменте 8 или 9: радиус выбранной зоны рубки или уровень выбранной зоны копки; если зона не выбрана —
-        /// радиус будущей зоны рубки.
+        /// [ и ] при инструменте 8, 9 или H: радиус выбранной зоны-круга или уровень выбранной зоны копки; если зона не выбрана —
+        /// радиус будущей зоны рубки или сбора.
         /// </summary>
         private void ReadZoneInput()
         {
             var step = (slabHigher.WasPressedThisFrame() ? 1 : 0) - (slabLower.WasPressedThisFrame() ? 1 : 0);
             if (step == 0 || workers == null)
                 return;
-            if (workers.SelectedZone is ChopZone zone)
+            if (workers.SelectedZone is CircleZone zone)
                 workers.Zones.SetRadius(zone, zone.Radius + step, workers.Orders);
             else if (workers.SelectedZone is LevelZone level)
                 workers.Zones.SetLevel(level, Mathf.Max(0, level.Level + step), workers.Orders);
-            else if (Tool == BlockTool.ChopZone)
-                workers.NewZoneRadius = Mathf.Clamp(workers.NewZoneRadius + step, ChopZone.MinRadius, ChopZone.MaxRadius);
+            else if (Tool is BlockTool.ChopZone or BlockTool.GatherZone)
+                workers.NewZoneRadius = Mathf.Clamp(workers.NewZoneRadius + step, CircleZone.MinRadius, CircleZone.MaxRadius);
         }
 
         /// <summary>
@@ -587,14 +639,14 @@ namespace Emberhold.Gameplay.Building
             return PalletAllowed(origin) && workers.TogglePallet(origin);
         }
 
-        /// <summary>Все клетки площадки поддона с углом origin освещены и на них нет пней.</summary>
+        /// <summary>Все клетки площадки поддона с углом origin освещены и на них нет пней и кустов.</summary>
         private bool PalletAllowed(Vector3Int origin)
         {
             for (var dz = 0; dz < Pallet.Size; dz++)
             for (var dx = 0; dx < Pallet.Size; dx++)
             {
                 var cell = origin + new Vector3Int(dx, 0, dz);
-                if (!CanEdit(cell) || forest != null && forest.Forest is { } trees && trees.StumpAt(cell) != null)
+                if (!CanEdit(cell) || forest != null && forest.Forest is { } trees && (trees.StumpAt(cell) != null || trees.Thicket.BlocksPlace(cell)))
                     return false;
             }
             return true;
@@ -626,6 +678,20 @@ namespace Emberhold.Gameplay.Building
         }
 
         /// <summary>
+        /// Инструмент 5 по кусту (#88): поручить собрать траву или снять приказ. Поручить можно только в свете и только по зелёному
+        /// кусту (голый ждёт отрастания), снять — везде. true — приказ поставлен или снят.
+        /// </summary>
+        public bool ApplyToBush(Bush bush)
+        {
+            if (workers == null || bush == null || Tool != BlockTool.DigOrder)
+                return false;
+            var order = workers.Orders.At(bush.Cell);
+            if (!CanEdit(bush.Cell) && order is not { Kind: WorkKind.Gather })
+                return false;
+            return workers.ToggleGather(bush);
+        }
+
+        /// <summary>
         /// Блок в клетке поставили или убрали (игрок или рабочий): сообщить виду, уронить блоки без опоры
         /// вместе с их уроном и показать падение. Результат — в <see cref="LastFalls"/>.
         /// </summary>
@@ -652,9 +718,16 @@ namespace Emberhold.Gameplay.Building
             Tool is BlockTool.Dig or BlockTool.Remove or BlockTool.DigOrder
             && !BlockMaterials.IsBreakable(worldView.World.GetBlock(hit.Block).Material);
 
-        /// <summary>Клетку, которую меняет инструмент, держит пень: в ней пень (не поставить) или он на ней (не выкопать).</summary>
+        /// <summary>
+        /// Клетку, которую меняет инструмент, держит пень или куст: в ней пень или куст (не поставить) или пень на ней (не выкопать).
+        /// </summary>
         private bool IsHeldByStump(BlockHit hit) =>
-            Tool is not (BlockTool.Pallet or BlockTool.ChopZone or BlockTool.DigZone) && forest != null && forest.Forest is { } trees && trees.BlocksEdit(TargetCell(hit));
+            Tool is not (BlockTool.Pallet or BlockTool.ChopZone or BlockTool.DigZone or BlockTool.GatherZone) && forest != null
+            && forest.Forest is { } trees && trees.BlocksEdit(TargetCell(hit));
+
+        /// <summary>Чем держится клетка (<see cref="IsHeldByStump"/>): подсказка про куст или про пень.</summary>
+        private string HeldMessage(BlockHit hit) =>
+            forest != null && forest.Forest is { } trees && trees.Thicket.BlocksPlace(TargetCell(hit)) ? BushMessage : StumpMessage;
 
         /// <summary>
         /// Ячейка, которую меняет текущий инструмент: при стройке — куда встанет блок, у костра — клетка над блоком
@@ -662,7 +735,7 @@ namespace Emberhold.Gameplay.Building
         /// </summary>
         private Vector3Int TargetCell(BlockHit hit)
         {
-            if (Tool is BlockTool.Campfire or BlockTool.ChopZone)
+            if (Tool is BlockTool.Campfire or BlockTool.ChopZone or BlockTool.GatherZone)
                 return hit.Block + Vector3Int.up;
             return PlacesBlocks && BlockPlacement.TryPlan(worldView.World, hit, Selection.Block, out var p) ? p.Cell : hit.Block;
         }
@@ -697,18 +770,29 @@ namespace Emberhold.Gameplay.Building
                 return CanEdit(tree.Cell) || workers != null && workers.Orders.At(tree.Cell) is { Kind: WorkKind.Chop } ? null : DarkDigMessage;
             if (HoveredStump is { } stump)
                 return CanEdit(stump.Cell) || workers != null && workers.Orders.At(stump.Cell) is { Kind: WorkKind.Chop } ? null : DarkDigMessage;
+            if (HoveredBush is { } bush)
+            {
+                if (Tool == BlockTool.GatherZone)
+                    return CanEdit(bush.Cell) || workers != null && workers.Zones.At(bush.Cell, WorkKind.Gather) != null ? null : DarkDigMessage;
+                if (workers != null && workers.Orders.At(bush.Cell) is { Kind: WorkKind.Gather })
+                    return null;
+                return !CanEdit(bush.Cell) ? DarkDigMessage : bush.IsGrown ? null : BareBushMessage;
+            }
             if (Hovered is not { } hit)
                 return null;
-            if (Tool == BlockTool.ChopZone)
-                return CanEdit(hit.Block + Vector3Int.up) || workers != null && workers.Zones.At(hit.Block + Vector3Int.up, WorkKind.Chop) != null
+            if (Tool is BlockTool.ChopZone or BlockTool.GatherZone)
+            {
+                var kind = Tool == BlockTool.ChopZone ? WorkKind.Chop : WorkKind.Gather;
+                return CanEdit(hit.Block + Vector3Int.up) || workers != null && workers.Zones.At(hit.Block + Vector3Int.up, kind) != null
                     ? null : DarkDigMessage;
+            }
             if (Tool == BlockTool.DigZone)
                 return DigZoneDragFrom != null || CanEdit(hit.Block) || workers != null && workers.Zones.At(hit.Block, WorkKind.Dig) != null
                     ? null : DarkDigMessage;
             if (IsUnbreakable(hit))
                 return UnbreakableMessage;
             if (IsHeldByStump(hit))
-                return StumpMessage;
+                return HeldMessage(hit);
             return CanApply(hit) ? null : DarkMessage;
         }
 
@@ -739,6 +823,21 @@ namespace Emberhold.Gameplay.Building
                 && ground.distance + 0.6f < distance)
                 return null;
             return stump;
+        }
+
+        /// <summary>Куст под курсором при инструменте 5 или H (#88), если луч попадает в него раньше, чем в землю.</summary>
+        private Bush PickBush(Vector2 screenPosition)
+        {
+            if (forest == null || workers == null || Tool is not (BlockTool.DigOrder or BlockTool.GatherZone))
+                return null;
+            var ray = targetCamera.ScreenPointToRay(screenPosition);
+            if (!forest.RaycastBush(ray, settings.MaxRayDistance, out var bush, out var distance))
+                return null;
+            // Коробка куста шире и выше самого куста, поэтому землю впереди пропускаем с запасом.
+            if (Physics.Raycast(ray, out var ground, settings.MaxRayDistance, settings.GroundMask, QueryTriggerInteraction.Ignore)
+                && ground.distance + 0.6f < distance)
+                return null;
+            return bush;
         }
 
         /// <summary>Блок под точкой экрана: по треугольнику меша, с поправкой на скос над ним (<see cref="BlockPicking.PreferSlopeAbove"/>).</summary>
@@ -799,6 +898,14 @@ namespace Emberhold.Gameplay.Building
                 ShowOrderOutline(stump.Cell, stumpMin, stumpMax);
                 return;
             }
+            if (HoveredBush is { } bush)
+            {
+                var (bushMin, bushMax) = forest.LocalBounds(bush);
+                // Голый куст инструментом 5 не поручить: рамка цветом запрета.
+                ShowOrderOutline(bush.Cell, bushMin, bushMax, Tool == BlockTool.DigOrder && !bush.IsGrown
+                    && (workers == null || workers.Orders.At(bush.Cell) is not { Kind: WorkKind.Gather }));
+                return;
+            }
             if (Tool == BlockTool.Pallet && Hovered is { } palletHit)
             {
                 ShowPalletOutline(palletHit);
@@ -836,6 +943,7 @@ namespace Emberhold.Gameplay.Building
                 BlockTool.Campfire => settings.BlueprintColor,
                 BlockTool.ChopZone => settings.DigOrderColor,
                 BlockTool.DigZone => settings.DigOrderColor,
+                BlockTool.GatherZone => settings.DigOrderColor,
                 _ => settings.RemoveColor,
             };
             outlineProperties.SetColor(BaseColorId, color);
@@ -843,8 +951,11 @@ namespace Emberhold.Gameplay.Building
             outline.SetActive(true);
         }
 
-        /// <summary>Рамка вокруг дерева или пня под курсором (min..max в долях клетки cell): цвет приказа, вне света — запрета.</summary>
-        private void ShowOrderOutline(Vector3Int cell, Vector3 min, Vector3 max)
+        /// <summary>
+        /// Рамка вокруг дерева, пня или куста под курсором (min..max в долях клетки cell): цвет приказа, вне света или при
+        /// blocked — запрета.
+        /// </summary>
+        private void ShowOrderOutline(Vector3Int cell, Vector3 min, Vector3 max, bool blocked = false)
         {
             // Рамку дерева строим каждый кадр: деревьев под курсором немного, а форма блока потом перестроится заново.
             outlineShape = null;
@@ -854,7 +965,7 @@ namespace Emberhold.Gameplay.Building
             outlineMesh.SetIndices(outlineIndices, MeshTopology.Lines, 0);
             outlineMesh.RecalculateBounds();
             PlaceInWorld(outline.transform, cell);
-            outlineProperties.SetColor(BaseColorId, CanEdit(cell) ? settings.DigOrderColor : settings.BlockedColor);
+            outlineProperties.SetColor(BaseColorId, CanEdit(cell) && !blocked ? settings.DigOrderColor : settings.BlockedColor);
             outlineRenderer.SetPropertyBlock(outlineProperties);
             outline.SetActive(true);
         }
@@ -961,7 +1072,7 @@ namespace Emberhold.Gameplay.Building
             GUILayout.Label(Tool == BlockTool.None ? "цифра — взять инструмент" : "Esc или 0 — без инструмента, ЛКМ — применить", hintStyle);
             if (Tool is BlockTool.Blueprint or BlockTool.DigOrder or BlockTool.Campfire)
                 GUILayout.Label("Shift+ЛКМ по приказу — уровень: обычный → высокий → срочный", hintStyle);
-            if (Tool == BlockTool.ChopZone && workers != null)
+            if (Tool is BlockTool.ChopZone or BlockTool.GatherZone && workers != null)
                 GUILayout.Label(workers.SelectedZone != null
                     ? "ЛКМ по зоне — выбрать, по земле — новая зона; [ ] — радиус выбранной, Enter — начать черновик"
                     : $"ЛКМ — поставить зону или выбрать; [ ] — радиус {workers.NewZoneRadius}", hintStyle);
@@ -1008,6 +1119,8 @@ namespace Emberhold.Gameplay.Building
             if (workers.HasForest)
                 yield return ("8", BlockTool.ChopZone);
             yield return ("9", BlockTool.DigZone);
+            if (workers.HasForest)
+                yield return ("H", BlockTool.GatherZone);
         }
 
         private static string ToolName(BlockTool tool) => tool switch
@@ -1016,11 +1129,12 @@ namespace Emberhold.Gameplay.Building
             BlockTool.Remove => "Убрать",
             BlockTool.Build => "Строить",
             BlockTool.Blueprint => "Чертёж",
-            BlockTool.DigOrder => "Поручить копать и рубить",
+            BlockTool.DigOrder => "Поручить копать, рубить и собирать",
             BlockTool.Pallet => "Поддон",
             BlockTool.Campfire => "Костёр",
             BlockTool.ChopZone => "Зона рубки",
             BlockTool.DigZone => "Зона копки",
+            BlockTool.GatherZone => "Зона сбора",
             _ => "нет",
         };
 
@@ -1031,11 +1145,12 @@ namespace Emberhold.Gameplay.Building
             BlockTool.Remove => "убрать сразу",
             BlockTool.Build => "строить сразу",
             BlockTool.Blueprint => "чертёж (строят рабочие)",
-            BlockTool.DigOrder => "поручить копать или рубить дерево",
+            BlockTool.DigOrder => "поручить копать, рубить дерево или собрать траву с куста",
             BlockTool.Pallet => "поддон",
             BlockTool.Campfire => workers != null && workers.CampfireCost is { } cost ? $"костёр: {CostLabel.Amount(cost)}" : "костёр",
             BlockTool.ChopZone => "зона рубки: деревья и пни в круге",
             BlockTool.DigZone => "зона копки: выровнять прямоугольник до уровня (режим — в панели)",
+            BlockTool.GatherZone => "зона сбора: трава с кустов в круге",
             _ => ToolName(tool),
         };
     }

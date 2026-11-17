@@ -19,6 +19,8 @@ namespace Emberhold.Gameplay.Workers
         Haul,
         /// <summary>Бежит из темноты к свету.</summary>
         Flee,
+        /// <summary>Собирает траву с куста (#88).</summary>
+        Gather,
     }
 
     /// <summary>
@@ -43,6 +45,7 @@ namespace Emberhold.Gameplay.Workers
                 WorkKind.Chop => WorkerActivity.Chop,
                 WorkKind.Fuel => WorkerActivity.Fuel,
                 WorkKind.Campfire => WorkerActivity.Campfire,
+                WorkKind.Gather => WorkerActivity.Gather,
                 _ => WorkerActivity.Idle,
             };
         }
@@ -75,6 +78,7 @@ namespace Emberhold.Gameplay.Workers
                         WorkKind.Dig => "идёт копать",
                         WorkKind.Chop => stump ? "идёт корчевать" : "идёт рубить",
                         WorkKind.Build or WorkKind.Campfire => "идёт строить",
+                        WorkKind.Gather => "идёт собирать траву",
                         _ => "идёт",
                     };
                 case WorkerState.Putting:
@@ -85,6 +89,7 @@ namespace Emberhold.Gameplay.Workers
                         WorkKind.Dig => "копает",
                         WorkKind.Chop => stump ? "корчует" : "рубит",
                         WorkKind.Campfire => "ставит костёр",
+                        WorkKind.Gather => "срезает траву",
                         _ => "строит",
                     };
                 default:

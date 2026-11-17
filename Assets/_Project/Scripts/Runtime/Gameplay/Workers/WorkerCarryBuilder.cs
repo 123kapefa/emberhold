@@ -16,6 +16,8 @@ namespace Emberhold.Gameplay.Workers
         GrassBasket,
         /// <summary>Полено, которое истопник кладёт в огонь (<see cref="WorkerClip.Stoke"/>).</summary>
         Billet,
+        /// <summary>Сноп травы на плече (#88): лежит и снимается как бревно, перевязан посередине.</summary>
+        Sheaf,
     }
 
     /// <summary>
@@ -25,7 +27,8 @@ namespace Emberhold.Gameplay.Workers
     /// и висит на двух лямках: от края корзины через плечи, по груди и под мышки, снизу короткие ремни от дна к бокам.
     /// Руки при этом свободны. Снимают корзину через левое плечо: левая рука берёт её на спине, ведёт к левому боку
     /// и вперёд к груди, правая подхватывает, и обеими руками корзину ставят на землю перед собой; поднимают в обратном
-    /// порядке. Носят только свободные рабочие (без роли). Единицы — блоки при росте height.
+    /// порядке. Сноп травы носят на плече, как бревно. Носят только свободные рабочие (без роли), кроме сборщика со своей
+    /// травой. Единицы — блоки при росте height.
     /// </summary>
     public static class WorkerCarryBuilder
     {
@@ -86,23 +89,27 @@ namespace Emberhold.Gameplay.Workers
         private static Vector3 OnBasket(Vector3 worker) => Quaternion.Inverse(BasketTilt) * (worker - BasketOnBack);
 
         /// <summary>
-        /// Ноша по ресурсу: поленья — бревно, камень — корзина с камнями, остальное — корзина с травой. Носят только
-        /// свободные рабочие: у рабочего с ролью ноши не бывает.
+        /// Ноша по ресурсу: поленья — бревно, камень — корзина с камнями, трава — сноп (#88), остальное — корзина с сыпучим.
+        /// Носят свободные рабочие и сборщик — свою траву; у рабочего с другой ролью ноши не бывает.
         /// </summary>
         public static WorkerCarry CarryFor(string itemId, WorkerRole role) => itemId switch
         {
             null or "" => WorkerCarry.None,
+            "grass" when role is WorkerRole.Free or WorkerRole.Gatherer => WorkerCarry.Sheaf,
             _ when role != WorkerRole.Free => WorkerCarry.None,
             "wood" => WorkerCarry.Log,
             "stone" => WorkerCarry.StoneBasket,
             _ => WorkerCarry.GrassBasket,
         };
 
-        /// <summary>Держит ли рука ношу, пока её несут: бревно — да, корзина висит на лямках сама.</summary>
-        public static bool HeldWhileCarried(WorkerCarry carry) => carry == WorkerCarry.Log;
+        /// <summary>Ношу несут на плече (бревно, сноп), а не на спине в корзине.</summary>
+        public static bool OnShoulder(WorkerCarry carry) => carry is WorkerCarry.Log or WorkerCarry.Sheaf;
+
+        /// <summary>Держит ли рука ношу, пока её несут: бревно и сноп — да, корзина висит на лямках сама.</summary>
+        public static bool HeldWhileCarried(WorkerCarry carry) => OnShoulder(carry);
 
         /// <summary>Ноша на плече или спине: матрица в системе корпуса (начало — его точка вращения).</summary>
-        public static Matrix4x4 ShoulderAnchor(WorkerCarry carry, float height) => carry == WorkerCarry.Log
+        public static Matrix4x4 ShoulderAnchor(WorkerCarry carry, float height) => OnShoulder(carry)
             // Бревно на вершине левого плеча, передний конец чуть выше.
             ? Matrix4x4.TRS(new Vector3(-0.138f, 0.284f, 0.02f) * height, Quaternion.LookRotation(new Vector3(0.05f, 0.1f, 1f)), Vector3.one)
             : Matrix4x4.TRS((BasketOnBack - Vector3.up * Waist) * height, BasketTilt, Vector3.one);
@@ -125,7 +132,7 @@ namespace Emberhold.Gameplay.Workers
         private static Matrix4x4[] BuildPath(WorkerCarry carry, float height)
         {
             Matrix4x4 At(Vector3 position, Quaternion rotation) => Matrix4x4.TRS(position * height, rotation, Vector3.one);
-            if (carry != WorkerCarry.Log)
+            if (!OnShoulder(carry))
             {
                 // Корзину снимают через левое плечо: она уходит к левому боку, оттуда вперёд к груди (лямками к рабочему)
                 // и опускается на землю перед ним.
@@ -182,6 +189,9 @@ namespace Emberhold.Gameplay.Workers
                 case WorkerCarry.Billet:
                     Billet(mesh);
                     break;
+                case WorkerCarry.Sheaf:
+                    Sheaf(mesh);
+                    break;
             }
             mesh.Transform = Matrix4x4.identity;
             return mesh.ToMesh(name);
@@ -200,6 +210,30 @@ namespace Emberhold.Gameplay.Workers
             mesh.AddTube(new[] { new Vector3(0.01f, LogRadius * 0.8f, -0.09f), new Vector3(0.03f, LogRadius + 0.03f, -0.11f) },
                 new[] { new Vector2(0.013f, 0.013f), new Vector2(0.006f, 0.006f) }, 5, Paint(Bark * 0.85f));
         }
+
+        private static void Sheaf(FacetedMesh mesh)
+        {
+            // Сноп вдоль +Z, не толще и не длиннее бревна: к концам стебли расходятся, посередине перевязь; на заднем
+            // конце срезы светлее, на переднем — колоски.
+            var back = Vector3.back * (LogLength * 0.5f);
+            var front = Vector3.forward * (LogLength * 0.5f);
+            var path = new[] { back, back * 0.55f, Vector3.zero, front * 0.55f, front };
+            var radii = new[]
+            {
+                Vector2.one * (LogRadius * 0.95f), Vector2.one * (LogRadius * 0.82f), Vector2.one * (LogRadius * 0.62f),
+                Vector2.one * (LogRadius * 0.85f), Vector2.one * LogRadius,
+            };
+            mesh.AddTube(path, radii, 9, Paint(Grass));
+            mesh.AddTube(new[] { back + Vector3.back * 0.002f, back + Vector3.forward * 0.004f },
+                new[] { Vector2.one * (LogRadius * 0.82f), Vector2.one * (LogRadius * 0.82f) }, 9, Paint(Straw));
+            mesh.AddTube(new[] { front + Vector3.back * 0.004f, front + Vector3.forward * 0.002f },
+                new[] { Vector2.one * (LogRadius * 0.86f), Vector2.one * (LogRadius * 0.86f) }, 9, Paint(Grass * 1.15f));
+            // Перевязь — жгут из той же травы, чуть темнее.
+            mesh.AddTube(new[] { Vector3.back * 0.012f, Vector3.forward * 0.012f },
+                new[] { Vector2.one * (LogRadius * 0.7f), Vector2.one * (LogRadius * 0.7f) }, 9, Paint(Grass * 0.6f));
+        }
+
+        private static readonly Color Straw = new(0.76f, 0.68f, 0.42f);
 
         /// <summary>Верх насыпи в корзине: ниже края, чтобы изнутри была видна стенка и кромка, доли роста.</summary>
         private const float FillTop = 0.075f;

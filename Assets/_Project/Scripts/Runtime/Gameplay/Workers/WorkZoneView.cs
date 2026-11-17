@@ -96,12 +96,17 @@ namespace Emberhold.Gameplay.Workers
         }
 
         /// <summary>
-        /// Подпись над зоной: «рубка · люди 1/2», «выровнять до 5 · люди 0/2» (или «выкопать до», «нарастить до» — по режиму),
+        /// Подпись над зоной: «рубка · люди 1/2», «сбор травы · люди 1/2», «выровнять до 5 · люди 0/2» (или «выкопать до», «нарастить до» — по режиму),
         /// у черновика — «черновик · выровнять до 5 · люди 0/2». Приоритет — только в панели.
         /// </summary>
         public static string Label(WorkZone zone)
         {
-            var what = zone is LevelZone level ? $"{ModeVerb(level.Mode)} до {level.Level}" : "рубка";
+            var what = zone switch
+            {
+                LevelZone level => $"{ModeVerb(level.Mode)} до {level.Level}",
+                GatherZone => "сбор травы",
+                _ => "рубка",
+            };
             var draft = zone.IsDraft ? "черновик · " : "";
             return $"{draft}{what} · люди {zone.Assignment.Workers.Count}/{zone.Assignment.MaxWorkers}";
         }
@@ -130,7 +135,7 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Указатель (экранные координаты Input System, y снизу) над панелью зоны.</summary>
         public bool IsOverPanel(Vector2 pointer) => PanelShown && PanelRect().Contains(new Vector2(pointer.x, Screen.height - pointer.y));
 
-        private bool ZoneTool => editor != null && editor.Tool is BlockTool.ChopZone or BlockTool.DigZone;
+        private bool ZoneTool => editor != null && editor.Tool is BlockTool.ChopZone or BlockTool.DigZone or BlockTool.GatherZone;
 
         private bool PanelShown => crew != null && ZoneTool && crew.SelectedZone != null;
 
@@ -256,7 +261,7 @@ namespace Emberhold.Gameplay.Workers
             grabOffset = zone switch
             {
                 LevelZone levelZone => new Vector2(hit.x - levelZone.Min.x, hit.z - levelZone.Min.y),
-                ChopZone chop => new Vector2(hit.x - chop.Cell.x, hit.z - chop.Cell.z),
+                CircleZone chop => new Vector2(hit.x - chop.Cell.x, hit.z - chop.Cell.z),
                 _ => Vector2.zero,
             };
             draggedHandle = hoveredHandle;
@@ -287,10 +292,10 @@ namespace Emberhold.Gameplay.Workers
                 case ZoneHandleKind.Move when zone is LevelZone level:
                     crew.Zones.Move(level, new Vector2Int(Mathf.RoundToInt(hit.x - grabOffset.x), Mathf.RoundToInt(hit.z - grabOffset.y)), orders);
                     break;
-                case ZoneHandleKind.Move when zone is ChopZone chop:
+                case ZoneHandleKind.Move when zone is CircleZone chop:
                     crew.Zones.Move(chop, new Vector3Int(Mathf.RoundToInt(hit.x - grabOffset.x), chop.Cell.y, Mathf.RoundToInt(hit.z - grabOffset.y)), orders);
                     break;
-                case ZoneHandleKind.Radius when zone is ChopZone chop:
+                case ZoneHandleKind.Radius when zone is CircleZone chop:
                     crew.Zones.SetRadiusTo(chop, new Vector2(hit.x, hit.z), orders);
                     break;
             }
@@ -434,10 +439,10 @@ namespace Emberhold.Gameplay.Workers
             // Курсор на ручке выбранной зоны: новую зону не предлагаем.
             if (editor == null || editor.Hovered is not { } hit || hoveredHandle >= 0 || draggedHandle >= 0)
                 return false;
-            if (editor.Tool == BlockTool.ChopZone)
+            if (editor.Tool is BlockTool.ChopZone or BlockTool.GatherZone)
             {
                 var cell = hit.Block + Vector3Int.up;
-                if (crew.Zones.At(cell, WorkKind.Chop) == null)
+                if (crew.Zones.At(cell, editor.Tool == BlockTool.ChopZone ? WorkKind.Chop : WorkKind.Gather) == null)
                     AppendCircle(cell, crew.NewZoneRadius);
                 return false;
             }
@@ -508,10 +513,12 @@ namespace Emberhold.Gameplay.Workers
             GUILayout.BeginArea(PanelRect(), GUI.skin.box);
             if (zone.IsDraft)
                 GUILayout.Label("Черновик: рабочие не придут, пока не нажмёшь «Начать»");
-            if (zone is ChopZone chop)
+            if (zone is CircleZone chop)
             {
-                GUILayout.Label("Зона рубки: деревья и пни в круге");
-                var radius = Stepper("Радиус", chop.Radius.ToString(), chop.Radius > ChopZone.MinRadius, chop.Radius < ChopZone.MaxRadius);
+                GUILayout.Label(zone is GatherZone
+                    ? "Зона сбора: трава с кустов в круге, голые ждут"
+                    : "Зона рубки: деревья и пни в круге");
+                var radius = Stepper("Радиус", chop.Radius.ToString(), chop.Radius > CircleZone.MinRadius, chop.Radius < CircleZone.MaxRadius);
                 if (radius != 0)
                     crew.Zones.SetRadius(chop, chop.Radius + radius, crew.Orders);
             }
@@ -592,7 +599,7 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Граница зоны по земле; inset — насколько отступить внутрь (рамка выбранной зоны), dashed — пунктиром.</summary>
         private void AppendOutline(WorkZone zone, float inset, bool dashed = false)
         {
-            if (zone is ChopZone chop)
+            if (zone is CircleZone chop)
                 AppendCircle(chop.Cell, chop.Radius - inset, dashed);
             else if (zone is LevelZone level)
                 AppendBox(level.Min, level.Size, level.Bottom, level.Top, inset, dashed);

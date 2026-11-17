@@ -66,3 +66,8 @@ MonoBehaviour:
         weight: 1
       - kind: {fileID: 11400000, guid: 76d94216a1954af4af941b19a007a097, type: 2}
         weight: 2
+    bushes:
+      density: 0.012
+      species:
+      - species: {fileID: 11400000, guid: a22f56cda4174a7eb3815aec91d1f866, type: 2}
+        weight: 1

@@ -148,6 +148,10 @@ namespace Emberhold.Gameplay.Workers
                     On(WorkerPart.Head);
                     ArcherCap(gear);
                     break;
+                case WorkerRole.Gatherer:
+                    On(WorkerPart.Hips);
+                    GrassPouch(gear);
+                    break;
                 case WorkerRole.Spearman:
                     On(WorkerPart.Torso);
                     Gambeson(gear);
@@ -405,6 +409,18 @@ namespace Emberhold.Gameplay.Workers
             g.Rod(new Vector3(-0.11f, 0.49f, 0.035f), new Vector3(-0.12f, 0.55f, 0.03f), 0.006f, Wood);
             g.Rod(new Vector3(-0.125f, 0.49f, 0.06f), new Vector3(-0.13f, 0.535f, 0.07f), 0.005f, WoodLight);
         }
+
+        /// <summary>Сборщик (#88): холщовая сумка на правом боку, из неё торчат пучки травы. Руки свободны — сноп носят на плече.</summary>
+        private static void GrassPouch(Gear g)
+        {
+            var turn = Quaternion.Euler(0f, 30f, 0f);
+            g.Box(new Vector3(0.115f, 0.465f, 0.045f), turn, new Vector3(0.055f, 0.075f, 0.065f), Linen);
+            g.Box(new Vector3(0.115f, 0.5f, 0.045f), turn, new Vector3(0.06f, 0.016f, 0.07f), Linen * 0.8f);
+            g.Rod(new Vector3(0.11f, 0.49f, 0.035f), new Vector3(0.12f, 0.55f, 0.03f), 0.006f, GrassGreen);
+            g.Rod(new Vector3(0.125f, 0.49f, 0.06f), new Vector3(0.13f, 0.535f, 0.07f), 0.005f, GrassGreen * 0.8f);
+        }
+
+        private static readonly Color GrassGreen = new(0.42f, 0.56f, 0.24f);
 
         private static void Logs(Gear g)
         {

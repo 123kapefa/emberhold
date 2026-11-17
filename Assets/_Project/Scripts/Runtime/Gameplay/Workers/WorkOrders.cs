@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Emberhold.World.Bushes;
 using Emberhold.World.Items;
 using Emberhold.World.Trees;
 using Emberhold.World.Voxels;
@@ -22,6 +23,11 @@ namespace Emberhold.Gameplay.Workers
         Fuel,
         /// <summary>Чертёж костра: рабочие приносят поленья и ставят новый костёр, пустой, без топлива.</summary>
         Campfire,
+        /// <summary>
+        /// Собрать траву с куста (#88): рабочий срезает куст ударами, трава падает у основания, и он сам несёт её на поддон.
+        /// Куст остаётся голым и отрастает.
+        /// </summary>
+        Gather,
     }
 
     /// <summary>
@@ -173,6 +179,9 @@ namespace Emberhold.Gameplay.Workers
         /// <summary>Пень под приказом выкорчевать (вид задачи — <see cref="WorkKind.Chop"/>), иначе null.</summary>
         public TreeStump Stump { get; internal set; }
 
+        /// <summary>Куст под приказом собрать траву (<see cref="WorkKind.Gather"/>), иначе null.</summary>
+        public Bush Bush { get; internal set; }
+
         /// <summary>Куда нести топливо (для <see cref="WorkKind.Fuel"/>), иначе null.</summary>
         public IFuelTarget FuelTarget { get; internal set; }
 
@@ -187,7 +196,7 @@ namespace Emberhold.Gameplay.Workers
     }
 
     /// <summary>
-    /// Общий список задач рабочих: чертежи блоков и костров, приказы копать и рубить, топливо для огня; не больше одной задачи на клетку.
+    /// Общий список задач рабочих: чертежи блоков и костров, приказы копать, рубить и собирать траву, топливо для огня; не больше одной задачи на клетку.
     /// Рабочие сами берут ближайшую свободную. Задача, которую больше нельзя выполнить (клетку заняли,
     /// блок уже выкопали), убирается в <see cref="Prune"/>.
     /// </summary>
@@ -240,6 +249,14 @@ namespace Emberhold.Gameplay.Workers
             if (stump == null || !stump.IsPresent || byCell.ContainsKey(stump.Cell))
                 return null;
             return Add(new WorkOrder(WorkKind.Chop, stump.Cell, Block.Air, false, null, 0) { Stump = stump });
+        }
+
+        /// <summary>Поручить собрать траву с куста. Null, если куст голый или пропал, или его клетка уже занята задачей.</summary>
+        public WorkOrder AddGather(Bush bush)
+        {
+            if (bush == null || !bush.IsPresent || !bush.IsGrown || byCell.ContainsKey(bush.Cell))
+                return null;
+            return Add(new WorkOrder(WorkKind.Gather, bush.Cell, Block.Air, false, null, 0) { Bush = bush });
         }
 
         /// <summary>
@@ -320,13 +337,15 @@ namespace Emberhold.Gameplay.Workers
 
         /// <summary>
         /// Можно ли ещё выполнить задачу: чертёж — клетка свободна (или там тот же неполный блок, который досыпаем),
-        /// приказ копать — блок на месте, приказ рубить — дерево или пень стоит, костёр — клетка пуста, а под ней земля.
-        /// Топливо носить можно всегда.
+        /// приказ копать — блок на месте, приказ рубить — дерево или пень стоит, собрать — куст стоит и зелёный,
+        /// костёр — клетка пуста, а под ней земля. Топливо носить можно всегда.
         /// </summary>
         public static bool IsValid(VoxelWorld world, WorkOrder order)
         {
             if (order.Kind == WorkKind.Fuel)
                 return true;
+            if (order.Kind == WorkKind.Gather)
+                return order.Bush is { IsPresent: true, IsGrown: true };
             if (order.Kind == WorkKind.Chop)
                 return order.Stump?.IsPresent ?? order.Tree.IsStanding;
             if (!world.IsInsideBlocks(order.Cell))

@@ -1,4 +1,5 @@
 using System;
+using Emberhold.World.Bushes;
 using Emberhold.World.Vegetation;
 using UnityEngine;
 
@@ -8,7 +9,8 @@ namespace Emberhold.World.Trees
     /// Лес профиля местности: как густо растут деревья, какие виды в какой доле и сколько деревьев собрано в рощи.
     /// Лежит в профиле (<see cref="Generation.TerrainProfile"/>), поэтому каждая зона местности приносит свой лес.
     /// Густота — среднее по всей площади: рощи забирают свою долю деревьев, остальные стоят по одному между ними.
-    /// Здесь же мелочь на земле профиля (<see cref="GroundCover"/>): трава, цветы, папоротник, грибы — только для вида.
+    /// Здесь же мелочь на земле профиля (<see cref="GroundCover"/>): трава, цветы, папоротник, грибы — только для вида,
+    /// и кусты (<see cref="Bushes"/>, #88), с которых собирают траву.
     /// </summary>
     [Serializable]
     public sealed class ForestMix
@@ -47,6 +49,9 @@ namespace Emberhold.World.Trees
         [Header("Мелочь на земле")]
         [SerializeField] private GroundCoverMix groundCover = new();
 
+        [Header("Кусты")]
+        [SerializeField] private BushMix bushes = new();
+
         public ForestMix()
         {
         }
@@ -71,6 +76,9 @@ namespace Emberhold.World.Trees
 
         /// <summary>Мелочь на земле этой местности (только для вида).</summary>
         public GroundCoverMix GroundCover => groundCover;
+
+        /// <summary>Кусты этой местности (#88): с них собирают траву.</summary>
+        public BushMix Bushes => bushes;
 
         /// <summary>Есть ли у леса рощи.</summary>
         public bool HasGroves => groveShare > 0f && groveDensity > 0f && groveRadius > 0f;
@@ -103,6 +111,13 @@ namespace Emberhold.World.Trees
         public ForestMix WithGroundCover(GroundCoverMix cover)
         {
             groundCover = cover ?? new GroundCoverMix();
+            return this;
+        }
+
+        /// <summary>Кусты для тестов и настройки из кода; возвращает этот же лес.</summary>
+        public ForestMix WithBushes(BushMix mix)
+        {
+            bushes = mix ?? new BushMix();
             return this;
         }
 

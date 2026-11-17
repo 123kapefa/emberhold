@@ -264,6 +264,7 @@ namespace Emberhold.Editor.Workers
             WorkerRole.Swordsman => "Мечник",
             WorkerRole.Archer => "Лучник",
             WorkerRole.Spearman => "Копейщик",
+            WorkerRole.Gatherer => "Сборщик",
             _ => role.ToString(),
         };
 
